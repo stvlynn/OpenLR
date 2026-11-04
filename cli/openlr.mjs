@@ -18,6 +18,17 @@ const defaultSession = () =>
     'OpenLR',
     'agent.json'
   )
+const localCommands = {
+  open: {
+    summary: 'Connect to the current workspace or launch the packaged desktop application.',
+    usage: 'openlr open [--app executable] [--session file] [--dry-run]'
+  },
+  watch: {
+    summary: 'Observe live workspace revisions as JSON, optionally saving screenshots.',
+    usage: 'openlr watch [--session file] [--images directory] [--count n]',
+    output: 'One JSON record per observed revision. Fast consecutive changes may be coalesced.'
+  }
+}
 const help = {
   usage: 'openlr <command> [--name value] [--args JSON] [--dry-run]',
   discovery: ['openlr cli search "export image"', 'openlr schema edit', 'openlr <command> --help'],
@@ -39,7 +50,7 @@ const help = {
   },
   workflow:
     'Search, inspect schema, dry-run, then run. Commands operate on the currently running native GUI. JSON goes to stdout; errors go to stderr with a nonzero exit. Images default to a generated .workspace/agent-results file.',
-  commands: [...Object.keys(definitions), 'open', 'watch']
+  commands: [...Object.keys(definitions), ...Object.keys(localCommands)]
 }
 
 function parseValue(text, rule) {
@@ -67,23 +78,17 @@ export function parse(argv) {
   if (command === 'cli') {
     if (tokens.shift() !== 'search' || tokens.length !== 1)
       throw new Error('Usage: openlr cli search "task description"')
-    return { local: searchCommands(tokens[0]) }
+    return { local: searchCommands(tokens[0], { ...definitions, ...localCommands }) }
   }
   if (command === 'schema') {
     if (tokens.length !== 1) throw new Error('Usage: openlr schema <command>')
-    return { local: schema(tokens[0]) }
+    return { local: Object.hasOwn(localCommands, tokens[0]) ? localCommands[tokens[0]] : schema(tokens[0]) }
   }
   if (command === 'open') {
     const request = { command, session: defaultSession(), app: process.env.OPENLR_APP }
-    if (tokens.includes('--help'))
-      return {
-        local: {
-          usage: 'openlr open [--app executable] [--session file] [--dry-run]',
-          description: 'Connect to the current workspace, or launch the packaged desktop application.'
-        }
-      }
     while (tokens.length) {
       const key = tokens.shift()
+      if (key === '--help' || key === '-h') return { local: localCommands[command] }
       if (key === '--dry-run') {
         request.dryRun = true
         continue
@@ -96,16 +101,10 @@ export function parse(argv) {
   }
   if (command === 'watch') {
     const options = { session: defaultSession(), command }
-    if (tokens.includes('--help'))
-      return {
-        local: {
-          usage: 'openlr watch [--session file] [--images directory] [--count n]',
-          output: 'One JSON record per observed revision. Fast consecutive changes may be coalesced.'
-        }
-      }
     while (tokens.length) {
-      const key = tokens.shift(),
-        value = tokens.shift()
+      const key = tokens.shift()
+      if (key === '--help' || key === '-h') return { local: localCommands[command] }
+      const value = tokens.shift()
       if (!value || !['--session', '--count', '--images'].includes(key))
         throw Error('Expected --session, --count or --images followed by its value')
       options[key.slice(2)] = value
@@ -118,7 +117,6 @@ export function parse(argv) {
     return options
   }
   const definition = schema(command)
-  if (tokens.includes('--help') || tokens.includes('-h')) return { local: definition }
   let args = {},
     output,
     capture,
@@ -130,6 +128,7 @@ export function parse(argv) {
     parameters = definition.parameters.properties
   for (let i = 0; i < tokens.length; i++) {
     const token = tokens[i]
+    if (token === '--help' || token === '-h') return { local: definition }
     if (token === '--dry-run') {
       dryRun = true
       continue

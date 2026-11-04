@@ -22,6 +22,12 @@ test('offline discovery and dry runs validate real command arguments', async () 
     ).request.args.token,
     '[redacted]'
   )
+  for (const name of ['open', 'watch']) {
+    assert.equal(parse(['cli', 'search', name]).local[0].command, name)
+    assert.deepEqual(parse(['schema', name]).local, parse([name, '-h']).local)
+  }
+  assert.deepEqual(parse(['import', '--', '--help', '-h']).args.files, ['--help', '-h'])
+  assert.equal(parse(['open', '--app', '--help']).app, '--help')
   assert.ok(parse(['cli', 'search', 'exposure']).local.some((result) => result.command === 'edit'))
   assert.equal(parse(['schema', 'export']).local.parameters.properties.format.enum[1], 'image/png')
   assert.deepEqual(

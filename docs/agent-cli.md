@@ -20,6 +20,8 @@ Run the native OpenLR GUI before commands that read or change live state. `cli s
 
 ## Arguments and output
 
+Both desktop commands and CLI-only commands such as `watch` appear in CLI search. Use `schema watch` for its invocation and output format. After the import path delimiter (`--`), even `--help` is a literal filename.
+
 Use named options, or supply a JSON object with `--args` (`--body` is an alias). Import also accepts positional local paths or repeated `--file`. `--` marks the start of literal import paths. String arguments, including empty strings, can be provided through JSON when shell quoting is awkward.
 
 ```powershell

@@ -776,9 +776,9 @@ export function schema(command) {
   return { command, ...definitions[command] }
 }
 
-export function searchCommands(query) {
+export function searchCommands(query, catalog = definitions) {
   const words = String(query).toLowerCase().split(/\s+/).filter(Boolean)
-  return Object.entries(definitions)
+  return Object.entries(catalog)
     .map(([command, definition]) => ({
       command,
       summary: definition.summary,
