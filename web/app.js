@@ -453,6 +453,7 @@ function snapshot() {
     sampling,
     cropping,
     cropDraft: cropDraft(),
+    localSelection: localToolsUI?.selection(),
     film,
     zoom,
     albums,
@@ -609,6 +610,7 @@ async function execute(command, args) {
         visibleCount: visible().length,
         selectionCount: organization.selection.size,
         cropDraft: cropDraft(),
+        localSelection: localToolsUI?.selection(),
         photo: photo
           ? {
               id: photo.id,
@@ -1180,14 +1182,18 @@ async function execute(command, args) {
         return snapshot()
       }
       switch (command) {
+        case 'local-select':
+          if (args.photoId !== undefined && args.photoId !== p.id) throw Error('The selected photo changed')
+          return localToolsUI.select(args.id, args.path)
         case 'mask-overlay':
           return { visible: localToolsUI.setOverlay(args.enabled) }
         case 'mask-preview': {
-          const id = args.id ?? localToolsUI.selectedMaskId(),
-            tool =
-              p.edit.localTools?.masks.find((mask) => mask.id === id) ??
-              (!args.id ? p.edit.localTools?.masks.at(-1) : null)
-          if (!tool) throw Error('Choose an existing mask')
+          const masks = p.edit.localTools?.masks
+          const tool =
+            args.id !== undefined
+              ? masks?.find((mask) => mask.id === args.id)
+              : (localToolsUI.selectedItem() ?? masks?.at(-1))
+          if (!tool || ['clone', 'heal'].includes(tool.type)) throw Error('Choose an existing mask')
           const canvas = renderMaskPreview(await source(p.id), p.edit, tool, {
             style: args.style ?? 'gray',
             maxSize: args.maxSize ?? Infinity

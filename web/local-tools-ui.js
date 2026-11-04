@@ -354,7 +354,7 @@ export function createLocalToolsUI({ container, run, getActive, notify }) {
       })
       .catch((error) => notify(error.message))
   }
-  function sync() {
+  function sync(requestedPath) {
     const photo = getActive(),
       local = photo?.edit.localTools ?? {},
       previous = list.value
@@ -382,7 +382,7 @@ export function createLocalToolsUI({ container, run, getActive, notify }) {
       )
     )
     if (items.some((item) => item.id === previous)) list.value = previous
-    const oldPath = component.dataset.root === list.value ? component.value : ''
+    const oldPath = requestedPath ?? (component.dataset.root === list.value ? component.value : '')
     component.dataset.root = list.value
     const options = [element('option', { value: '' }, 'Whole mask')],
       walk = (tool, path = []) => {
@@ -438,8 +438,29 @@ export function createLocalToolsUI({ container, run, getActive, notify }) {
     choose.hidden = !['clone', 'heal'].includes(mode.value)
     if (mounted) drawOverlay()
   }
-  list.onchange = sync
-  component.onchange = sync
+  const selection = () => ({
+    id: list.value,
+    path: component.value ? component.value.split('.').map(Number) : [],
+    overlay: overlayVisible.checked
+  })
+  const select = (id, path = []) => {
+    const local = getActive()?.edit.localTools
+    let item = [...(local?.masks ?? []), ...(local?.repairs ?? [])].find((entry) => entry.id === id)
+    if (id && !item) throw Error('Local adjustment not found')
+    for (const index of path) {
+      item = item?.components?.[index]
+      if (!item) throw Error('Mask component not found')
+    }
+    list.value = id
+    sync(path.join('.'))
+    return selection()
+  }
+  const chooseAdjustment = (path) =>
+    run('local-select', { id: list.value, path, photoId: getActive()?.id }).catch((error) =>
+      notify(error.message)
+    )
+  list.onchange = () => chooseAdjustment([])
+  component.onchange = () => chooseAdjustment(selection().path)
   mode.onchange = () => {
     picking = false
     draft = null
@@ -769,10 +790,8 @@ export function createLocalToolsUI({ container, run, getActive, notify }) {
     panel.open = value !== 'off'
   }
   const selectMask = (id) => {
-    component.value = ''
-    list.value = id
     overlayVisible.checked = true
-    sync()
+    select(id)
   }
   const setOverlay = (enabled) => {
     overlayVisible.checked = enabled ?? !overlayVisible.checked
@@ -786,7 +805,9 @@ export function createLocalToolsUI({ container, run, getActive, notify }) {
     unmount,
     selectMask,
     setOverlay,
-    selectedMaskId: () => list.value,
+    selection,
+    select,
+    selectedItem,
     active: () => mode.value !== 'off',
     deactivate: () => setMode('off'),
     panel

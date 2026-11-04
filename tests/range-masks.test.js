@@ -201,6 +201,26 @@ test('UI creates range masks, combines them, persists and exports actual pixels'
   assert.deepEqual(coverage.alpha, [255, 0, 0, 255])
   assert.equal(coverage.unchanged, true)
   await page.getByLabel('Mask component', { exact: true }).selectOption('1')
+  const selection = await page.evaluate(async () => {
+    const { run } = window.openlr
+    const { localSelection } = await run('state', { summary: true })
+    const selected = await run('mask-preview')
+    const root = await run('mask-preview', { id: localSelection.id })
+    const restored = await run('local-select', { id: localSelection.id, path: [0] })
+    return {
+      localSelection,
+      restored,
+      different:
+        String(new Uint8Array(await selected.blob.arrayBuffer())) !==
+        String(new Uint8Array(await root.blob.arrayBuffer()))
+    }
+  })
+  assert.deepEqual(selection.localSelection.path, [1])
+  assert.equal(selection.localSelection.overlay, false)
+  assert.deepEqual(selection.restored, { ...selection.localSelection, path: [0] })
+  assert.equal(selection.different, true)
+  assert.equal(await page.getByLabel('Mask component', { exact: true }).inputValue(), '0')
+  await page.getByLabel('Mask component', { exact: true }).selectOption('1')
   await page.getByLabel('Range minimum', { exact: true }).fill('0.5')
   await page.getByLabel('Range minimum', { exact: true }).press('Tab')
   await page.waitForFunction(async () =>

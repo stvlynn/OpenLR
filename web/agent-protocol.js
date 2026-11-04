@@ -198,6 +198,19 @@ export const definitions = {
     'Show, hide or toggle the selected mask coverage overlay without changing photo pixels',
     { enabled: { type: 'boolean', description: 'Omit to toggle' } }
   ),
+  'local-select': entry(
+    'Select a mask, repair, or nested mask component in the live editor',
+    {
+      id: string('Root adjustment ID, or an empty string to clear selection'),
+      path: {
+        type: 'array',
+        items: { type: 'integer', enum: [0, 1] },
+        description: 'Child indices inside a composite mask'
+      },
+      photoId: string('Optional selected-photo guard')
+    },
+    ['id']
+  ),
   'mask-preview': entry(
     'Export the true selected mask coverage after crop/rotation/optics; excludes image adjustments',
     {
@@ -864,6 +877,8 @@ export function validateArgs(command, args) {
     validateLocalTool(command.split('.')[0], args[command.split('.')[0]])
   if (command === 'mask.update' || command === 'repair.update')
     validateLocalChanges(command.split('.')[0], args.changes)
+  if (command === 'local-select' && args.path?.some((index) => index !== 0 && index !== 1))
+    throw Error('Invalid component path')
   if (command === 'mask.component-update') {
     validateLocalChanges('mask', args.changes)
     if (!args.path.length || args.path.some((value) => value !== 0 && value !== 1))

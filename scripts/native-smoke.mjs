@@ -106,6 +106,18 @@ try {
   await call('import', fileURLToPath(personPath))
   const mask = await call('ai-mask', '--target', 'person')
   assert.ok(mask?.id || (await call('state')).photos.some((p) => p.edit?.localTools?.masks?.length))
+  const { localSelection } = await call('state', '--summary', 'true')
+  assert.ok(localSelection.id)
+  await call('local-select', '--args', JSON.stringify({ id: '' }))
+  const selectedMask = await call(
+    'local-select',
+    '--id',
+    localSelection.id,
+    '--capture',
+    path.join(root, 'selected-mask.png')
+  )
+  assert.deepEqual(selectedMask.result, localSelection)
+  assert.equal((await readFile(selectedMask.frame.path)).subarray(1, 4).toString(), 'PNG')
   const sample = await call('export', '--format', 'image/tiff', '--output', path.join(root, 'astronaut.tif'))
   assert.ok((await readFile(sample.path)).length > 100000)
   const objects = new Map()
