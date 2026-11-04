@@ -1,3 +1,5 @@
+// OpenLR adaptation: declare the UMD shell variable in strict ES module scope.
+let module;
 
 // We are modularizing this manually because the current modularize setting in Emscripten has some issues:
 // https://github.com/kripken/emscripten/issues/5820

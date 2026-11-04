@@ -198,6 +198,9 @@ func (d *Desktop) AgentReply(id, result string) error {
 	}
 	d.agent.mu.Lock()
 	reply := d.agent.pending[id]
+	if reply != nil {
+		delete(d.agent.pending, id)
+	}
 	d.agent.mu.Unlock()
 	if reply == nil {
 		return fmt.Errorf("command %s is no longer pending", id)

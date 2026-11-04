@@ -19,19 +19,24 @@ npm run desktop
 - **图库与本地目录**。图库保留导入的原始文件。本地目录按需读取照片，编辑参数存入同目录的 `.openlr.json` 文件。使用旗标、星级、关键词、相册、筛选和多选整理照片。
 - **无损编辑**。调整光线、白平衡、曲线、混色、锐化、降噪和暗角，裁剪、翻转或旋转照片。可以复制选定参数、保存预设和命名版本、比较原图与编辑效果。
 - **局部处理**。渐变、径向和画笔蒙版支持局部调整。克隆与纹理修复使用原图坐标，即使后续裁剪也能引用框外像素。
-- **RAW 与输出**。LibRaw 解码传感器数据。支持输出 JPEG、PNG、TIFF、AVIF、JPEG XL 和未改动的原始文件。渲染导出可指定长边和文字水印。当前显示及渲染输出基于 8-bit sRGB。
+- **RAW 与输出**。LibRaw 解码传感器数据。支持输出 JPEG、PNG、TIFF、AVIF、JPEG XL 和未改动的原始文件。渲染导出可指定长边和文字水印。交互预览使用 8-bit sRGB。DNG 和 HDR 路径分别保留原始 DNG 或生成 16-bit LinearRaw DNG，以及从线性曝光合并得到的 RGBE 辐照度。
 
 可选的 [WebDAV 同步](docs/library-sync.md) 在设备间传递导入的图库。多张照片可合并为 HDR 或全景；视频支持剪辑、逐帧调整、音轨保留和导出。导出 DNG、XMP、外部编辑器和相机格式的边界见 [交互范围](research/interaction-coverage.md)。
 
+主体、人物、背景和天空使用本地推理生成软蒙版。可用色域、亮度、深度和布尔运算细化范围，按 O 查看选区。降噪、三倍超分和深度模糊的模型、下载大小及实测结果见 [AI 蒙版](docs/ai-masks.md)、[深度工具](docs/range-depth-tools.md) 和 [增强](docs/enhance.md)。
+
+可以用 [独立审阅服务](docs/shared-albums.md) 共享相册并收取评论，通过 [外部编辑器](docs/external-editors.md) 编辑 TIFF 副本，也能从 [Classic 目录或 Photos 导出文件](docs/catalog-migration.md) 迁移到图库。
+
 ## Agent CLI
 
-启动桌面应用，在工作区执行以下命令。GUI 用户和 CLI 操作的是同一份实时状态。
+安装包附带单文件 Node CLI。也可以在工作区运行以下命令。GUI 和 CLI 操作同一份实时状态。
 
 ```sh
+node cli/openlr.mjs open
 node cli/openlr.mjs cli search "exposure"
 node cli/openlr.mjs import ./photo.dng
 node cli/openlr.mjs edit --key Exposure --value 0.5 --capture workspace.png
-node cli/openlr.mjs state
+node cli/openlr.mjs state --summary true
 node cli/openlr.mjs preview --output preview.png
 node cli/openlr.mjs export --format image/png --output edited.png
 ```
@@ -44,7 +49,7 @@ node cli/openlr.mjs export --format image/png --output edited.png
 npm test
 go test ./...
 go vet ./...
-node scripts/native-smoke.mjs /path/to/OpenLR
+npm run test:native -- /path/to/OpenLR
 ```
 
 浏览器测试使用本机 Chrome，原生 smoke 使用生成的测试图和临时会话。验收范围与剩余差距见[验收记录](docs/acceptance.md)。照片处理算法是独立实现，项目没有捆绑 Adobe 的程序、素材、字体或模型。

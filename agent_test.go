@@ -40,3 +40,15 @@ func TestAgentRequiresSecretAndReturnsLiveReply(t *testing.T) {
 		t.Fatal("completed request still accepted a reply")
 	}
 }
+
+func TestAgentReplyIsClaimedExactlyOnce(t *testing.T) {
+	reply := make(chan json.RawMessage, 1)
+	d := &Desktop{agent: &agentBroker{pending: map[string]chan json.RawMessage{"command": reply}}}
+	if err := d.AgentReply("command", `{"ok":true}`); err != nil {
+		t.Fatal(err)
+	}
+	<-reply // HTTP may consume the reply before it finishes writing the response.
+	if err := d.AgentReply("command", `{"ok":true}`); err == nil {
+		t.Fatal("a second reply claimed an already-consumed command")
+	}
+}

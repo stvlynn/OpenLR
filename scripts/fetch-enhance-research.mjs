@@ -1,11 +1,72 @@
-import {writeFile,mkdir,readFile} from 'node:fs/promises'
-import {createHash} from 'node:crypto'
-await mkdir('research/enhance',{recursive:true});await mkdir('.tools/ai-models',{recursive:true})
-const headers={'User-Agent':'OpenLR-enhancement-research'},weightRepo='pmndrs/denoiser-weights',revision=(await(await fetch('https://api.github.com/repos/'+weightRepo+'/commits/main',{headers})).json()).sha,superId='onnxmodelzoo/super-resolution-10',metadata=await(await fetch('https://huggingface.co/api/models/'+superId+'?blobs=true')).json()
-if(!/^[a-f0-9]{40}$/.test(revision)||!metadata.sha)throw Error('Cannot resolve fixed model revisions')
-const models=[{id:'oidn',file:'oidn-rt-ldr-small.onnx',url:`https://raw.githubusercontent.com/${weightRepo}/${revision}/models/rt_ldr_small.onnx`,revision,license:'Apache-2.0'},{id:'espcn',file:'espcn-x3.onnx',url:`https://huggingface.co/${superId}/resolve/${metadata.sha}/super-resolution-10.onnx`,revision:metadata.sha,license:metadata.cardData?.license}]
-const tree=await(await fetch('https://api.github.com/repos/'+weightRepo+'/git/trees/'+revision+'?recursive=1',{headers})).json();await writeFile('research/enhance/oidn-candidates.json',JSON.stringify(tree.tree?.filter(item=>/LICENSE|README|rt_ldr.*onnx$/.test(item.path)),null,2)+'\n')
-await writeFile('research/enhance/espcn-candidates.json',JSON.stringify(metadata,null,2)+'\n')
-for(const model of models){let bytes;try{bytes=await readFile('.tools/ai-models/'+model.file)}catch{const response=await fetch(model.url);if(!response.ok)throw Error(model.id+' HTTP '+response.status);bytes=Buffer.from(await response.arrayBuffer());await writeFile('.tools/ai-models/'+model.file,bytes)}Object.assign(model,{bytes:bytes.length,sha256:createHash('sha256').update(bytes).digest('hex')})}
-for(const [url,path]of [[`https://raw.githubusercontent.com/${weightRepo}/${revision}/README.md`,'research/enhance/README.OIDN-ONNX.md'],[`https://raw.githubusercontent.com/${weightRepo}/${revision}/LICENSE`,'web/models/LICENSE.OIDN'],[`https://huggingface.co/${superId}/resolve/${metadata.sha}/README.md`,'research/enhance/README.ESPCN.md']]){const response=await fetch(url);if(!response.ok)throw Error('Source HTTP '+response.status);await writeFile(path,await response.text())}
-await writeFile('research/enhance/models.json',JSON.stringify(models,null,2)+'\n');console.log(JSON.stringify(models,null,2))
+import { writeFile, mkdir, readFile } from 'node:fs/promises'
+import { createHash } from 'node:crypto'
+await mkdir('research/enhance', { recursive: true })
+await mkdir('.tools/ai-models', { recursive: true })
+const headers = { 'User-Agent': 'OpenLR-enhancement-research' },
+  weightRepo = 'pmndrs/denoiser-weights',
+  revision = '24f30f6b04fc6e8c3b1b1993227d230d3a9344f1',
+  superId = 'onnxmodelzoo/super-resolution-10',
+  metadata = await (
+    await fetch(
+      'https://huggingface.co/api/models/' +
+        superId +
+        '/revision/395472c4b6b92f788357237983d83fd913cfe7e3?blobs=true'
+    )
+  ).json()
+if (!/^[a-f0-9]{40}$/.test(revision) || !metadata.sha) throw Error('Cannot resolve fixed model revisions')
+const models = [
+  {
+    id: 'oidn',
+    file: 'oidn-rt-ldr-small.onnx',
+    url: `https://raw.githubusercontent.com/${weightRepo}/${revision}/models/rt_ldr_small.onnx`,
+    revision,
+    license: 'Apache-2.0'
+  },
+  {
+    id: 'espcn',
+    file: 'espcn-x3.onnx',
+    url: `https://huggingface.co/${superId}/resolve/${metadata.sha}/super-resolution-10.onnx`,
+    revision: metadata.sha,
+    license: metadata.cardData?.license
+  }
+]
+const tree = await (
+  await fetch('https://api.github.com/repos/' + weightRepo + '/git/trees/' + revision + '?recursive=1', {
+    headers
+  })
+).json()
+await writeFile(
+  'research/enhance/oidn-candidates.json',
+  JSON.stringify(
+    tree.tree?.filter((item) => /LICENSE|README|rt_ldr.*onnx$/.test(item.path)),
+    null,
+    2
+  ) + '\n'
+)
+await writeFile('research/enhance/espcn-candidates.json', JSON.stringify(metadata, null, 2) + '\n')
+for (const model of models) {
+  let bytes
+  try {
+    bytes = await readFile('.tools/ai-models/' + model.file)
+  } catch {
+    const response = await fetch(model.url)
+    if (!response.ok) throw Error(model.id + ' HTTP ' + response.status)
+    bytes = Buffer.from(await response.arrayBuffer())
+    await writeFile('.tools/ai-models/' + model.file, bytes)
+  }
+  Object.assign(model, { bytes: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex') })
+}
+for (const [url, path] of [
+  [
+    `https://raw.githubusercontent.com/${weightRepo}/${revision}/README.md`,
+    'research/enhance/README.OIDN-ONNX.md'
+  ],
+  [`https://raw.githubusercontent.com/${weightRepo}/${revision}/LICENSE`, 'web/models/LICENSE.OIDN'],
+  [`https://huggingface.co/${superId}/resolve/${metadata.sha}/README.md`, 'research/enhance/README.ESPCN.md']
+]) {
+  const response = await fetch(url)
+  if (!response.ok) throw Error('Source HTTP ' + response.status)
+  await writeFile(path, await response.text())
+}
+await writeFile('research/enhance/models.json', JSON.stringify(models, null, 2) + '\n')
+console.log(JSON.stringify(models, null, 2))

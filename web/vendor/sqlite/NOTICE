@@ -1,0 +1,16 @@
+sql.js 1.15.2 — https://github.com/sql-js/sql.js/tree/v1.15.2
+Copyright 2017 sql.js authors; MIT, complete LICENSE and AUTHORS retained.
+The browser UMD body is unchanged; OpenLR declares its module variable in
+module scope and appends one ES module export for strict ESM compatibility.
+The WebAssembly binary is the unchanged published browser distribution.
+SHA-256 inventory and adaptation are in manifest.json.
+
+The compiled engine contains SQLite, which is dedicated to the public domain:
+https://sqlite.org/copyright.html . It includes Emscripten runtime portions
+under MIT / University of Illinois/NCSA; LICENSE.EMSCRIPTEN is retained.
+Upstream also compiles extension-functions.c from
+https://www.sqlite.org/contrib/download/extension-functions.c?get=25
+(Liam Healy; original code by relicoder, posted by Mikey C; contributor
+history retained in that source). The published distribution's upstream
+license declaration and complete license are retained here.
+No Adobe code or catalog data is part of this runtime.

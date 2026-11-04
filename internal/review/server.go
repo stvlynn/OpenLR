@@ -49,6 +49,7 @@ type Server struct {
 	Directory  string
 	AdminToken string
 	albums     map[string]*Album
+	committed  []byte
 }
 
 func Token() string {
@@ -65,12 +66,13 @@ func New(directory, token string) (*Server, error) {
 	if err := os.MkdirAll(directory, 0o700); err != nil {
 		return nil, err
 	}
-	s := &Server{Directory: directory, AdminToken: token, albums: make(map[string]*Album)}
+	s := &Server{Directory: directory, AdminToken: token, albums: make(map[string]*Album), committed: []byte(`{}`)}
 	data, err := os.ReadFile(filepath.Join(directory, "albums.json"))
 	if err == nil {
 		if err = json.Unmarshal(data, &s.albums); err != nil {
 			return nil, err
 		}
+		s.committed = append([]byte(nil), data...)
 	} else if !os.IsNotExist(err) {
 		return nil, err
 	}
@@ -79,7 +81,15 @@ func New(directory, token string) (*Server, error) {
 
 var safeID = regexp.MustCompile(`^[A-Za-z0-9_-]{1,100}$`)
 
-func (s *Server) persist() error {
+func (s *Server) persist() (failure error) {
+	defer func() {
+		if failure != nil {
+			var restored map[string]*Album
+			if json.Unmarshal(s.committed, &restored) == nil {
+				s.albums = restored
+			}
+		}
+	}()
 	data, err := json.MarshalIndent(s.albums, "", "  ")
 	if err != nil {
 		return err
@@ -96,7 +106,11 @@ func (s *Server) persist() error {
 	if err = file.Close(); err != nil {
 		return err
 	}
-	return os.Rename(file.Name(), filepath.Join(s.Directory, "albums.json"))
+	if err = os.Rename(file.Name(), filepath.Join(s.Directory, "albums.json")); err != nil {
+		return err
+	}
+	s.committed = append([]byte(nil), data...)
+	return nil
 }
 func jsonReply(w http.ResponseWriter, status int, value any) {
 	w.Header().Set("Content-Type", "application/json")

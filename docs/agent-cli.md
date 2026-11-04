@@ -44,6 +44,8 @@ See [catalog organization](catalog-organization.md) for multi-selection, batch m
 
 [Optics and geometry](optics-geometry.md) adds `lens-profiles`, `lens-match`, `lens-apply`, `optics`, `optics-reset`, `straighten`, and the GUI `straighten-tool`. Profile matching returns exact metadata candidates for explicit application; corrections use real radial/channel and projective resampling. Original-coordinate local tools and XMP recipes share the same geometry.
 
+[Catalog migration](catalog-migration.md) adds `migration-scan --catalog <local.lrcat>`, reviewed root mapping, `migration-inspect`, `migration-commit`, `migration-retry` and saved reports. `migration-apple-scan` accepts an authorized standard originals/XMP export folder. The scan does not read referenced originals; commit retains authorized disk references; explicit Sync uploads originals through the shared resolver and omits source-device paths from portable manifests. Genuine Adobe catalogs and PhotoKit are not claimed as tested.
+
 ## Shared-session transport
 
 Disk-backed Local commands (`local-folders`, `local-open`, `local-browse`, `library`) are documented in [Local folders](local-folders.md). [External editor](external-editors.md) commands (`external-editor`, `external-edit`, `external-check`) return a stable saved TIFF as a new derived photo. [Tethered capture](tethered-capture.md) adds `camera-list`, `tether`, and `camera-capture`; explicitly enabled camera simulators are always labeled as such.

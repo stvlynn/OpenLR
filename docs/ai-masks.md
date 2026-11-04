@@ -1,6 +1,6 @@
 # Local model-assisted masks
 
-Open **Masks & local repair**, choose an **AI selection** target and press **Generate AI mask**. The result is an editable soft mask in the local-tool list. Exposure, contrast, saturation, opacity, inversion, disabling, removal, undo and persistence use the same local rendering path. A red coverage overlay is presentation only and never enters exported pixels. Original photos are unchanged.
+Open **Masks & local repair**, choose an **AI selection** target and press **Generate AI mask**. The result is a selected soft mask with **zero initial adjustments**: selecting Subject or Person alone does not brighten the photo. The red coverage overlay shows the actual inference result. Use **Show overlay (O)** or O to hide/show it, then adjust exposure, contrast or saturation. Opacity, inversion, disabling, removal, undo and persistence use the same local rendering path. Overlay visibility is presentation only and never enters exported pixels. Explicit CLI `adjustments` remain supported. Original photos are unchanged.
 
 | Target | Actual inference | Delivery |
 | --- | --- | --- |

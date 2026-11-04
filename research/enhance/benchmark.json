@@ -1,0 +1,87 @@
+{
+  "records": [
+    {
+      "mode": "denoise",
+      "transfer": "linear",
+      "tileSize": 256,
+      "metrics": {
+        "loadMs": 229.7999997138977,
+        "inferenceMs": 398.09999990463257,
+        "totalMs": 649.4000000953674,
+        "tiles": 1
+      },
+      "score": {
+        "mse": 66.40653030960648,
+        "psnr": 29.908695715906305
+      }
+    },
+    {
+      "mode": "denoise",
+      "transfer": "none",
+      "tileSize": 256,
+      "metrics": {
+        "loadMs": 0,
+        "inferenceMs": 382.2999997138977,
+        "totalMs": 391.19999980926514,
+        "tiles": 1
+      },
+      "score": {
+        "mse": 49.170961733217595,
+        "psnr": 31.2137165814324
+      }
+    },
+    {
+      "mode": "denoise",
+      "transfer": "linear",
+      "tileSize": 64,
+      "metrics": {
+        "loadMs": 0,
+        "inferenceMs": 1218.2999997138977,
+        "totalMs": 1245.2999997138977,
+        "tiles": 9
+      },
+      "score": {
+        "mse": 66.39066116898148,
+        "psnr": 29.909733671628416
+      }
+    },
+    {
+      "mode": "noisy-input",
+      "sigma": 15,
+      "seed": 42,
+      "score": {
+        "mse": 206.40303096064815,
+        "psnr": 24.983642903942318
+      }
+    },
+    {
+      "mode": "tiling-ablation",
+      "comparison": "64 core vs 256 core; 64 halo",
+      "difference": {
+        "mse": 0.008038556134259259,
+        "psnr": 69.07902312024459
+      }
+    },
+    {
+      "mode": "bilinear-x3",
+      "score": {
+        "mse": 124.0526710792824,
+        "psnr": 27.194742410101526
+      }
+    },
+    {
+      "mode": "espcn-x3",
+      "metrics": {
+        "loadMs": 12,
+        "inferenceMs": 179.80000019073486,
+        "totalMs": 207.80000019073486,
+        "tiles": 1
+      },
+      "score": {
+        "mse": 98.22098343460648,
+        "psnr": 28.208760826902775
+      }
+    }
+  ],
+  "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/155.0.0.0 Safari/537.36"
+}

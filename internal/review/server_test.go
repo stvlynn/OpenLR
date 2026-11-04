@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -65,5 +67,27 @@ func TestReviewAuthorizationPersistenceAndRevocation(t *testing.T) {
 	request(reopened, "POST", "/api/albums/album1/revoke", `{}`, true)
 	if w = request(reopened, "GET", "/review/album1"+query, "", false); w.Code != 403 {
 		t.Fatal("revoked link remained usable")
+	}
+}
+
+func TestFailedReviewCommitRollsBackMemory(t *testing.T) {
+	dir := t.TempDir()
+	server, _ := New(dir, "admin")
+	album := &Album{ID: "album", Title: "Fixture", Token: "review", Comments: []Comment{}, Likes: make(map[string]map[string]string), Photos: []Photo{{ID: "photo", Name: "Photo"}}, AllowComments: true}
+	server.albums[album.ID] = album
+	if err := server.persist(); err != nil {
+		t.Fatal(err)
+	}
+	blocked := filepath.Join(dir, "regular-file")
+	os.WriteFile(blocked, []byte("fixture"), 0o600)
+	server.Directory = blocked
+	r := httptest.NewRequest("POST", "/review/album/comments?key=review", strings.NewReader(`{"photoId":"photo","name":"Reviewer","text":"must not persist"}`))
+	w := httptest.NewRecorder()
+	server.ServeHTTP(w, r)
+	if w.Code != 500 {
+		t.Fatalf("expected disk failure, got %d", w.Code)
+	}
+	if len(server.albums["album"].Comments) != 0 {
+		t.Fatal("failed review remained visible in memory and could be duplicated on retry")
 	}
 }

@@ -24,4 +24,4 @@ go build -o .tools/test-editor.exe ./scripts/fixtures/editor
 node scripts/native-external-smoke.mjs <OpenLR executable> .tools/test-editor.exe
 ```
 
-That test uses a generated DNG, applies an edit, exports TIFF, launches an actual local process that modifies and rewrites the TIFF twice, imports the saved derivative, checks deduplication and confirms the original bytes remain unchanged. It passed on Windows/WebView2. Photoshop itself was not available for an application-specific test.
+That test uses a generated DNG, applies an edit, exports TIFF, launches an actual local process that modifies and rewrites the TIFF twice, imports the saved derivative, checks deduplication and confirms the original bytes remain unchanged. It passed on Windows/WebView2. Photoshop itself was not used in this controlled process test.

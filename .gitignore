@@ -8,3 +8,6 @@ test-results/
 *.syso
 .workspace/
 resources/cli/openlr.mjs
+resources/licenses/OpenLR-AGPL-3.0.txt
+resources/THIRD_PARTY_NOTICES.md
+resources/SOURCE.md

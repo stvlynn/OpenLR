@@ -1,12 +1,200 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>OpenLR</title><link rel="stylesheet" href="style.css"><link rel="stylesheet" href="organization.css"><link rel="stylesheet" href="workspace.css"></head><body>
-<header><strong>OpenLR</strong><button id="import">Add photos</button><input id="files" type="file" multiple accept="image/*" hidden><input id="search" type="search" placeholder="Search photos" aria-label="Search photos"><button id="settings" aria-label="Preferences" title="Preferences"></button><button id="sync-button" hidden>Sync</button><button id="export" disabled>Export</button></header>
-<main><nav><button data-scope="all">All photos</button><button data-scope="picked">Flagged</button><button data-scope="trash">Deleted</button><section><h2>Albums <button id="new-album" aria-label="Create album">＋</button></h2><div id="albums"></div></section></nav>
-<article><div class="bar"><h1 id="heading">All photos</h1><span id="count"></span><select id="order" aria-label="Sort photos"><option value="recent">Recently added</option><option value="capture">Capture date</option><option value="name">File name</option><option value="rating">Star rating</option></select><button id="layout" title="Switch grid layout" aria-label="Switch grid layout">▦</button><button id="grid">Grid</button><button id="detail" disabled>Edit</button></div>
-<div id="gallery"></div><div id="stage" hidden></div><div id="video-bar" hidden><button id="play-video">Play</button><input type="range" aria-label="Video position" id="video-position" min="0" step="0.01"><label>In <input type="number" min="0" step="0.01" id="trim-start"></label><label>Out <input type="number" min="0" step="0.01" id="trim-end"></label><button id="trim-apply">Trim</button></div><div id="film" hidden></div></article>
-<aside hidden><h2>Edit <span><button id="sample" title="White balance sampler (W)" aria-label="White balance sampler"></button><button id="auto-tone">Auto</button></span></h2><details id="histogram-panel"><summary>Histogram</summary><button id="clip-indicator" title="Clipping indicators (J)">Clipping</button><canvas aria-label="RGB histogram" id="histogram" width="256" height="76"></canvas></details><details><summary>Presets</summary><select aria-label="Preset" id="preset-list"></select><button id="preset-apply">Apply</button><button id="preset-delete">Delete preset</button><label><input id="preset-name" placeholder="Preset name"></label><button id="preset-save">Save preset</button></details><div id="adjustments"></div><details><summary>Crop &amp; rotate</summary><button id="crop-tool">Crop area</button><button id="clear-crop">Clear crop</button><label>Aspect <select id="aspect"><option value="">Original</option><option value="1">1 × 1</option><option value="1.5">3 × 2</option><option value="1.7777777778">16 × 9</option><option value="0.8">4 × 5</option></select></label><button id="left">Rotate left</button><button id="right">Rotate right</button><button id="flip">Flip horizontal</button></details>
-<button id="remove-mask">Remove masked area</button><button id="reset">Reset edits</button><button id="compare">Show original</button><button id="pair" aria-label="Compare side by side" title="Compare side by side"></button><details><summary>Info</summary><div id="info"></div><label>Label <select id="color-label"><option value="">None</option><option>red</option><option>yellow</option><option>green</option><option>blue</option><option>purple</option></select></label><button id="apply-xmp">Apply XMP</button><input id="xmp-file" type="file" accept=".xmp" hidden><label>Keywords <input id="keywords"></label></details></aside></main>
-<footer><span id="filename"></span><div id="actions" hidden><select id="rate" aria-label="Star rating"><option value="0">Unrated</option></select><select id="flag" aria-label="Flag"><option value="">Unflagged</option><option value="pick">Picked</option><option value="reject">Rejected</option></select><select id="membership" aria-label="Add to album"></select><button id="delete">Delete</button></div></footer>
-<dialog id="sync-dialog"><form><h2>Sync library</h2><label>WebDAV folder <input name="endpoint" type="url" placeholder="https://" required></label><label>Username <input name="username" autocomplete="username"></label><label>Password <input name="password" type="password" autocomplete="current-password"></label><label hidden>Conflicting changes <select name="prefer"><option value="">Review conflicts</option><option value="local">Keep local versions</option><option value="remote">Keep remote versions</option></select></label><output></output><div><button value="cancel" formnovalidate>Cancel</button><button value="sync">Sync library</button></div></form></dialog><button id="end-slides">End slideshow</button><dialog id="stack-dialog"><form method="dialog"><h2>Auto stack</h2><label><span></span><input type="number" min="0" step="any" required></label><div><button value="cancel" formnovalidate>Cancel</button><button value="ok">Stack</button></div></form></dialog><dialog id="preferences"><form method="dialog"><h2>Preferences</h2><section></section><div><button>Done</button></div></form></dialog><dialog id="album-dialog"><form method="dialog"><h2>Create album</h2><input id="album-name" placeholder="Album name" required><label><input id="smart-album" type="checkbox"> Smart album from current filters</label><div><button formnovalidate value="cancel">Cancel</button><button value="ok">Create</button></div></form></dialog>
-<dialog id="export-dialog"><form method="dialog"><h2>Export photo</h2><label>File type <select id="format"><option value="image/jpeg">JPEG</option><option value="image/png">PNG</option><option value="original">Original</option></select></label><label>Long edge (px) <input type="number" id="export-size" min="1" step="1" placeholder="Full size"></label><label>Watermark <input id="watermark" placeholder="None"></label><label>Quality <input type="range" min="1" max="100" value="92" id="quality"></label><div><button value="cancel">Cancel</button><button value="ok">Save</button></div></form></dialog>
-<output id="notice" role="status"></output><script type="module" src="app.js"></script><script type="module" src="agent.js"></script></body></html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>OpenLR</title>
+    <link rel="stylesheet" href="style.css" />
+    <link rel="stylesheet" href="organization.css" />
+    <link rel="stylesheet" href="workspace.css" />
+  </head>
+  <body>
+    <header>
+      <strong>OpenLR</strong><button id="import">Add photos</button
+      ><input id="files" type="file" multiple accept="image/*" hidden /><input
+        id="search"
+        type="search"
+        placeholder="Search photos"
+        aria-label="Search photos"
+      /><button id="settings" aria-label="Preferences" title="Preferences"></button
+      ><button id="sync-button" hidden>Sync</button><button id="export" disabled>Export</button>
+    </header>
+    <main>
+      <nav>
+        <button data-scope="all">All photos</button><button data-scope="picked">Flagged</button
+        ><button data-scope="trash">Deleted</button>
+        <section>
+          <h2>Albums <button id="new-album" aria-label="Create album">＋</button></h2>
+          <div id="albums"></div>
+        </section>
+      </nav>
+      <article>
+        <div class="bar">
+          <h1 id="heading">All photos</h1>
+          <span id="count"></span
+          ><select id="order" aria-label="Sort photos">
+            <option value="recent">Recently added</option>
+            <option value="capture">Capture date</option>
+            <option value="name">File name</option>
+            <option value="rating">Star rating</option>
+            <option value="focus">Focus</option></select
+          ><button id="layout" title="Switch grid layout" aria-label="Switch grid layout">▦</button
+          ><button id="grid">Grid</button><button id="detail" disabled>Edit</button>
+        </div>
+        <div id="gallery"></div>
+        <div id="stage" hidden></div>
+        <div id="video-bar" hidden>
+          <button id="play-video">Play</button
+          ><input type="range" aria-label="Video position" id="video-position" min="0" step="0.01" /><label
+            >In <input type="number" min="0" step="0.01" id="trim-start" /></label
+          ><label>Out <input type="number" min="0" step="0.01" id="trim-end" /></label
+          ><button id="trim-apply">Trim</button>
+        </div>
+        <div id="film" hidden></div>
+      </article>
+      <aside hidden>
+        <h2>
+          Edit
+          <span
+            ><button id="sample" title="White balance sampler (W)" aria-label="White balance sampler"></button
+            ><button id="auto-tone">Auto</button></span
+          >
+        </h2>
+        <details id="histogram-panel">
+          <summary>Histogram</summary>
+          <button id="clip-indicator" title="Clipping indicators (J)">Clipping</button
+          ><canvas aria-label="RGB histogram" id="histogram" width="256" height="76"></canvas>
+        </details>
+        <details>
+          <summary>Presets</summary>
+          <select aria-label="Preset" id="preset-list"></select
+          ><button id="preset-apply">Apply</button><button id="preset-delete">Delete preset</button
+          ><label><input id="preset-name" placeholder="Preset name" /></label
+          ><button id="preset-save">Save preset</button>
+        </details>
+        <div id="adjustments"></div>
+        <details>
+          <summary>Crop &amp; rotate</summary>
+          <button id="crop-tool">Crop area</button><button id="clear-crop">Clear crop</button
+          ><label
+            >Aspect
+            <select id="aspect">
+              <option value="">Original</option>
+              <option value="1">1 × 1</option>
+              <option value="1.5">3 × 2</option>
+              <option value="1.7777777778">16 × 9</option>
+              <option value="0.8">4 × 5</option>
+            </select></label
+          ><button id="left">Rotate left</button><button id="right">Rotate right</button
+          ><button id="flip">Flip horizontal</button>
+        </details>
+        <button id="remove-mask">Remove masked area</button><button id="reset">Reset edits</button
+        ><button id="compare">Show original</button
+        ><button id="pair" aria-label="Compare side by side" title="Compare side by side"></button>
+        <details>
+          <summary>Info</summary>
+          <div id="info"></div>
+          <label>File name <input id="rename-photo" /></label
+          ><label>Capture time <input id="capture-time" type="datetime-local" step="1" /></label
+          ><label
+            >Label
+            <select id="color-label">
+              <option value="">None</option>
+              <option>red</option>
+              <option>yellow</option>
+              <option>green</option>
+              <option>blue</option>
+              <option>purple</option>
+            </select></label
+          ><button id="apply-xmp">Apply XMP</button
+          ><input id="xmp-file" type="file" accept=".xmp" hidden /><label
+            >Keywords <input id="keywords"
+          /></label>
+        </details>
+      </aside>
+    </main>
+    <footer>
+      <span id="filename"></span>
+      <div id="actions" hidden>
+        <select id="rate" aria-label="Star rating">
+          <option value="0">Unrated</option></select
+        ><select id="flag" aria-label="Flag">
+          <option value="">Unflagged</option>
+          <option value="pick">Picked</option>
+          <option value="reject">Rejected</option></select
+        ><select id="membership" aria-label="Add to album"></select
+        ><button id="delete">Delete</button><button id="purge" hidden>Delete permanently</button>
+      </div>
+    </footer>
+    <dialog id="sync-dialog">
+      <form>
+        <h2>Sync library</h2>
+        <label>WebDAV folder <input name="endpoint" type="url" placeholder="https://" required /></label
+        ><label>Username <input name="username" autocomplete="username" /></label
+        ><label>Password <input name="password" type="password" autocomplete="current-password" /></label
+        ><label hidden
+          >Conflicting changes
+          <select name="prefer">
+            <option value="">Review conflicts</option>
+            <option value="local">Keep local versions</option>
+            <option value="remote">Keep remote versions</option>
+          </select></label
+        ><output></output>
+        <div>
+          <button value="cancel" formnovalidate>Cancel</button><button value="sync">Sync library</button>
+        </div>
+      </form>
+    </dialog>
+    <button id="end-slides">End slideshow</button>
+    <dialog id="stack-dialog">
+      <form method="dialog">
+        <h2>Auto stack</h2>
+        <label><span></span><input type="number" min="0" step="any" required /></label>
+        <div><button value="cancel" formnovalidate>Cancel</button><button value="ok">Stack</button></div>
+      </form>
+    </dialog>
+    <dialog id="preferences">
+      <form method="dialog">
+        <h2>Preferences</h2>
+        <section></section>
+        <div><button>Done</button></div>
+      </form>
+    </dialog>
+    <dialog id="purge-dialog">
+      <form method="dialog">
+        <h2>Permanently delete selected photos?</h2>
+        <div><button value="cancel">Cancel</button><button value="ok">Delete permanently</button></div>
+      </form>
+    </dialog>
+    <dialog id="album-dialog">
+      <form method="dialog">
+        <h2>Create album</h2>
+        <input id="album-name" placeholder="Album name" required /><label
+          ><input id="smart-album" type="checkbox" /> Smart album from current filters</label
+        >
+        <div><button formnovalidate value="cancel">Cancel</button><button value="ok">Create</button></div>
+      </form>
+    </dialog>
+    <dialog id="export-dialog">
+      <form method="dialog">
+        <h2>Export photo</h2>
+        <label
+          >File type
+          <select id="format">
+            <option value="image/jpeg">JPEG</option>
+            <option value="image/png">PNG</option>
+            <option value="original">Original</option>
+          </select></label
+        ><label
+          >Long edge (px)
+          <input type="number" id="export-size" min="1" step="1" placeholder="Full size" /></label
+        ><label>Watermark <input id="watermark" placeholder="None" /></label
+        ><label>Quality <input type="range" min="1" max="100" value="92" id="quality" /></label>
+        <div><button value="cancel">Cancel</button><button value="ok">Save</button></div>
+      </form>
+    </dialog>
+    <output id="notice" role="status"></output>
+    <script src="start.js"></script>
+    <script type="module" src="agent.js"></script>
+  </body>
+</html>

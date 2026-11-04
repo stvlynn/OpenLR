@@ -1,0 +1,13 @@
+{
+  "onnxModelZooRevision": "c5cae0f1942c8d7727372c7b1f6b485aa39e4421",
+  "sources": [
+    {
+      "url": "https://raw.githubusercontent.com/onnx/models/c5cae0f1942c8d7727372c7b1f6b485aa39e4421/LICENSE",
+      "target": "web/models/LICENSE.ESPCN"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/pmndrs/denoiser-weights/24f30f6b04fc6e8c3b1b1993227d230d3a9344f1/LICENSE",
+      "target": "web/models/LICENSE.OIDN"
+    }
+  ]
+}

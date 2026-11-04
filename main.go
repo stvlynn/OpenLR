@@ -6,7 +6,9 @@ import (
 	"log"
 	"mime"
 	"os"
+	"path/filepath"
 	"runtime"
+	"strings"
 
 	"github.com/egoist/mygo"
 )
@@ -73,6 +75,19 @@ func main() {
 		installMenu()
 		mygo.App.OnQuit(agent.close)
 		openWindow()
+	})
+	mygo.App.OnOpenFile(func(path string) {
+		if !localPhotoExtensions[strings.ToLower(filepath.Ext(path))] {
+			return
+		}
+		desktop.mu.Lock()
+		desktop.opened = append(desktop.opened, path)
+		desktop.mu.Unlock()
+		if window != nil {
+			_ = menuAction.Emit(window, "open-files")
+			window.Restore()
+			window.Focus()
+		}
 	})
 	mygo.App.OnSecondInstance(func(_ []string, _ string) {
 		if window != nil {

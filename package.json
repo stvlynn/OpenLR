@@ -7,11 +7,14 @@
     "test": "node --test --test-concurrency=2 tests/*.test.js",
     "desktop": "node scripts/desktop.mjs dev",
     "build:desktop": "node scripts/desktop.mjs build",
-    "doctor": "node scripts/desktop.mjs doctor"
+    "doctor": "node scripts/desktop.mjs doctor",
+    "test:native": "node scripts/native-suite.mjs",
+    "format": "prettier --write web/*.js web/*.css web/index.html cli/*.mjs scripts/*.mjs tests/*.js tests/*.mjs tests/fixtures/*.mjs"
   },
   "devDependencies": {
     "esbuild": "0.28.2",
-    "playwright-core": "1.56.1"
+    "playwright-core": "1.56.1",
+    "prettier": "3.9.10"
   },
   "dependencies": {
     "@colorhythm/libraw-wasm": "1.1.1",

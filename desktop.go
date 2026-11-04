@@ -19,12 +19,20 @@ import (
 type Desktop struct {
 	mu      sync.Mutex
 	exports map[string]*exportFile
+	opened  []string
 	agent   *agentBroker
 }
 
 func (d *Desktop) ToggleFullscreen(ctx context.Context) {
 	if window := mygo.CallerWindow(ctx); window != nil {
 		window.ToggleFullScreen()
+	}
+}
+
+// StartupError allows native smoke tests to report failures before IPC polling starts.
+func (d *Desktop) StartupError(message string) {
+	if os.Getenv("OPENLR_DIAGNOSTICS") == "1" {
+		fmt.Fprintln(os.Stderr, message)
 	}
 }
 

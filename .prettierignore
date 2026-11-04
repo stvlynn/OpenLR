@@ -1,0 +1,9 @@
+web/vendor/
+web/models/
+web/lens-data.js
+resources/
+build/
+.tools/
+.workspace/
+.mygo/
+node_modules/

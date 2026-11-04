@@ -3,11 +3,15 @@
   "version": "1.15.2",
   "source": "https://github.com/sql-js/sql.js/tree/v1.15.2",
   "license": "MIT",
-  "modification": "Added ES module default export after unchanged UMD factory; WASM unchanged",
+  "sqlite": {
+    "version": "3.54.0",
+    "sourceId": "2026-10-09 15:46:58 be8d059e9a49089ab2dce5ed26dd87aaf598fdc5fbe0b107c0dd758464bcd5e3"
+  },
+  "modification": "Added module-scope UMD variable and ES module default export around unchanged factory body; WASM unchanged",
   "files": {
     "sql.js": {
-      "bytes": 45953,
-      "sha256": "19f6fdc6c971499817c4d65d15536d5c6aa462fd20f30d667dde6c4606f9a774"
+      "bytes": 46045,
+      "sha256": "97cbd61c8cd7192e8c5afb670333cd742207490b1cb4f93b505519054ceecc5f"
     },
     "sql-wasm.wasm": {
       "bytes": 685235,

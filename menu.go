@@ -27,6 +27,7 @@ func installMenu() {
 	items := []*mygo.MenuItem{
 		{Label: "File", Submenu: []*mygo.MenuItem{
 			action("Add photos…", "choose-photos"), action("Open local folder…", "local-open"),
+			action("Migrate Lightroom Classic catalog…", "migrate-lrcat"), action("Migrate Apple Photos exported originals…", "migrate-apple-photos"),
 			action("Tethered capture…", "tether"),
 			action("Edit copy externally…", "external-edit"), action("Choose external editor…", "external-editor"),
 			mygo.Separator(), action("Create album…", "new-album"), action("Export…", "export-dialog"),
@@ -61,6 +62,19 @@ func (d *Desktop) ChoosePhotos(ctx context.Context) ([]ChosenPhoto, error) {
 	if err != nil {
 		return nil, err
 	}
+	return readChosenPhotos(paths)
+}
+
+// OpenedFiles returns only paths delivered by the OS file-open event.
+func (d *Desktop) OpenedFiles() ([]ChosenPhoto, error) {
+	d.mu.Lock()
+	paths := d.opened
+	d.opened = nil
+	d.mu.Unlock()
+	return readChosenPhotos(paths)
+}
+
+func readChosenPhotos(paths []string) ([]ChosenPhoto, error) {
 	result := make([]ChosenPhoto, 0, len(paths))
 	for _, path := range paths {
 		info, err := os.Stat(path)

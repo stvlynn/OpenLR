@@ -256,6 +256,28 @@ func (l *Local) OpenFolder(id, relative string) (*LocalFolder, error) {
 	return result, nil
 }
 
+// OpenTree preserves the immediate navigation entries while listing photos
+// from descendants of this authorized folder. OpenFolder skips symlinks.
+func (l *Local) OpenTree(id, relative string) (*LocalFolder, error) {
+	folder, err := l.OpenFolder(id, relative)
+	if err != nil {
+		return nil, err
+	}
+	pending := append([]LocalEntry(nil), folder.Directories...)
+	for len(pending) > 0 {
+		entry := pending[len(pending)-1]
+		pending = pending[:len(pending)-1]
+		child, err := l.OpenFolder(id, entry.Relative)
+		if err != nil {
+			return nil, err
+		}
+		folder.Photos = append(folder.Photos, child.Photos...)
+		pending = append(pending, child.Directories...)
+	}
+	sort.Slice(folder.Photos, func(i, j int) bool { return folder.Photos[i].Relative < folder.Photos[j].Relative })
+	return folder, nil
+}
+
 // SaveRecipe stores OpenLR JSON beside the image, never inside the original.
 func (l *Local) SaveRecipe(id, relative, recipe string) error {
 	_, dir, err := l.root(id)

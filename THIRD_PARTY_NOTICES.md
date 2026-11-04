@@ -55,6 +55,12 @@ Interface icons are from lucide-static 1.68.0. The individual SVGs and upstream 
 
 OpenLR uses OpenCV ORB, Hamming descriptor matching, RANSAC homography, and projective warping for [photo merging](docs/photo-merge.md). Its radiance recovery, tone mapping, feather blending, tests, and UI are project code; Adobe's photo-merge implementation is neither copied nor linked.
 
+## Offline SQLite catalog engine
+
+`web/vendor/sqlite/` contains the published **sql.js 1.15.2** browser runtime (MIT, copyright 2017 sql.js authors), with the complete upstream LICENSE and AUTHORS. OpenLR declares the UMD shell's private `module` variable and appends an ES module export around the unchanged factory body; the published WASM is unchanged. [Pinned upstream](https://github.com/sql-js/sql.js/tree/v1.15.2), retained NOTICE, source ID and SHA-256 manifest document that adaptation, reproduced by `scripts/vendor-sqlite.mjs`.
+
+The engine reports **SQLite 3.54.0**; core SQLite is [dedicated to the public domain](https://sqlite.org/copyright.html). The published build also contains contributed extension functions credited in NOTICE and the Emscripten runtime (MIT / University of Illinois/NCSA, complete LICENSE.EMSCRIPTEN retained). Preserve all runtime notices and upstream author attribution. OpenLR's [catalog adapter](docs/catalog-migration.md) and synthetic SQLite/PNG fixtures are independent project code; no Adobe catalog data or third-party parser implementation is bundled.
+
 ## Lens calibration database
 
 `web/vendor/lensfun/` retains four unchanged Lensfun calibration XML files and `COPYING.CC_BY-SA_3.0` from [Lensfun commit bc5615d6278cb5fb75dd53e74015367453d5591d](https://github.com/lensfun/lensfun/tree/bc5615d6278cb5fb75dd53e74015367453d5591d), copyright Lensfun contributors and individual calibration authors. The database is licensed **Creative Commons Attribution-ShareAlike 3.0 Unported**, separately from Lensfun software. Its [NOTICE](web/vendor/lensfun/NOTICE) and manifest retain source paths, attribution, revision, file hashes and modifications. Preserve the complete license and attribution in distributions.
@@ -79,6 +85,8 @@ The native application menu in menu.go adapts MyGo menu construction, separators
 
 Video conversion uses the unmodified Mediabunny 1.65.1 browser module (MPL-2.0). The distribution and license are in web/vendor/mediabunny/. [Corresponding source](https://github.com/Vanilagy/mediabunny/tree/v1.65.1).
 
+Catalog migration reads SQLite through sql.js 1.15.2 (MIT, copyright sql.js authors). `web/vendor/sqlite/` retains its AUTHORS, MIT license, unchanged WASM, the Emscripten runtime license and a hash manifest. OpenLR appends an ES-module export to the upstream browser factory; it does not modify the compiled SQLite implementation. The underlying SQLite implementation is public domain. [Pinned wrapper source](https://github.com/sql-js/sql.js/tree/v1.15.2). `scripts/vendor-sqlite.mjs` records and reproduces these vendored files.
+
 ## Local segmentation runtime and weights
 
 `web/vendor/onnx/` contains unmodified WASM CPU assets of onnxruntime-web 1.31.1, Microsoft and contributors (MIT). Its complete LICENSE and ThirdPartyNotices.txt retain embedded component notices/source references; preserve both in distributions. Actual included files are inventoried in manifest.json; unused npm providers are not claimed to be bundled.
@@ -89,4 +97,10 @@ Sky optionally downloads Xenova's unmodified conversion of Facebook DETR ResNet-
 
 Depth range and lens blur optionally download the unmodified ONNX Community conversion of **Depth Anything V2 Small**, 27,258,801 bytes, fixed revision 4472b7362082ad9968fee890ca0f1e5aca36b93d. Small's original model terms are Apache-2.0; no Base/Large/Giant noncommercial weights are used. Original license and small-model card are retained as web/models/LICENSE.DepthAnythingV2 and README.DepthAnythingV2Small.md. Exact source revisions, preprocessing, recorded digest, actual CPU measurements and inference/blur limits are in [depth research](research/depth-tools.md) and [range/depth behavior](docs/range-depth-tools.md).
 
+Enhance optionally downloads **Intel Open Image Denoise RT LDR Small** ONNX weights (© Intel Corporation, Apache-2.0) from pmndrs/denoiser-weights revision 24f30f6b04fc6e8c3b1b1993227d230d3a9344f1, and the **ONNX Model Zoo ESPCN super-resolution-10** weights (Apache-2.0) at revision 395472c4b6b92f788357237983d83fd913cfe7e3. The original weight licenses are retained as web/models/LICENSE.OIDN and LICENSE.ESPCN. Models are unmodified and downloaded only on use. Source model cards, digests, exact URLs, actual neural inference and ablations are recorded in [enhancement research](research/enhance.md). No Real-ESRGAN, noncommercial, or Adobe enhancement weight is included. Product behavior explicitly describes [8-bit raster enhancement](docs/enhance.md), not sensor RAW denoising.
+
 NASA astronaut and SpaceX rocket fixtures are public-domain photographs from scikit-image v0.25.2. Exact sources/rights/digests are in tests/fixtures/ai/README.md; no Adobe or personal photo is used.
+
+Face and eye landmarks for assisted culling and red-eye correction use YuNet, face_detection_yunet_2023mar.onnx, under the MIT license (Shiqi Yu). Unmodified weights and license are in web/models/. [Fixed model source](https://github.com/opencv/opencv_zoo/tree/48b10fa505aeb51fbd127fc60a5c660040e823b7/models/face_detection_yunet).
+
+The packaged OpenLR icon uses the Lucide aperture glyph on an OpenLR background. Lucide notices are retained in web/vendor/icons/LICENSE.

@@ -11,6 +11,7 @@ OpenLR is a photo workflow project with a dependency-free ES module prototype un
 - Read `docs/photo-merge.md` before changing HDR radiometry, feature registration, panorama blending, or merged-image storage.
 - Read `docs/dng-export.md` before changing RAW-preserving export, linear DNG samples, TIFF/DNG tags, or color calibration.
 - Read `docs/optics-geometry.md` before changing lens profiles, channel alignment, perspective, straightening, or coordinates shared with local tools.
+- Read `docs/catalog-migration.md` before changing external catalog parsing, authorized original references, migration retry, or portable sync of referenced files. Preserve the distinction between synthetic schema tests and genuine catalog validation.
 - Read `docs/template-sources.md` and `THIRD_PARTY_NOTICES.md` before introducing outside material.
 - Read relevant records under `research/` when investigating prior art. Preserve the difference between source inspection, runtime observations, and hypotheses.
 - Inspect affected code, tests, and error output before adding recovery behavior. Ask only when a product decision or consequential boundary remains unresolved after inspection; choose routine implementation details independently.

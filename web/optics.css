@@ -1,1 +1,23 @@
-#optics-panel input[type=search],#optics-panel select{display:block;width:100%;font-size:12px}#optics-panel input[type=number]{width:100%;font-size:12px}#optics-panel input[type=checkbox]{float:right}#optics-panel>button{font-size:12px;margin:3px 4px 3px 0}#optics-panel .tool-hint{font-size:11px;line-height:1.5;color:#aeb8c0;overflow-wrap:anywhere}
+#optics-panel input[type='search'],
+#optics-panel select {
+  display: block;
+  width: 100%;
+  font-size: 12px;
+}
+#optics-panel input[type='number'] {
+  width: 100%;
+  font-size: 12px;
+}
+#optics-panel input[type='checkbox'] {
+  float: right;
+}
+#optics-panel > button {
+  font-size: 12px;
+  margin: 3px 4px 3px 0;
+}
+#optics-panel .tool-hint {
+  font-size: 11px;
+  line-height: 1.5;
+  color: #aeb8c0;
+  overflow-wrap: anywhere;
+}

@@ -1,0 +1,54 @@
+# Catalog migration
+
+Open **Migrate photo catalogs** in navigation or use the native File menu. Migration is entirely local until the user separately invokes Sync or album sharing. OpenLR never discovers catalogs or reads a Photos Library automatically.
+
+## Lightroom Classic
+
+Close Lightroom Classic and choose an unencrypted `.lrcat` file. Extract a zipped catalog backup before selecting it. The scan reads a memory copy of the SQLite database, records its SHA-256 and reported `Adobe_DBVersion`, and lists original root paths and static collections. It does not open referenced originals or modify the source catalog.
+
+For each old root path choose the matching originals folder explicitly. The displayed mapping connects a catalog root ID to a persisted native folder authorization; an absolute catalog path itself grants no access. **Check files / retry missing** stats only listed resource paths. The report separates photo records from distinct original files and reports available, missing, unmapped and incomplete catalog relationships. Review that report before **Migrate available originals**. Missing records remain in the saved plan for later retry.
+
+Imported photos retain disk references and generated thumbnails. Originals are neither moved nor copied into OpenLR's IndexedDB catalog. Keep the authorized folder available for preview/export, and use a new reviewed mapping if it moves. Retry imports newly available records, avoids duplicate IDs, preserves existing edits/metadata, and can update existing references when a mapping changes. Deleting a migrated catalog entry does not delete the referenced original.
+
+Supported metadata includes stars, pick/reject flags, known color labels, comma-separated keyword names, and membership in static collections. Collection sets become name paths in OpenLR's flat album list. Catalog virtual copies remain separate editable photos with a shared `originalId`. The current source identity uses a catalog UUID when present, otherwise catalog name/root paths; record UUIDs provide stable photo identities. Resume a saved scan for retry after renaming/moving the source catalog rather than assuming the fallback identity remains unchanged.
+
+Supported scalar develop fields reuse OpenLR's XMP mapping: modern exposure/contrast/highlights/shadows/whites/blacks, saturation/vibrance, texture/clarity, sharpness and luminance smoothing. Compatible unrotated crop bounds are mapped. The adapter reads scalar Lua-table text without evaluation and accepts plaintext or length-prefixed zlib XMP. Current develop text overrides overlapping embedded XMP scalar values. Unmapped fields and decoding failures are reported. OpenLR's rendering differs from Adobe's; migrating slider numbers does not reproduce Adobe camera profiles, tone mapping or local adjustments. Old Exposure/Brightness/Shadows processing variants are not silently substituted for modern fields.
+
+Unsupported content includes Adobe/AI masks and `.lrcat-data` big-data, Develop history/snapshots, faces, smart collection rules, stacks, books/print/web creations, proprietary profiles and rotated crop semantics. Missing source-table links are individually reported rather than treated as real files. Original image metadata is decoded from the actual resource. The original catalog's capture/orientation/copy metadata remains in migration provenance, without pretending that a catalog orientation code is a validated OpenLR transform.
+
+Compatibility is structural, not a release-number promise. Required relationships are `Adobe_images.rootFile → AgLibraryFile.folder → AgLibraryFolder.rootFolder → AgLibraryRootFolder`, with the required ID/path/name columns. Unsupported core schemas, encrypted files, old `.lrdb` formats and non-SQLite inputs fail visibly. Optional unknown data is not guessed. A recognized set of columns with a future DBVersion string does not establish compatibility with that Adobe release. **No genuine Adobe-produced Classic catalog has been validated in this workspace**; the repeatable fixture is explicitly synthetic.
+
+## Apple Photos
+
+On a Mac, use Photos **Export Unmodified Original**, enabling **Export IPTC as XMP**, then select only that exported resources folder in OpenLR. If you want folder-based album names, export each chosen album into its own named subfolder. The adapter imports supported resource references and XMP keywords/ratings where present. Folder names become groupings supplied by the export; they are not inferred original Photos album membership.
+
+This path works with standard exported files and does not parse private Photos database schemas or request PhotoKit access. The native picker and export scanner reject `.photoslibrary` bundles and directories inside them. Hidden/private bundles and symlink directories are not traversed. Only explicitly authorized export folders are enumerated. No macOS PhotoKit or real Photos library has been tested here.
+
+Edits, favorites, hidden state, face data, original albums and Live Photo pairing are not recoverable from ordinary originals/XMP alone. Exported still and video components can be imported as independent resources when supported by the existing codecs. iCloud-only resources must first be downloaded/exported by Photos. OpenLR does not access iCloud or upload these resources automatically. See [Apple's export instructions](https://support.apple.com/en-in/guide/photos/-pht6e157c5f/mac).
+
+## CLI and explicit sync
+
+```sh
+node cli/openlr.mjs migration-scan --catalog C:/Exports/catalog.lrcat
+node cli/openlr.mjs local-folders
+node cli/openlr.mjs migration-map --id migration:PLAN --sourceRoot 1 --root AUTHORIZED_ROOT
+node cli/openlr.mjs migration-inspect --id migration:PLAN
+node cli/openlr.mjs migration-commit --id migration:PLAN
+node cli/openlr.mjs migration-retry --id migration:PLAN
+node cli/openlr.mjs migration-report --id migration:PLAN
+node cli/openlr.mjs migration-apple-scan --root AUTHORIZED_EXPORT_ROOT
+```
+
+`migration-folder` opens the native authorization picker. `migration-map` without `root` also opens that picker; an optional `prefix` selects a relative subdirectory inside the chosen root. CLI `migration-scan --catalog` is declared as a local-file field in the shared command schema: the CLI sends its exact bytes, and the browser agent converts the payload to a `File`. The CLI has no separate catalog parser or synthetic local GUI state.
+
+When the user explicitly runs library Sync, its original resolver reads authorized referenced files and uploads each shared `originalId` asset once. Portable manifests omit native folder IDs/references, absolute migration source paths and device-local warnings. Other devices download originals into their own database and retain no source-device path. Local reference owners keep their authorized reference when receiving edit updates. This is user-initiated original upload, separate from merely scanning or migrating a catalog. Missing referenced originals remain visible errors.
+
+Saved scan plans and detailed reports are device-local records in the catalog's existing `sync` object store under `migration:` keys; they are not included in portable WebDAV manifests. Resuming a scan does not require reading the source database again. The SQLite engine loads the selected catalog into memory; actual WASM/browser memory limits apply. No arbitrary catalog or photo byte ceiling is imposed.
+
+## Verification and dependency
+
+`node --test tests/migration.test.js tests/migration-workflow.test.js tests/agent-cli.test.js tests/sync.test.js` covers generated SQLite schema/records, compressed XMP, scalar non-evaluation, unsafe paths, missing/incomplete records, metadata, static albums, virtual-copy sharing, retry, edit persistence and two independent device contexts. The remote context is forbidden from reading the source native reference protocol and verifies downloaded-image export instead. The Go `TestMigrationReferencesStayInsideExplicitRoot` test checks native authorization, exact-path stat, traversal/missing rejection and Photos bundle boundaries.
+
+`node scripts/native-migration-smoke.mjs <built OpenLR executable>` passed on Windows/WebView2 with isolated generated PNGs and synthetic `.lrcat` schema. It verified the actual native authorized resource stream, exact original export bytes, missing-file recovery, unchanged catalog/original hashes and standard Apple export XMP. `.workspace/native-final/migration-report.json` explicitly records `realAdobeCatalogValidated:false`, `privatePhotosLibraryRead:false`, `photoKitValidated:false`, and `nativeReferenceProtocolValidated:true`. The screenshot is `migration-synthetic.png`. This result must not be described as validation against a user's catalog or Photos Library.
+
+The offline engine is pinned sql.js 1.15.2 (MIT), compiled SQLite 3.54.0, with Emscripten runtime notices. `web/vendor/sqlite/` retains the license, authors, notice, binary hashes and SQLite source ID. `scripts/vendor-sqlite.mjs` copies the pinned published WASM unchanged and adapts its UMD factory only by declaring its private module variable and adding an ES module export. See [research evidence](../research/catalog-migration.md) and [third-party notices](../THIRD_PARTY_NOTICES.md).
