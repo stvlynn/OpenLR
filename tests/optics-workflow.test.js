@@ -23,6 +23,22 @@ test('calibrated profile UI, manual geometry, local tools and straightening shar
   })
   await page.waitForFunction(() => document.querySelectorAll('#gallery .tile').length === 1)
   await run('view', { mode: 'detail' })
+  const observationChanges = await page.evaluate(async () => {
+    let changes = 0
+    const count = () => changes++
+    window.addEventListener('openlr-change', count)
+    try {
+      await window.openlr.run('lens-profiles', { query: 'PowerShot' })
+      await window.openlr.run('sample-color', { x: 0.5, y: 0.5 })
+      await window.openlr.run('export', { format: 'original' })
+      const reads = changes
+      await window.openlr.run('rate', { value: 4 })
+      return { reads, edit: changes - reads }
+    } finally {
+      window.removeEventListener('openlr-change', count)
+    }
+  })
+  assert.deepEqual(observationChanges, { reads: 0, edit: 1 })
   const before = await page.evaluate(async () => {
     const { blob } = await window.openlr.run('preview', { maxSize: 200 })
     return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', await blob.arrayBuffer())))

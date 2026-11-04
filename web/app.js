@@ -1651,17 +1651,18 @@ export function run(command, args = {}, observe) {
       const unchangedPoll = command === 'external-check' && !result.imported?.length
       if (
         !unchangedPoll &&
+        !(result?.blob instanceof Blob) &&
         ![
           'state',
           'photos',
           'presets',
           'histogram',
-          'preview',
-          'export',
-          'export-radiance',
           'local-folders',
-          'screenshot',
-          'tether-devices'
+          'lens-profiles',
+          'lens-match',
+          'sample-color',
+          'migration-inspect',
+          'migration-report'
         ].includes(command)
       ) {
         window.dispatchEvent(new Event('openlr-change'))

@@ -65,3 +65,5 @@ In a browser, `window.openlr.run(command,args)` exposes the same functions and r
 Use `openlr screenshot --output window.png` for the actual desktop viewport. On a data-returning command, `--capture path.png` returns its JSON result and a path to the captured window before the next queued edit runs. For example, `openlr edit --key Exposure --value 0.5 --capture edit.png`. File-returning commands already produce a separate image. Use `OPENLR_DAV_PASSWORD` for WebDAV credentials in unattended sync commands.
 
 For a large catalog use `openlr state --summary true` and `openlr photos --offset 0 --limit 50`. To follow changes made by the person in the GUI or by another agent, run `openlr watch`. It writes newline-delimited JSON after committed changes. `--images <directory>` records actual window PNGs with each observed state, and `--count 2` ends after two records. Fast consecutive edits can coalesce into one observation.
+
+An observer can sample a color, inspect lens profiles or migration reports, and request preview, mask or export bytes without triggering another update. Applying an edit wakes waiting observers.
