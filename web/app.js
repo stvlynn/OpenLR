@@ -1075,9 +1075,19 @@ async function execute(command, args) {
       else await document.documentElement.requestFullscreen()
       break
     }
+    case 'crop-drag':
     case 'crop-nudge':
       if (!cropping || !p || cropSurface.owner !== p.id) throw Error('Open the crop tool first')
-      cropSurface.nudge(args.dx, args.dy)
+      if (cropSurface.drag) throw Error('Finish dragging the crop rectangle first')
+      if (command === 'crop-nudge') cropSurface.nudge(args.dx, args.dy)
+      else
+        cropSurface.reshape(
+          cropSurface.box,
+          args.grip,
+          { x: args.x1, y: args.y1 },
+          { x: args.x2, y: args.y2 },
+          args.lockAspect
+        )
       return { cropDraft: cropDraft() }
     case 'crop-cancel':
       cropping = false

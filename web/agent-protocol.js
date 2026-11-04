@@ -735,6 +735,20 @@ export const definitions = {
     ['dx', 'dy']
   ),
   'crop-cancel': entry('Discard the uncommitted crop rectangle'),
+  'crop-drag': entry(
+    'Draw, move, or resize the open crop draft on the optics-corrected canvas',
+    {
+      grip: string('Rectangle handle or gesture', {
+        enum: ['new', 'move', 'nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w']
+      }),
+      x1: number('Starting horizontal fraction', 0, 1),
+      y1: number('Starting vertical fraction', 0, 1),
+      x2: number('Ending horizontal fraction', 0, 1),
+      y2: number('Ending vertical fraction', 0, 1),
+      lockAspect: { type: 'boolean', description: 'Constrain proportions as with Shift-drag' }
+    },
+    ['grip', 'x1', 'y1', 'x2', 'y2']
+  ),
   reset: entry('Reset all selected-photo edits'),
   undo: entry('Undo an edit on the selected photo in the current GUI session'),
   redo: entry('Redo an edit on the selected photo in the current GUI session'),

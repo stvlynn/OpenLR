@@ -94,8 +94,10 @@ export class CropSurface {
   }
   move(e) {
     if (!this.drag || e.pointerId !== this.drag.pointer) return
-    const { p, box, grip } = this.drag,
-      q = this.point(e)
+    const { p, box, grip } = this.drag
+    this.reshape(box, grip, p, this.point(e), e.shiftKey)
+  }
+  reshape(box, grip, p, q, lockAspect) {
     if (grip === 'move') {
       this.box = {
         ...box,
@@ -119,7 +121,7 @@ export class CropSurface {
       if (grip.includes('s')) bottom = clamp(q.y, top + 0.001, 1)
       let w = right - left,
         h = bottom - top
-      const ratio = this.ratio || (e.shiftKey ? box.w / box.h : 0)
+      const ratio = this.ratio || (lockAspect ? box.w / box.h : 0)
       if (ratio) {
         const growLeft = grip === 'new' ? q.x < p.x : grip.includes('w')
         const growUp = grip === 'new' ? q.y < p.y : grip.includes('n')
@@ -137,7 +139,6 @@ export class CropSurface {
     this.draw()
   }
   nudge(dx, dy) {
-    if (this.drag) throw Error('Finish dragging the crop rectangle first')
     this.box = {
       ...this.box,
       x: clamp(this.box.x + dx / this.canvas.width, 0, 1 - this.box.w),

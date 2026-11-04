@@ -34,6 +34,19 @@ test('draw, resize, move, cancel and commit a crop using the workspace handles',
   })
   await drag(canvas.x + 40, canvas.y + 30, canvas.x + 240, canvas.y + 210)
   assert.equal(await page.evaluate(() => window.dragRevisions), 1)
+  const drawn = await page.evaluate(async () => (await window.openlr.run('state')).cropDraft)
+  const agentDrawn = await page.evaluate(
+    ({ width, height }) =>
+      window.openlr.run('crop-drag', {
+        grip: 'new',
+        x1: 40 / width,
+        y1: 30 / height,
+        x2: 240 / width,
+        y2: 210 / height
+      }),
+    canvas
+  )
+  for (const key of ['x', 'y', 'w', 'h']) assert.ok(Math.abs(drawn[key] - agentDrawn.cropDraft[key]) < 0.005)
   const grip = await surface.locator('[data-grip=se]').boundingBox()
   await drag(grip.x + 5, grip.y + 5, grip.x + 45, grip.y + 35)
   await drag(canvas.x + 120, canvas.y + 100, canvas.x + 160, canvas.y + 120)

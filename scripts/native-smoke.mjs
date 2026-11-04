@@ -79,7 +79,20 @@ try {
   const committedCrop = { x: 0.125, y: 0.125, w: 0.5, h: 0.5 }
   await call('edit', '--key', 'crop', '--value', JSON.stringify(committedCrop))
   await call('crop-tool')
-  const { cropDraft: initialCrop } = await call('state', '--summary', 'true')
+  const { cropDraft: initialCrop } = await call(
+    'crop-drag',
+    '--grip',
+    'new',
+    '--x1',
+    '0.25',
+    '--y1',
+    '0.25',
+    '--x2',
+    '0.75',
+    '--y2',
+    '0.625'
+  )
+  assert.deepEqual(initialCrop, { x: 0.25, y: 0.25, w: 0.5, h: 0.375 })
   const moved = await call('crop-nudge', '--dx', '1', '--dy', '0', '--capture', path.join(root, 'crop.png'))
   assert.ok(moved.result.cropDraft.x > initialCrop.x)
   assert.equal(moved.result.cropDraft.y, initialCrop.y)
