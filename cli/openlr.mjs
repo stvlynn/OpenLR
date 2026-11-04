@@ -10,7 +10,7 @@ const help={
   usage:'openlr <command> [--name value] [--args JSON] [--dry-run]',
   discovery:['openlr cli search "export image"','openlr schema edit','openlr <command> --help'],
   examples:['openlr state','openlr import C:/Photos/photo.jpg','openlr edit --key Exposure --value 0.5','openlr preview --output preview.png','openlr export --format image/png --output edited.png'],
-  options:{'--args':'JSON argument object; --body is an alias','--dry-run':'Validate and print the request without contacting the GUI','--output':'Destination for image bytes; refuses an existing file unless --force','--force':'Allow overwriting the output file','--session':'Agent session file; default is the platform user config/OpenLR/agent.json'},
+  options:{'--capture':'Save a PNG of the live desktop after a data command and return both results','--args':'JSON argument object; --body is an alias','--dry-run':'Validate and print the request without contacting the GUI','--output':'Destination for image bytes; refuses an existing file unless --force','--force':'Allow overwriting the output file','--session':'Agent session file; default is the platform user config/OpenLR/agent.json'},
   workflow:'Search, inspect schema, dry-run, then run. Commands operate on the currently running native GUI. JSON goes to stdout; errors go to stderr with a nonzero exit. Images default to a generated .workspace/agent-results file.',
   commands:Object.keys(definitions)
 }
@@ -45,7 +45,7 @@ export function parse(argv){
   }
   const definition=schema(command)
   if(tokens.includes('--help')||tokens.includes('-h'))return {local:definition}
-  let args={}, output, session=defaultSession(), dryRun=false, force=false
+  let args={}, output, capture, session=defaultSession(), dryRun=false, force=false
   const files=[], parameters=definition.parameters.properties
   for(let i=0;i<tokens.length;i++){
     const token=tokens[i]
@@ -68,6 +68,7 @@ export function parse(argv){
       args={...args,...parsed}
     }else if(key==='session')session=value
     else if(key==='output')output=value
+    else if(key==='capture')capture=value
     else if(key==='file'&&command==='import')files.push(value)
     else if(Object.hasOwn(parameters,key))args[key]=parseValue(value,parameters[key])
     else throw new Error('Unknown option: --'+key)
@@ -80,8 +81,10 @@ export function parse(argv){
   if(command==='edit'&&args.key==='aspect'&&typeof args.value==='number')args.value=String(args.value)
   validateArgs(command,args)
   if(command==='import'&&args.files.some(file=>typeof file!=='string'||!file))throw new Error('Import files must be nonempty local paths')
-  if(output&&!['preview','export'].includes(command))throw new Error('--output is only valid for preview and export')
-  return {command,args,output,session,dryRun,force}
+  const fileResult=Boolean(definition.returns)
+  if(output&&!fileResult)throw new Error('--output requires an image command')
+  if(capture&&(fileResult||capture==='-'))throw new Error('--capture needs a file path and a data-returning command')
+  return {command,args,output,capture,session,dryRun,force}
 }
 
 export async function connect(filename){
@@ -92,7 +95,7 @@ export async function connect(filename){
   return {url,token:config.token}
 }
 
-const mimeTypes={'.jpg':'image/jpeg','.jpeg':'image/jpeg','.png':'image/png','.webp':'image/webp','.gif':'image/gif','.bmp':'image/bmp','.avif':'image/avif','.tif':'image/tiff','.tiff':'image/tiff'}
+const mimeTypes={'.jpg':'image/jpeg','.jpeg':'image/jpeg','.png':'image/png','.webp':'image/webp','.gif':'image/gif','.bmp':'image/bmp','.avif':'image/avif','.tif':'image/tiff','.tiff':'image/tiff','.jxl':'image/jxl'}
 async function importPayload(files){
   const result=[]
   for(const filename of files){
@@ -106,18 +109,25 @@ async function importPayload(files){
 
 export async function execute(request){
   if(Object.hasOwn(request,'local'))return request.local
-  const {command,output,session,dryRun,force}=request
+  const {command,output,capture,session,dryRun,force}=request
   if(dryRun)return {dryRun:true,transport:'live GUI agent',request:{command,args:request.args},...(output?{output}:{}),force}
   const connection=await connect(session)
   const args=command==='import'?{...request.args,files:await importPayload(request.args.files)}:request.args
   let response
   try{
-    response=await fetch(new URL('/command',connection.url),{method:'POST',headers:{'Authorization':'Bearer '+connection.token,'Content-Type':'application/json'},body:JSON.stringify({command,args}),signal:AbortSignal.timeout(120_000)})
+    response=await fetch(new URL('/command',connection.url),{method:'POST',headers:{'Authorization':'Bearer '+connection.token,'Content-Type':'application/json'},body:JSON.stringify({command,args,capture:Boolean(capture)}),signal:AbortSignal.timeout(120_000)})
   }catch(error){throw new Error('Cannot reach the live OpenLR GUI agent: '+(error.cause?.message||error.message))}
   const envelope=await response.json()
   if(!response.ok||!envelope.ok)throw new Error(envelope.error?.message||envelope.error||'Agent returned HTTP '+response.status)
   const result=envelope.result
+  if(capture){
+    if(!envelope.frame)throw Error('The desktop did not return a workspace image')
+    return {result,selected:envelope.selected,frame:await writeImage(envelope.frame,capture,force)}
+  }
   if(result?.kind!=='file')return result
+  return writeImage(result,output,force)
+}
+async function writeImage(result,output,force){
   if(typeof result.base64!=='string')throw new Error('Invalid image response')
   const bytes=Buffer.from(result.base64,'base64')
   if(bytes.length!==result.bytes||bytes.length===0)throw new Error('Incomplete image response')

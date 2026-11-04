@@ -1,0 +1,139 @@
+{
+  "packages": {
+    "utif": "3.1.0",
+    "pako": "1.0.11",
+    "@jsquash/avif": "2.1.1",
+    "@jsquash/jxl": "1.3.0",
+    "wasm-feature-detect": "1.9.0"
+  },
+  "files": {
+    "avif/codec/dec/avif_dec.js": {
+      "bytes": 35029,
+      "sha256": "65d0fd2b2e415bf2712c329694dc2bc257fc54f02572c29d5c46212ae6dc6c3c"
+    },
+    "avif/codec/dec/avif_dec.wasm": {
+      "bytes": 1170930,
+      "sha256": "5c35dde23dfd862088a49a6b8a9fe81f9f9a1a46aaa27de7efd7baa7611c4b47"
+    },
+    "avif/codec/enc/avif_enc.js": {
+      "bytes": 39621,
+      "sha256": "c6805e62cae5c1b9870fcc0448437da9e4edfc58c3da264af52361281082c63c"
+    },
+    "avif/codec/enc/avif_enc.wasm": {
+      "bytes": 3485872,
+      "sha256": "d9f2a95164362af48558d176e619becfd49dd97b50b86c679b47100860522b3d"
+    },
+    "avif/codec/enc/avif_enc_mt.js": {
+      "bytes": 54909,
+      "sha256": "b2fbada547e79de2b436a63c5eafcd000f169a6a2e6fc02b80ab8e8926db6ed9"
+    },
+    "avif/codec/enc/avif_enc_mt.wasm": {
+      "bytes": 3534665,
+      "sha256": "202d7ec9fb7d658df7cbf17fd85d83da724ac9551818c2d5161c858353a683a4"
+    },
+    "avif/codec/enc/avif_enc_mt.worker.mjs": {
+      "bytes": 2057,
+      "sha256": "89a64cae14ec07dec00cdd6df943fad039501e9eef1748fb1504508d4252bafe"
+    },
+    "avif/codec/pre.js": {
+      "bytes": 847,
+      "sha256": "b4d7da800804a2390eefa7805bb5f4e20cf349681334eb9a1715d2c58a1822b2"
+    },
+    "avif/decode.js": {
+      "bytes": 1602,
+      "sha256": "a459aad75db44a7e2834b954539de55e90a83e0f953d80129d24e2d2d47db1e5"
+    },
+    "avif/encode.js": {
+      "bytes": 3645,
+      "sha256": "80e7f6f62a5590ca32e3ecb80f4c356c11e696183f5d0b925bd9350473224b84"
+    },
+    "avif/index.js": {
+      "bytes": 98,
+      "sha256": "281f1d048db337aaa2412503423b2ca99eeb8ec104b471618ee3845930a27688"
+    },
+    "avif/meta.js": {
+      "bytes": 410,
+      "sha256": "d062b5f127754c61cebd2a9bf3ad381ad06494502eb931636561132c207a8570"
+    },
+    "avif/utils.js": {
+      "bytes": 1272,
+      "sha256": "e71535eeee820d68b68ece7c8af761c39f3ddec93d3d957d2f83b19191339e0d"
+    },
+    "jxl/codec/dec/jxl_dec.js": {
+      "bytes": 36091,
+      "sha256": "418c583da1f045926cf58fba58bb9ab323bde2552ce6a8e37b839c5c8b52434f"
+    },
+    "jxl/codec/dec/jxl_dec.wasm": {
+      "bytes": 849240,
+      "sha256": "165bde0f48f3bdc39c7806365db5bb3b777df67fefff48050841fb4430062433"
+    },
+    "jxl/codec/enc/jxl_enc.js": {
+      "bytes": 47073,
+      "sha256": "5bb33d2a204f43035bfca2c581aff28669706aedae93188372c5d5c81532f8a8"
+    },
+    "jxl/codec/enc/jxl_enc.wasm": {
+      "bytes": 1363824,
+      "sha256": "3c6c02df45c0dededab146888789d541b23b9a299cb16d497dce412a3a4bc7d3"
+    },
+    "jxl/codec/enc/jxl_enc_mt.js": {
+      "bytes": 62617,
+      "sha256": "4ea9f5ce666a091ef702735bc227587cae8754aaeccf8ca66becd56410a9737e"
+    },
+    "jxl/codec/enc/jxl_enc_mt.wasm": {
+      "bytes": 1375371,
+      "sha256": "6bb316b4e3b76fa7df5a69bd6e2508779b1c07f135dc0a52aba592fa995c72bf"
+    },
+    "jxl/codec/enc/jxl_enc_mt.worker.js": {
+      "bytes": 2155,
+      "sha256": "f68a0bf6a8e4dc30f55bc23dd0feb288cd657d9d1db77ab2bd4387f610a262b2"
+    },
+    "jxl/codec/enc/jxl_enc_mt_simd.js": {
+      "bytes": 62607,
+      "sha256": "d76f4142caa4c51bf7f942ca87befebce0a144a5d24d499214f689483ef2d35a"
+    },
+    "jxl/codec/enc/jxl_enc_mt_simd.wasm": {
+      "bytes": 2012670,
+      "sha256": "8b5b3a537864181465e202df1913f7bbe333a168eacc48ddf945c3ce011fdb42"
+    },
+    "jxl/codec/enc/jxl_enc_mt_simd.worker.js": {
+      "bytes": 2160,
+      "sha256": "9e03737c805d768d1853088ee3b47c6f8d3eb00c0fefdeb7d5872bee9f45b3e3"
+    },
+    "jxl/codec/pre.js": {
+      "bytes": 847,
+      "sha256": "b4d7da800804a2390eefa7805bb5f4e20cf349681334eb9a1715d2c58a1822b2"
+    },
+    "jxl/decode.js": {
+      "bytes": 1625,
+      "sha256": "c2c03340ece535c95fca6fbc926ab2246281e03627f0fc1c8a2df541301d68e8"
+    },
+    "jxl/encode.js": {
+      "bytes": 3364,
+      "sha256": "61239b7a373ccd413814685e33a16bee4b633f6b08c7e169f9a5121a43a1e8ff"
+    },
+    "jxl/index.js": {
+      "bytes": 98,
+      "sha256": "281f1d048db337aaa2412503423b2ca99eeb8ec104b471618ee3845930a27688"
+    },
+    "jxl/meta.js": {
+      "bytes": 332,
+      "sha256": "1a17bebcec5c5404d8d4233571128ddfbd268980b3e0933eac3d9e1ee71c1d02"
+    },
+    "jxl/utils.js": {
+      "bytes": 1275,
+      "sha256": "fca11cbdec71af34642e793b3e833efa3ceb37e3cbda430f5f6d3975695a71b0"
+    },
+    "pako.js": {
+      "bytes": 221635,
+      "sha256": "e353001f776bc9d1958077ad2c68e63020226755c3d2b043636f666d5cea267d"
+    },
+    "utif.js": {
+      "bytes": 58507,
+      "sha256": "20cdd625ff0fa25e5f02904ed8bd23647635163ac0c0fd171280006521da3e8f"
+    },
+    "wasm-feature-detect.js": {
+      "bytes": 3381,
+      "sha256": "871246e709a8564b583265a37df4b90bebf6aabea6e7b86a41ab6ed986651154"
+    }
+  }
+}

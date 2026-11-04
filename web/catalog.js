@@ -1,9 +1,11 @@
 const connection = new Promise((resolve, reject) => {
-  const request = indexedDB.open('openlr', 1)
+  const request = indexedDB.open('openlr', 2)
   request.onupgradeneeded = () => {
-    for (const name of ['photos', 'originals', 'albums']) request.result.createObjectStore(name, { keyPath: 'id' })
+    for (const name of ['photos','originals','albums','presets']) {
+      if(!request.result.objectStoreNames.contains(name))request.result.createObjectStore(name,{keyPath:'id'})
+    }
   }
-  request.onsuccess = () => resolve(request.result)
+  request.onsuccess = () => {request.result.onversionchange=()=>request.result.close();resolve(request.result)}
   request.onerror = () => reject(request.error)
 })
 
@@ -31,10 +33,10 @@ export async function removeAlbum(id){
     }
   })
 }
-export function addPhoto(photo, file) {
+export function addPhoto(photo, file, extra={}) {
   return transaction(['photos','originals'], 'readwrite', tx => {
     tx.objectStore('photos').add(photo)
-    tx.objectStore('originals').add({id:photo.id, file})
+    tx.objectStore('originals').add({id:photo.id, file, ...extra})
   })
 }
 export function purge(id) {

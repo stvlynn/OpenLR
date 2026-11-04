@@ -37,7 +37,8 @@ export function createLocalToolsUI({container,run,getActive,notify}){
   const field=(text,node)=>{const label=element('label');label.append(text,node);panel.append(label);return label}
   panel.append(heading);field('Tool ',mode);field('Edit ',list)
   for(const [name,[min,max,step,initial]]of Object.entries({radius:[0.001,0.5,0.001,0.05],feather:[0,1,0.01,0.5],opacity:[0,1,0.01,1],...LOCAL_CONTROLS})){
-    const slider=element('input',{type:'range',min,max,step,value:initial??0,'aria-label':'Local '+name}),output=element('output',{},String(initial??0))
+    const defaultValue=initial??(name==='Exposure'?1:0)
+    const slider=element('input',{type:'range',min,max,step,value:defaultValue,'aria-label':'Local '+name}),output=element('output',{},String(defaultValue))
     const label=field(name[0].toUpperCase()+name.slice(1)+' ',output);label.append(slider);sliders[name]=slider
     slider.oninput=()=>{output.value=slider.value}
     slider.onchange=()=>{
@@ -52,7 +53,7 @@ export function createLocalToolsUI({container,run,getActive,notify}){
   panel.append(choose,remove,status);container.append(panel)
   let source=null,picking=false,asset='',mounted,cleanup=()=>{},draft=null
   const selectedItem=()=>{const local=getActive()?.edit.localTools;return [...(local?.masks??[]),...(local?.repairs??[])].find(item=>item.id===list.value)}
-  const commit=(command,args)=>run(command,args).then(()=>{
+  const commit=(command,args)=>run(command,{...args,photoId:args.photoId??getActive()?.id}).then(()=>{
     if(command.endsWith('.add')){const group=command.startsWith('mask')?'masks':'repairs';list.value=getActive()?.edit.localTools?.[group]?.at(-1)?.id??'';sync()}
   }).catch(error=>notify(error.message))
   function sync(){
@@ -65,14 +66,14 @@ export function createLocalToolsUI({container,run,getActive,notify}){
     invert.checked=item?.invert??false;enabled.checked=item?.enabled??true
     for(const [name,input]of Object.entries(sliders)){
       const isAdjustment=Object.hasOwn(LOCAL_CONTROLS,name),isRepair=item&&['clone','heal'].includes(item.type)
-      input.disabled=Boolean((isAdjustment&&isRepair)||(name==='radius'&&item&&!['brush','clone','heal'].includes(item.type)))
+      input.disabled=Boolean((isAdjustment&&isRepair)||(name==='radius'&&item&&!['brush','clone','heal'].includes(item.type))||(name==='feather'&&(item?.type??mode.value)==='linear'))
       if(item){input.value=isAdjustment?item.adjustments?.[name]??0:item[name]??input.value;input.previousElementSibling.value=input.value}
     }
     choose.hidden=!['clone','heal'].includes(mode.value)
     if(mounted)drawOverlay()
   }
   list.onchange=sync
-  mode.onchange=()=>{picking=false;draft=null;sync();status.textContent=['clone','heal'].includes(mode.value)?'Alt-click or choose a source, then drag the target.':'Drag to create a new '+mode.options[mode.selectedIndex].text+'.';if(mounted)mounted.canvas.style.cursor=mode.value==='off'?'zoom-in':'crosshair'}
+  mode.onchange=()=>{picking=false;draft=null;list.value='';sync();status.textContent=['clone','heal'].includes(mode.value)?'Alt-click or choose a source, then drag the target.':'Drag to create a new '+mode.options[mode.selectedIndex].text+'.';if(mounted)mounted.canvas.style.cursor=mode.value==='off'?'zoom-in':'crosshair'}
   choose.onclick=()=>{picking=true;status.textContent='Click the image to choose the source.'}
   remove.onclick=()=>{const item=selectedItem();if(item)commit(['clone','heal'].includes(item.type)?'repair.remove':'mask.remove',{id:item.id})}
   invert.onchange=()=>{const item=selectedItem();if(item)commit('mask.update',{id:item.id,changes:{invert:invert.checked}})}
@@ -148,5 +149,6 @@ export function createLocalToolsUI({container,run,getActive,notify}){
     drawOverlay()
   }
   sync()
-  return {sync,mount,active:()=>mode.value!=='off',deactivate:()=>{mode.value='off';mode.onchange()},panel}
+  function setMode(value){mode.value=value;mode.onchange();panel.open=value!=='off'}
+  return {sync,mount,setMode,active:()=>mode.value!=='off',deactivate:()=>setMode('off'),panel}
 }

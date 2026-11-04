@@ -1,6 +1,7 @@
 import {controls} from './render.js'
 import {validCrop} from './geometry.js'
 import {LOCAL_CONTROLS,validateLocalTool,validateLocalChanges} from './local-tools.js'
+import {EXPORT_TYPES} from './formats.js'
 
 const string = (description, extra={}) => ({type:'string', description, ...extra})
 const number = (description, minimum, maximum, extra={}) => ({type:'number', description, minimum, maximum, ...extra})
@@ -24,6 +25,7 @@ for(const kind of ['mask','repair']){
   localDefinitions[kind+'.add']=entry('Add a non-destructive '+(kind==='mask'?'linear/radial/brush adjustment mask':'clone or mean-color matched texture repair'),{[kind]:{type:'object',properties,required:['type'],additionalProperties:false}},[kind])
   localDefinitions[kind+'.update']=entry('Update local '+kind+' geometry, strength or adjustments',{id:string('Local tool ID from state'),changes:{type:'object',properties:Object.fromEntries(Object.entries(properties).filter(([key])=>key!=='type')),additionalProperties:false}},['id','changes'])
   localDefinitions[kind+'.remove']=entry('Remove a local '+kind,{id:string('Local tool ID from state')},['id'])
+  for(const action of ['add','update','remove'])localDefinitions[kind+'.'+action].parameters.properties.photoId=string('Optional selected-photo guard; rejects if selection has changed')
 }
 
 // This command catalog is shared by offline CLI discovery and the live GUI agent.
@@ -38,22 +40,55 @@ export const definitions={
   }),
   'local-browse':entry('Browse a subfolder of the current authorized local root',{relative:string('Relative subfolder, or . for the root')},['relative']),
   library:entry('Return to the imported photo library'),
-  select:entry('Select a photo in the current view',{id:string('Photo ID from state')},['id']),
-  view:entry('Switch between grid and detail editing',{mode:string('Workspace view',{enum:['grid','detail']})},['mode']),
+  select:entry('Select a photo in the current view',{id:string('Photo ID from state'),toggle:{type:'boolean',description:'Toggle membership in the selection'},range:{type:'boolean',description:'Select the visible range from the selection anchor'}},['id']),
+  'select-many':entry('Select an explicit list of visible photo IDs; an empty array clears selection',{ids:{type:'array',items:{type:'string'},description:'Visible photo IDs'}},['ids']),
+  'select-all':entry('Select every photo in the current filtered view'),
+  'merge-hdr':entry('Align selected original exposure brackets, recover calibrated linear radiance, and create a tone-mapped library photo',{
+    ids:{type:'array',items:{type:'string'},description:'Optional ordered source IDs; defaults to the current selection'},
+    evs:{type:'array',items:{type:'number'},description:'Brightness offsets in stops, one per source; defaults to exposure time/aperture/ISO EXIF'},
+    align:{type:'boolean',description:'Auto align; set false only for fixed, identically framed tripod images'}
+  }),
+  'merge-panorama':entry('Register overlapping originals with ORB/RANSAC and create a projective feather-blended library panorama',{
+    ids:{type:'array',items:{type:'string'},description:'Optional ordered source IDs; defaults to the current selection'}
+  }),
+  'export-hdr':entry('Export selected HDR merge as scene-linear Radiance RGBE, before subsequent display edits',{},[],{returns:'image/vnd.radiance'}),
+  view:entry('Switch between grid and detail editing',{inspector:{type:'boolean',description:'Show editing controls in detail'},mode:string('Workspace view',{enum:['grid','detail']})},['mode']),
   scope:entry('Show all, flagged, deleted, or an album',{id:string('all, picked, trash, or an album ID')},['id']),
   search:entry('Filter photos by filename and keywords',{text:string('Search text; empty clears the filter')},['text']),
-  sort:entry('Sort the visible photographs',{order:string('Sort order',{enum:['recent','name','rating']})},['order']),
+  sort:entry('Sort the visible photographs',{order:string('Sort order',{enum:['recent','name','rating','capture']}),direction:string('Sort direction; default name ascending, other orders descending',{enum:['asc','desc']})},['order']),
+  filter:entry('Filter the current scope by minimum rating, flag, and edit status',{
+    rating:number('Minimum star rating',0,5,{type:'integer'}),flag:string('Flag filter',{enum:['any','pick','reject','unflagged']}),edited:string('Edit status filter',{enum:['any','yes','no']})
+  }),
   album:entry('Create an album',{name:string('Nonempty album name')},['name']),
+  'album-rename':entry('Rename an album',{id:string('Album ID'),name:string('New nonempty name')},['id','name']),
+  'album-delete':entry('Delete an album while retaining its photos and other memberships',{id:string('Album ID')},['id']),
   membership:entry('Toggle selected photo membership in an album',{album:string('Album ID from state')},['album']),
   rate:entry('Set the selected photo star rating',{value:number('Star rating',0,5,{type:'integer'})},['value']),
   flag:entry('Set picked, rejected, or unflagged',{value:string('Empty string clears the flag',{enum:['pick','reject','']})},['value']),
   keywords:entry('Set keywords on the selected photo',{value:string('Keywords text')},['value']),
   delete:entry('Move the selected photo to Deleted without removing its original'),
   restore:entry('Restore the selected photo from Deleted'),
+  'copy-edits':entry('Copy active-photo edits for pasting to the selected group',{keys:{type:'array',items:{type:'string'},description:'Optional edit keys to copy; omit for the entire recipe'}}),
+  'paste-edits':entry('Paste copied edits to every selected photo, with per-photo undo'),
+  'version-save':entry('Save a named immutable edit snapshot on the active photo',{name:string('Version name')},['name']),
+  'version-restore':entry('Restore a saved version on the active photo',{id:string('Version ID from state')},['id']),
+  'version-rename':entry('Rename a saved version on the active photo',{id:string('Version ID'),name:string('New name')},['id','name']),
+  'version-delete':entry('Delete a saved version without changing current edits',{id:string('Version ID')},['id']),
   edit:entry('Change one non-destructive adjustment, crop, rotation or flip',{
     key:string('Case-sensitive adjustment key',{enum:[...Object.keys(edits),'turn','flip','aspect','crop']}),
     value:{description:'Adjustment number, turn 0..3, flip boolean, aspect string, or normalized crop {x,y,w,h} (null clears)',oneOf:[{type:'number'},{type:'boolean'},{type:'string'},{type:'object'},{type:'null'}]}
   },['key','value'],{editControls:edits, specialControls:{turn:[0,1,2,3],flip:[true,false],aspect:['','1','1.5','1.7777777778','0.8']}}),
+  'compare-pair':entry('Show original and edited images side by side'),
+  'sample-tool':entry('Toggle white balance sampler'),
+  'white-balance':entry('Neutralize a patch at normalized original-image coordinates',{x:number('Horizontal position',0,1),y:number('Vertical position',0,1)},['x','y']),
+  fullscreen:entry('Toggle the desktop window fullscreen state'),
+  panel:entry('Open or close a workspace panel',{name:string('Panel title or photos for navigation'),open:{type:'boolean',description:'Requested open state for editing panels'}},['name']),
+  'local-tool':entry('Activate a local editing tool',{tool:string('Tool',{enum:['off','brush','linear','radial','clone','heal']})},['tool']),
+  screenshot:entry('Capture the visible desktop workspace as a PNG',{},[],{returns:'image/png'}),
+  presets:entry('List built-in and saved adjustment presets'),
+  'preset-save':entry('Save global adjustments as a reusable preset',{name:string('Preset name')},['name']),
+  'preset-apply':entry('Apply a preset to the selected photo',{id:string('Preset ID')},['id']),
+  'preset-delete':entry('Delete a saved preset',{id:string('Preset ID')},['id']),
   histogram:entry('Return RGB and luminance bin counts sampled from the current edited image'),
   'auto-tone':entry('Set exposure using the median luminance of the original'),
   'crop-tool':entry('Open or close the crop rectangle tool'),
@@ -63,10 +98,12 @@ export const definitions={
   compare:entry('Toggle the original image comparison in detail view'),
   film:entry('Toggle the detail-view filmstrip'),
   zoom:entry('Toggle fit versus full-resolution detail view'),
-  preview:entry('Read the current edited or comparison image as PNG',{maxSize:number('Maximum image edge in pixels',1,8192)},[],{returns:'image/png'}),
+  preview:entry('Read the current edited or comparison image as PNG',{maxSize:{type:'integer',minimum:1,description:'Maximum image edge in pixels'}},[],{returns:'image/png'}),
   export:entry('Export selected photo bytes without opening a native save dialog',{
-    format:string('Image format',{enum:['image/jpeg','image/png','original']}),
-    quality:number('JPEG quality',0,1)
+    format:string('Image format',{enum:EXPORT_TYPES}),
+    maxSize:{type:'integer',minimum:1,description:'Longest edge in pixels. Defaults to original size.'},
+    watermark:string('Optional text at lower right'),
+    quality:number('JPEG/AVIF/JPEG XL quality; 1 selects lossless AVIF/JXL',0,1)
   },[],{returns:'image'})
 }
 

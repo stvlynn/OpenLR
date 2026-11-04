@@ -1,31 +1,21 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {createServer} from 'node:http'
+import {serveWorkspace} from './browser-server.mjs'
 import {readFile, mkdtemp, rm} from 'node:fs/promises'
 import {tmpdir} from 'node:os'
 import {join} from 'node:path'
 import {chromium} from 'playwright-core'
 
 test('import, organize, edit, export, reopen and recover a deleted photo',async(t)=>{
-  const server=createServer(async(req,res)=>{
-    try {
-      const url = new URL(req.url,'http://localhost')
-      const file = url.pathname==='/'?'index.html':url.pathname.slice(1)
-      if(!/^[\w./-]+$/.test(file)||file.includes('..'))throw Error()
-      const bytes=await readFile(new URL('../web/'+file,import.meta.url))
-      res.setHeader('Content-Type',({'html':'text/html','js':'text/javascript','css':'text/css','wasm':'application/wasm'})[file.split('.').pop()]||'application/octet-stream')
-      res.end(bytes)
-    }catch{res.writeHead(404).end()}
-  })
-  await new Promise(r=>server.listen(0,'127.0.0.1',r))
-  t.after(()=>{server.closeAllConnections();server.close()})
+  const server=await serveWorkspace()
+  t.after(server.close)
   const dir=await mkdtemp(join(tmpdir(),'openlr-e2e-'))
 
   const options={channel:process.env.CHROME_CHANNEL||'chrome',headless:true,acceptDownloads:true}
   let context=await chromium.launchPersistentContext(dir,options)
   t.after(async()=>{ await context.close(); await rm(dir,{recursive:true,force:true,maxRetries:4}) })
   let page=context.pages()[0]
-  const url='http://127.0.0.1:'+server.address().port
+  const url=server.url
   await page.goto(url)
   const bytes=await page.evaluate(()=>{
     const c=document.createElement('canvas');c.width=80;c.height=60

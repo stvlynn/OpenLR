@@ -10,9 +10,11 @@ The original immutable `File` remains in IndexedDB. A decoded bitmap is a displa
 
 RAW work runs in one module Worker per file. Work is serialized to avoid overlapping large WASM heaps. `dispose()` releases decoder/input allocations; terminating the Worker after either success or failure releases the whole WASM high-water allocation. Pixel results move to the caller as a transferred `ImageBitmap`, without copying a second full bitmap to the main thread. A later decode after failure creates a new clean Worker.
 
+`raw-kernel.js` is also the single implementation used by the native compatibility path: if a module Worker fails before its startup handshake, the shared image-worker runner dynamically imports that kernel on the main thread. Normal processed decode failures are not retried. This path keeps original bytes intact and per-photo disposal, but can block the UI and retain a reusable WASM heap. Worker startup diagnostics appear in `state.codecDiagnostics`. See [image codecs](image-codecs.md) for the common lifecycle and tested failure scenarios.
+
 The pinned binary initializes a 17,563,648-byte heap (measured through `HEAPU8.byteLength`); its generated runtime caps heap growth at 2,147,483,648 bytes. This is only the WASM address-space allowance: source buffers, owned RGB copies, RGBA pixels, and browser bitmaps additionally use host memory. Worker termination avoids retaining the enlarged WASM heap between assets.
 
-The explicit limits are 256 MiB source size, 60 million stored/output pixels, and two minutes per RAW decode. Dimensions are checked after opening metadata and before unpacking. These are acceptance limits, not a promise that every allowed file fits device memory. Browser/WASM allocation failures and unsupported compression are reported as visible import failures. The original is never overwritten. The bitmap cache and selection/revision cancellation belong to the application layer.
+There is no application-imposed file-size or megapixel ceiling. Browser/WASM memory and allocation limits still apply, and each RAW decode has a two-minute timeout. Allocation failures and unsupported compression are reported as visible import failures. The original is never overwritten. The bitmap cache and selection/revision cancellation belong to the application layer.
 
 ## Versions, provenance, and distribution
 
@@ -38,7 +40,7 @@ To rebuild the library: extract the wrapper archive, extract the LibRaw archive 
 
 Run `node --test tests/raw.test.js` with installed Chrome (`CHROME_CHANNEL` can choose another Playwright browser channel). The local HTTP fixture server must be reachable by that browser. The generated fixture in `tests/fixtures/dng.mjs` is original OpenLR test data: a valid uncompressed 12-bit RGGB DNG with red/green/blue patches, DNG color metadata, and **no embedded JPEG preview**. No personal or downloaded photograph is included.
 
-Validated on Windows/Chrome on 2026-11-05: actual LibRaw WASM yields 128×96 pixels and correctly dominant RGB patches; orientation 6 yields 96×128; corrupt RAW rejection is followed by a successful decode; the original's SHA-256 stays unchanged; closing the returned bitmap clears its dimensions. Concurrent requests keep at most one live Worker, all six tested Worker creations terminate, and empty/oversized input is rejected before Worker creation. Application import/reload/export coverage is separate from this codec check. Physical camera RAW samples, optional compression, Safari/Firefox, very large inputs, wide-gamut/HDR, and native WebView module-Worker behavior require further platform coverage.
+Validated on Windows/Chrome on 2026-11-05: actual LibRaw WASM yields 128×96 pixels and correctly dominant RGB patches; orientation 6 yields 96×128; corrupt RAW rejection is followed by a successful decode; the original's SHA-256 stays unchanged; closing the returned bitmap clears its dimensions. Concurrent requests keep at most one live Worker, all six tested Worker creations terminate, and empty input is rejected before Worker creation. Application import/reload/export coverage is separate from this codec check. Physical camera RAW samples, optional compression, Safari/Firefox, very large inputs, wide-gamut/HDR, and native WebView module-Worker behavior require further platform coverage.
 
 ## Research references
 

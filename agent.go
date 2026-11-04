@@ -21,6 +21,7 @@ type AgentCommand struct {
 	ID      string          `json:"id"`
 	Command string          `json:"command"`
 	Args    json.RawMessage `json:"args"`
+	Capture bool            `json:"capture,omitempty"`
 }
 
 type agentBroker struct {

@@ -4,6 +4,7 @@ import (
 	"embed"
 	"io/fs"
 	"log"
+	"mime"
 	"runtime"
 
 	"github.com/egoist/mygo"
@@ -16,6 +17,12 @@ func main() {
 	web, err := fs.Sub(frontend, "web")
 	if err != nil {
 		log.Fatal(err)
+	}
+	// Embedded modules have the same MIME types regardless of host file associations.
+	for extension, contentType := range map[string]string{".mjs": "text/javascript", ".js": "text/javascript", ".wasm": "application/wasm"} {
+		if err := mime.AddExtensionType(extension, contentType); err != nil {
+			log.Fatal(err)
+		}
 	}
 	mygo.SetFrontend(web)
 	desktop := &Desktop{exports: make(map[string]*exportFile)}

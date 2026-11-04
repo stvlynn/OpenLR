@@ -105,6 +105,19 @@ export function localWeight(tool,x,y,width,height){
   }
   return (tool.invert?1-weight:weight)*tool.opacity
 }
+function bounds(tool,width,height){
+  if(tool.type==='linear'||tool.invert)return {x0:0,y0:0,x1:width,y1:height}
+  let left,right,top,bottom
+  if(tool.type==='radial'){
+    left=(tool.center.x-tool.rx)*width;right=(tool.center.x+tool.rx)*width
+    top=(tool.center.y-tool.ry)*height;bottom=(tool.center.y+tool.ry)*height
+  }else{
+    const radius=tool.radius*Math.min(width,height)
+    left=Infinity;right=-Infinity;top=Infinity;bottom=-Infinity
+    for(const p of tool.points){left=Math.min(left,p.x*width-radius);right=Math.max(right,p.x*width+radius);top=Math.min(top,p.y*height-radius);bottom=Math.max(bottom,p.y*height+radius)}
+  }
+  return {x0:clamp(Math.floor(left-0.5),0,width),x1:clamp(Math.ceil(right+0.5),0,width),y0:clamp(Math.floor(top-0.5),0,height),y1:clamp(Math.ceil(bottom+0.5),0,height)}
+}
 const linear=Float64Array.from({length:256},(_,i)=>{const v=i/255;return v<=0.04045?v/12.92:((v+0.055)/1.055)**2.4})
 const encode=v=>255*(v<=0.0031308?12.92*v:1.055*v**(1/2.4)-0.055)
 function adjust(data,index,settings,weight){
@@ -131,12 +144,15 @@ function sample(data,width,height,x,y){
 }
 export function applyLocalTools(pixels,local={}){
   const {data,width,height}=pixels
-  // Repairs sample the pre-stroke buffer, avoiding feedback while cloning overlapping areas.
+  // Read the immutable pre-stroke buffer and defer writes to a small destination patch.
+  // This avoids clone feedback and avoids a full-frame copy for every repair.
   for(const tool of local.repairs??[]){
     if(tool.enabled===false||!tool.opacity)continue
-    const base=data.slice(),dx=(tool.source.x-tool.points[0].x)*width,dy=(tool.source.y-tool.points[0].y)*height
+    const base=data,dx=(tool.source.x-tool.points[0].x)*width,dy=(tool.source.y-tool.points[0].y)*height
+    const {x0,y0,x1,y1}=bounds(tool,width,height),patchWidth=x1-x0,patch=new Uint8ClampedArray(patchWidth*(y1-y0)*4)
+    for(let y=y0;y<y1;y++)patch.set(base.subarray((y*width+x0)*4,(y*width+x1)*4),(y-y0)*patchWidth*4)
     const mean=[0,0,0],sourceMean=[0,0,0];let total=0
-    if(tool.type==='heal')for(let y=0;y<height;y++)for(let x=0;x<width;x++){
+    if(tool.type==='heal')for(let y=y0;y<y1;y++)for(let x=x0;x<x1;x++){
       const weight=localWeight(tool,(x+0.5)/width,(y+0.5)/height,width,height)
       if(!weight)continue
       const from=sample(base,width,height,x+dx,y+dy),i=(y*width+x)*4
@@ -145,19 +161,21 @@ export function applyLocalTools(pixels,local={}){
       for(let c=0;c<3;c++){mean[c]+=base[i+c]*weight;sourceMean[c]+=from[c]*weight}
     }
     const correction=mean.map((v,c)=>total?(v-sourceMean[c])/total:0)
-    for(let y=0;y<height;y++)for(let x=0;x<width;x++){
+    for(let y=y0;y<y1;y++)for(let x=x0;x<x1;x++){
       const weight=localWeight(tool,(x+0.5)/width,(y+0.5)/height,width,height)
       if(!weight)continue
       const from=sample(base,width,height,x+dx,y+dy)
       if(!from)continue
-      const i=(y*width+x)*4,alpha=(base[i+3]*(1-weight)+from[3]*weight)/255
-      for(let c=0;c<3;c++)data[i+c]=alpha?((base[i+c]*base[i+3]*(1-weight)+clamp(from[c]+correction[c],0,255)*from[3]*weight)/(alpha*255)):0
-      data[i+3]=alpha*255
+      const i=(y*width+x)*4,j=((y-y0)*patchWidth+x-x0)*4,alpha=(base[i+3]*(1-weight)+from[3]*weight)/255
+      for(let c=0;c<3;c++)patch[j+c]=alpha?((base[i+c]*base[i+3]*(1-weight)+clamp(from[c]+correction[c],0,255)*from[3]*weight)/(alpha*255)):0
+      patch[j+3]=alpha*255
     }
+    for(let y=y0;y<y1;y++)data.set(patch.subarray((y-y0)*patchWidth*4,(y-y0+1)*patchWidth*4),(y*width+x0)*4)
   }
   for(const tool of local.masks??[]){
     if(tool.enabled===false||!tool.opacity)continue
-    for(let y=0;y<height;y++)for(let x=0;x<width;x++)adjust(data,(y*width+x)*4,tool.adjustments,localWeight(tool,(x+0.5)/width,(y+0.5)/height,width,height))
+    const {x0,y0,x1,y1}=bounds(tool,width,height)
+    for(let y=y0;y<y1;y++)for(let x=x0;x<x1;x++)adjust(data,(y*width+x)*4,tool.adjustments,localWeight(tool,(x+0.5)/width,(y+0.5)/height,width,height))
   }
   return pixels
 }

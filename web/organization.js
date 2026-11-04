@@ -13,7 +13,7 @@ export class Organization {
       (edited==='any'||(Object.values(photo.edit).some(value=>value!==0&&value!==false&&value!==''&&value!==null))===(edited==='yes'))
   }
   compare(a,b,order){
-    const result=order==='name'?a.name.localeCompare(b.name,undefined,{numeric:true}):order==='rating'?a.rating-b.rating:a.added-b.added
+    const result=order==='name'?a.name.localeCompare(b.name,undefined,{numeric:true}):order==='rating'?a.rating-b.rating:order==='capture'?(Date.parse(a.metadata?.DateTimeOriginal)||a.added)-(Date.parse(b.metadata?.DateTimeOriginal)||b.added):a.added-b.added
     return (this.direction==='asc'?1:-1)*result || a.id.localeCompare(b.id)
   }
   reconcile(list,active){

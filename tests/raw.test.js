@@ -1,25 +1,16 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {createServer} from 'node:http'
-import {readFile} from 'node:fs/promises'
+import {serveWorkspace} from './browser-server.mjs'
 import {chromium} from 'playwright-core'
 import {makeDng} from './fixtures/dng.mjs'
 
 test('real WASM decodes generated sensor DNG, orientation, recovery and bitmap ownership',async t=>{
-  const server=createServer(async(req,res)=>{
-    try{
-      const file=new URL(req.url,'http://localhost').pathname.slice(1)||'index.html'
-      if(file.includes('..') || !/^[\w./-]+$/.test(file)) throw Error()
-      res.setHeader('Content-Type',file.endsWith('.wasm')?'application/wasm':/\.m?js$/.test(file)?'text/javascript':'text/html')
-      res.end(await readFile(new URL('../web/'+file,import.meta.url)))
-    }catch{res.writeHead(404).end()}
-  })
-  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve))
-  t.after(()=>{server.closeAllConnections();server.close()})
+  const server=await serveWorkspace()
+  t.after(server.close)
   const browser=await chromium.launch({channel:process.env.CHROME_CHANNEL||'chrome',headless:true})
   t.after(()=>browser.close())
   const page=await browser.newPage()
-  await page.goto('http://127.0.0.1:'+server.address().port)
+  await page.goto(server.url)
   const fixture=Array.from(makeDng()), rotated=Array.from(makeDng({orientation:6}))
   const result=await page.evaluate(async({fixture,rotated})=>{
     const {decodePhoto}=await import('./decode.js')

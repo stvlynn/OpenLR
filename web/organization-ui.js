@@ -10,6 +10,8 @@ export function mountOrganization(run){
   copy.id='copy-edits'
   const paste=button('Paste edits',()=>run('paste-edits'))
   paste.id='paste-edits'
+  const selectedActions=element('div',{className:'selection-actions'})
+  selectedActions.append(clear,copy,paste)
   const select=(name,options,fn)=>{
     const input=element('select');input.setAttribute('aria-label',name)
     for(const [value,label]of options)input.add(new Option(label,value))
@@ -20,7 +22,14 @@ export function mountOrganization(run){
   const flag=select('Filter flags',[['any','All flags'],['pick','Picked'],['reject','Rejected'],['unflagged','Unflagged']],value=>run('filter',{flag:value}))
   const edited=select('Filter edits',[['any','All edits'],['yes','Edited'],['no','Unedited']],value=>run('filter',{edited:value}))
   const direction=select('Sort direction',[['desc','Descending'],['asc','Ascending']],value=>run('sort',{order:current.order,direction:value}))
-  toolbar.append(count,selectAll,clear,copy,paste,rating,flag,edited,direction)
+  const filters=element('details',{id:'catalog-filters'}),filterSummary=element('summary',{textContent:'Filters'})
+  const filterOptions=element('div',{className:'filter-options'})
+  for(const [label,input]of [['Rating',rating],['Flag',flag],['Edit status',edited]]){
+    const field=element('label',{textContent:label});field.append(input);filterOptions.append(field)
+  }
+  filters.append(filterSummary,filterOptions)
+  toolbar.append(count,selectAll,selectedActions,filters)
+  document.getElementById('order').after(direction)
   document.getElementById('gallery').before(toolbar)
 
   const dialog=element('dialog',{id:'organize-dialog'})
@@ -49,11 +58,16 @@ export function mountOrganization(run){
   versions.append(summary,save,list);document.querySelector('aside').append(versions)
   return state=>{
     current=state
-    const photo=state.photos.find(p=>p.id===state.selected),album=state.albums.some(a=>a.id===state.scope)
+    const photo=state.photos.find(p=>p.id===state.selected),album=!state.local&&state.albums.some(a=>a.id===state.scope)
     count.textContent=state.selection.length+' selected'
+    count.hidden=!state.selection.length
+    selectedActions.hidden=!state.selection.length
     selectAll.disabled=!state.photos.length;clear.disabled=!state.selection.length
     copy.disabled=!photo;paste.disabled=!state.selection.length||!state.clipboard
     rename.disabled=remove.disabled=!album
+    albumTools.hidden=!album
+    const activeFilters=Number(state.filters.rating>0)+Number(state.filters.flag!=='any')+Number(state.filters.edited!=='any')
+    filterSummary.textContent='Filters'+(activeFilters?' ('+activeFilters+')':'')
     rating.value=state.filters.rating;flag.value=state.filters.flag;edited.value=state.filters.edited;direction.value=state.sortDirection
     save.disabled=!photo
     list.replaceChildren(...(photo?.versions??[]).map(version=>{

@@ -22,6 +22,25 @@ type Desktop struct {
 	agent   *agentBroker
 }
 
+func (d *Desktop) ToggleFullscreen(ctx context.Context) {
+	if window := mygo.CallerWindow(ctx); window != nil {
+		window.ToggleFullScreen()
+	}
+}
+
+// CaptureWorkspace snapshots only the OpenLR webview that issued the call.
+func (d *Desktop) CaptureWorkspace(ctx context.Context) (string, error) {
+	window := mygo.CallerWindow(ctx)
+	if window == nil {
+		return "", errors.New("no active workspace window")
+	}
+	png, err := window.CapturePage()
+	if err != nil {
+		return "", err
+	}
+	return base64.StdEncoding.EncodeToString(png), nil
+}
+
 type exportFile struct {
 	file *os.File
 	path string

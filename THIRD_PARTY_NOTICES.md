@@ -44,3 +44,15 @@ Adobe and Lightroom are names of third-party products discussed as prior art. Th
 The WASM contains LibRaw 0.22.1-Release at `b860248a89d9082b8e0a1e202e516f46af9adb29`, copyright 2008–2025 LibRaw LLC, and the Emscripten runtime (MIT / University of Illinois/NCSA). OpenLR selects LibRaw's LGPL-2.1 distribution option. LibRaw's `COPYRIGHT`, `LICENSE.LGPL`, `LICENSE.CDDL`, Emscripten's license, and the embedded DCB/FBDD and X3F BSD-style notices are retained alongside the module. LibRaw's copyright file also credits its dcraw and MIT-licensed DNG-derived portions; the complete corresponding source archive retains their source notices. These third-party notices do not imply use of Adobe Lightroom code or assets.
 
 Exact library and wrapper source archives are included under `web/vendor/libraw/source/`, with fixed source URLs, hashes, replacement/build instructions and verification scope in [RAW decoding](docs/raw-decoding.md). Redistribution must preserve that source access and the retained notices. Independent modification/replacement and reverse engineering to debug modifications to the LGPL library are permitted; OpenLR's own AGPL license does not remove those permissions.
+
+The EXIF reader uses exifr 7.1.3 by Mike Kovařík, Mutiny.cz (MIT). The unmodified ESM distribution and its license are in web/vendor/exifr/. [Upstream source](https://github.com/MikeKovarik/exifr).
+
+Interface icons are from lucide-static 1.68.0. The individual SVGs and upstream ISC/MIT notices are in web/vendor/icons/. [Lucide](https://github.com/lucide-icons/lucide).
+
+## TIFF, AVIF and JPEG XL codecs
+
+`web/vendor/codecs/` contains UTIF 3.1.0 (MIT, copyright 2017 Photopea), pako 1.0.11 (MIT and zlib notices), @jsquash/avif 2.1.1 and @jsquash/jxl 1.3.0 (Apache-2.0, Google and Jamie Sinclair), and wasm-feature-detect 1.9.0 (Apache-2.0). Package licenses and original module notices are retained. OpenLR adds ESM wrappers around unchanged UTIF/pako bodies and rewrites jSquash's wasm-feature-detect imports to relative local imports with explicit modification comments. WASM binaries are unmodified published package artifacts.
+
+The compiled codecs also contain libavif 1.0.1 (including its dav1d-derived source notices), libaom 3.7.0, libwebp/sharpyuv, libjxl, Brotli, Highway, skcms and the Emscripten runtime. Their required license, authors and applicable patent-grant texts are retained in `web/vendor/codecs/notices/`. Exact source revisions/URLs and hashes are recorded in its `sources.json`; runtime asset hashes are in `manifest.json`. These components retain their own BSD/MIT/Apache/zlib terms; OpenLR's AGPL declaration does not replace them. Preserve the complete notices directory in distributions.
+
+See [image codecs](docs/image-codecs.md) for fixed npm gitHeads, underlying source build inputs, API behavior, adaptation/build steps and actual validation. The package's permissive wrapper license is not presented as the only license of its embedded C/C++ codecs.

@@ -10,7 +10,7 @@ Camera RAW is not decoded by the browser image API. Import, catalog reload and e
 
 ## Decision
 
-Use pinned `@colorhythm/libraw-wasm` 1.1.1 through `decodePhoto(file) -> Promise<ImageBitmap>`. Keep WASM and its corresponding source/licenses as local assets. A disposable Worker owns each RAW decode and its WASM heap. Serialize RAW work, check size/dimensions and cap elapsed time. Decode the oriented full-resolution camera-WB sRGB base, disable auto brightness, and keep application editing in the existing renderer.
+Use pinned `@colorhythm/libraw-wasm` 1.1.1 through `decodePhoto(file) -> Promise<ImageBitmap>`. Keep WASM and its corresponding source/licenses as local assets. A disposable Worker owns each RAW decode and its WASM heap. Serialize RAW work and cap elapsed time; rely on actual runtime allocation limits rather than an artificial size ceiling. Decode the oriented full-resolution camera-WB sRGB base, disable auto brightness, and keep application editing in the existing renderer.
 
 ## Consequences
 

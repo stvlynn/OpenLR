@@ -7,6 +7,7 @@ OpenLR is a photo workflow project with a dependency-free ES module prototype un
 - Read `README.md` for the supported commands and current scope.
 - Read `docs/template-conventions.md` for boundaries, workflow, and verification rules.
 - Read `docs/agent-cli.md` for command discovery, live GUI automation, and actual image/state results. CLI, UI controls, and browser automation must share the central command dispatcher.
+- Read `docs/catalog-organization.md` before changing selection, batch actions, albums, filters, or saved edit versions.
 - Read `docs/template-sources.md` and `THIRD_PARTY_NOTICES.md` before introducing outside material.
 - Read relevant records under `research/` when investigating prior art. Preserve the difference between source inspection, runtime observations, and hypotheses.
 - Inspect affected code, tests, and error output before adding recovery behavior. Ask only when a product decision or consequential boundary remains unresolved after inspection; choose routine implementation details independently.
