@@ -1,0 +1,99 @@
+{
+  "records": [
+    {
+      "file": "astronaut.png",
+      "normalization": "standard",
+      "metrics": {
+        "loadMs": 710.9000000953674,
+        "preprocessMs": 5.800000190734863,
+        "inferenceMs": 3127.199999809265,
+        "totalMs": 3877.9000000953674
+      },
+      "output": {
+        "dims": [
+          1,
+          518,
+          518
+        ],
+        "min": 0,
+        "max": 8.323959350585938
+      },
+      "probes": {
+        "person": 0.2516234049175226,
+        "background": 0.04460209346896603
+      }
+    },
+    {
+      "file": "astronaut.png",
+      "normalization": "none",
+      "metrics": {
+        "loadMs": 0,
+        "preprocessMs": 22.699999809265137,
+        "inferenceMs": 2843.2000002861023,
+        "totalMs": 2890
+      },
+      "output": {
+        "dims": [
+          1,
+          518,
+          518
+        ],
+        "min": 0,
+        "max": 8.56938648223877
+      },
+      "probes": {
+        "person": 0.246104575163403,
+        "background": 0.034078136517766505
+      }
+    },
+    {
+      "file": "rocket.jpg",
+      "normalization": "standard",
+      "metrics": {
+        "loadMs": 0,
+        "preprocessMs": 10.200000286102295,
+        "inferenceMs": 5355.699999809265,
+        "totalMs": 5406.900000095367
+      },
+      "output": {
+        "dims": [
+          1,
+          518,
+          770
+        ],
+        "min": 0,
+        "max": 2.4722063541412354
+      },
+      "probes": {
+        "sky": 0,
+        "rocket": 0.7074864881850288,
+        "ground": 0.8672268907563063
+      }
+    },
+    {
+      "file": "rocket.jpg",
+      "normalization": "none",
+      "metrics": {
+        "loadMs": 0.09999990463256836,
+        "preprocessMs": 2.5,
+        "inferenceMs": 5176.400000095367,
+        "totalMs": 5212
+      },
+      "output": {
+        "dims": [
+          1,
+          518,
+          770
+        ],
+        "min": 0,
+        "max": 2.3784985542297363
+      },
+      "probes": {
+        "sky": 0,
+        "rocket": 0.7297652714932148,
+        "ground": 0.8956654456654317
+      }
+    }
+  ],
+  "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/155.0.0.0 Safari/537.36"
+}

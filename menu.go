@@ -28,11 +28,13 @@ func installMenu() {
 		{Label: "File", Submenu: []*mygo.MenuItem{
 			action("Add photos…", "choose-photos"), action("Open local folder…", "local-open"),
 			action("Tethered capture…", "tether"),
+			action("Edit copy externally…", "external-edit"), action("Choose external editor…", "external-editor"),
 			mygo.Separator(), action("Create album…", "new-album"), action("Export…", "export-dialog"),
 			mygo.Separator(), {Role: mygo.RoleClose},
 		}},
 		{Label: "Edit", Submenu: []*mygo.MenuItem{
 			action("Undo photo edit", "undo"), action("Redo photo edit", "redo"),
+			action("Undo library change", "library-undo"), action("Redo library change", "library-redo"),
 			mygo.Separator(), action("Copy edit settings", "copy-edits"), action("Paste edit settings", "paste-edits"),
 			mygo.Separator(), {Role: mygo.RoleCut}, {Role: mygo.RoleCopy}, {Role: mygo.RolePaste},
 		}},

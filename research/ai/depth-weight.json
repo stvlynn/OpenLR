@@ -1,0 +1,6 @@
+{
+  "url": "https://huggingface.co/onnx-community/depth-anything-v2-small/resolve/4472b7362082ad9968fee890ca0f1e5aca36b93d/onnx/model_quantized.onnx",
+  "revision": "4472b7362082ad9968fee890ca0f1e5aca36b93d",
+  "bytes": 27258801,
+  "sha256": "fcf51f1b230362b28690bb9d1809bf0431f29cad20534e3f589bd7285547f20d"
+}

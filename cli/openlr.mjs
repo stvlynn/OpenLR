@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 import {readFile,writeFile,mkdir,stat} from 'node:fs/promises'
+import {spawn} from 'node:child_process'
+import {setTimeout as delay} from 'node:timers/promises'
 import path from 'node:path'
 import os from 'node:os'
 import {fileURLToPath} from 'node:url'
@@ -12,7 +14,7 @@ const help={
   examples:['openlr state','openlr import C:/Photos/photo.jpg','openlr edit --key Exposure --value 0.5','openlr preview --output preview.png','openlr export --format image/png --output edited.png'],
   options:{'--timeout':'Optional request deadline in seconds','--capture':'Save a PNG of the live desktop after a data command and return both results','--args':'JSON argument object; --body is an alias','--dry-run':'Validate and print the request without contacting the GUI','--output':'Destination for image bytes; refuses an existing file unless --force','--force':'Allow overwriting the output file','--session':'Agent session file; default is the platform user config/OpenLR/agent.json'},
   workflow:'Search, inspect schema, dry-run, then run. Commands operate on the currently running native GUI. JSON goes to stdout; errors go to stderr with a nonzero exit. Images default to a generated .workspace/agent-results file.',
-  commands:[...Object.keys(definitions),'watch']
+  commands:[...Object.keys(definitions),'open','watch']
 }
 
 function parseValue(text,rule){
@@ -26,6 +28,7 @@ function parseValue(text,rule){
   }
   if(rule?.type==='array'||rule?.type==='object')return JSON.parse(text)
   if(rule?.oneOf){
+    if(text==='null'||/^[{[]/.test(text.trim()))return JSON.parse(text)
     if(text==='true'||text==='false')return text==='true'
     if(text.trim()!==''&&Number.isFinite(Number(text)))return Number(text)
   }
@@ -42,6 +45,17 @@ export function parse(argv){
   if(command==='schema'){
     if(tokens.length!==1)throw new Error('Usage: openlr schema <command>')
     return {local:schema(tokens[0])}
+  }
+  if(command==='open'){
+    const request={command,session:defaultSession(),app:process.env.OPENLR_APP}
+    if(tokens.includes('--help'))return {local:{usage:'openlr open [--app executable] [--session file] [--dry-run]',description:'Connect to the current workspace, or launch the packaged desktop application.'}}
+    while(tokens.length){
+      const key=tokens.shift()
+      if(key==='--dry-run'){request.dryRun=true;continue}
+      if(!['--app','--session'].includes(key)||!tokens.length)throw Error('Expected --app or --session followed by a path')
+      request[key.slice(2)]=tokens.shift()
+    }
+    return request
   }
   if(command==='watch'){
     const options={session:defaultSession(),command}
@@ -122,8 +136,37 @@ async function importPayload(files){
   return result
 }
 
+async function launchWorkspace(request){
+  const state=()=>execute({command:'state',args:{summary:true},session:request.session,timeout:4})
+  if(!request.dryRun){
+    try{return {launched:false,state:await state()}}catch{}
+  }
+  const name=process.platform==='win32'?'OpenLR.exe':process.platform==='darwin'?'OpenLR':'openlr'
+  const paths=request.app?[path.resolve(request.app)]:[
+    fileURLToPath(new URL('../'+name,import.meta.url)),
+    fileURLToPath(new URL('../../MacOS/'+name,import.meta.url)),
+    fileURLToPath(new URL('../build/'+(process.platform==='win32'?'windows-amd64':process.platform==='darwin'?'darwin-universal/OpenLR.app/Contents/MacOS':'linux-'+(process.arch==='x64'?'amd64':process.arch))+'/'+name,import.meta.url))
+  ]
+  let executable
+  for(const candidate of paths){try{if((await stat(candidate)).isFile()){executable=candidate;break}}catch{}}
+  if(!executable)throw Error('Cannot locate OpenLR. Pass --app with the desktop executable path.')
+  if(request.dryRun)return {dryRun:true,executable,session:request.session}
+  const host=spawn(executable,[],{detached:true,stdio:'ignore',windowsHide:true,env:{...process.env,OPENLR_AGENT_FILE:request.session}})
+  let launchError
+  host.once('error',error=>{launchError=error})
+  host.unref()
+  const until=Date.now()+45000
+  while(Date.now()<until){
+    if(launchError)throw launchError
+    try{return {launched:true,pid:host.pid,state:await state()}}catch{}
+    if(host.exitCode!==null||host.signalCode)throw Error('OpenLR exited before the workspace connected')
+    await delay(150)
+  }
+  throw Error('The desktop started but its workspace is still unavailable')
+}
 export async function execute(request){
   if(Object.hasOwn(request,'local'))return request.local
+  if(request.command==='open')return launchWorkspace(request)
   const {command,output,capture,session,dryRun,force}=request
   if(dryRun)return {dryRun:true,transport:'live GUI agent',request:{command,args:{...request.args,...(request.args.password?{password:'[redacted]'}:{})}},...(output?{output}:{}),force}
   const connection=await connect(session)

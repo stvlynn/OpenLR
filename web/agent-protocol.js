@@ -3,6 +3,8 @@ import {validCrop} from './geometry.js'
 import {LOCAL_CONTROLS,validateLocalTool,validateLocalChanges} from './local-tools.js'
 import {EXPORT_TYPES} from './formats.js'
 import {AI_TARGETS} from './ai-models.js'
+import {OPTICS_CONTROLS,validateOptics} from './optics.js'
+import {validateDepthChanges} from './depth-effects.js'
 
 const string = (description, extra={}) => ({type:'string', description, ...extra})
 const number = (description, minimum, maximum, extra={}) => ({type:'number', description, minimum, maximum, ...extra})
@@ -10,7 +12,9 @@ const entry = (summary, properties={}, required=[], extra={}) => ({summary, para
 const edits=Object.assign({},...Object.values(controls))
 const pointRule={type:'object',description:'Normalized original-image point, before crop/rotate/flip',properties:{x:number('Original x fraction',0,1),y:number('Original y fraction',0,1)},required:['x','y'],additionalProperties:false}
 const localProperties={
-  type:string('Tool shape',{enum:['linear','radial','brush','semantic','clone','heal']}),
+  type:string('Tool shape',{enum:['linear','radial','brush','semantic','color-range','luminance-range','depth-range','composite','clone','heal']}),
+  color:string('sRGB reference color #RRGGBB'),tolerance:number('Color RMS sRGB distance accepted in full',0,1),softness:number('Range transition width',0,1),min:number('Minimum linear relative luminance',0,1),max:number('Maximum linear relative luminance',0,1),
+  operation:string('Soft mask combination',{enum:['add','subtract','intersect']}),components:{type:'array',minItems:2,maxItems:2,items:{type:'object'},description:'Two mask component recipes; nested adjustments are ignored'},
   start:pointRule,end:pointRule,center:pointRule,source:pointRule,
   points:{type:'array',description:'Brush/repair stroke in original coordinates; at least one point',items:pointRule,minItems:1},
   radius:number('Brush radius as a fraction of the original short edge',0.00001,1),
@@ -23,8 +27,8 @@ const localProperties={
 }
 const localDefinitions={}
 for(const kind of ['mask','repair']){
-  const properties=Object.fromEntries(Object.entries(localProperties).filter(([key])=>kind==='mask'?key!=='source':!['start','end','center','rx','ry','invert','adjustments','raster','provenance'].includes(key)))
-  properties.type={...properties.type,enum:kind==='mask'?['linear','radial','brush','semantic']:['clone','heal']}
+  const properties=Object.fromEntries(Object.entries(localProperties).filter(([key])=>kind==='mask'?key!=='source':!['start','end','center','rx','ry','invert','adjustments','raster','provenance','color','tolerance','softness','min','max','operation','components'].includes(key)))
+  properties.type={...properties.type,enum:kind==='mask'?['linear','radial','brush','semantic','color-range','luminance-range','depth-range','composite']:['clone','heal']}
   localDefinitions[kind+'.add']=entry('Add a non-destructive '+(kind==='mask'?'linear/radial/brush adjustment mask':'clone or mean-color matched texture repair'),{[kind]:{type:'object',properties,required:['type'],additionalProperties:false}},[kind])
   localDefinitions[kind+'.update']=entry('Update local '+kind+' geometry, strength or adjustments',{id:string('Local tool ID from state'),changes:{type:'object',properties:Object.fromEntries(Object.entries(properties).filter(([key])=>key!=='type')),additionalProperties:false}},['id','changes'])
   localDefinitions[kind+'.remove']=entry('Remove a local '+kind,{id:string('Local tool ID from state')},['id'])
@@ -34,6 +38,35 @@ for(const kind of ['mask','repair']){
 // This command catalog is shared by offline CLI discovery and the live GUI agent.
 export const definitions={
   ...localDefinitions,
+  'library-undo':entry('Undo the last library organization or import action'),
+  'library-redo':entry('Reapply an undone library organization action'),
+  clipping:entry('Toggle highlight and shadow clipping indicators in the workspace'),
+  'point-tool':entry('Activate the point color eyedropper'),
+  'sample-color':entry('Sample RGB from normalized coordinates of the edited photo',{x:number('Horizontal position',0,1),y:number('Vertical position',0,1)},['x','y']),
+  'point-add':entry('Add a point color sample',{color:string('sRGB hex color')},['color']),
+  'point-update':entry('Adjust pixels near a sampled color',{id:string('Sample ID'),hue:number('Hue shift in degrees',-180,180),saturation:number('Saturation shift',-100,100),luminance:number('Luminance shift',-100,100),range:number('Selection range',0,100)},['id']),
+  'point-remove':entry('Remove a color sample',{id:string('Sample ID')},['id']),
+  'depth-estimate':entry('Estimate and persist real local relative inverse depth; downloads fixed 27 MB Apache-2.0 model once',{photoId:string('Optional selected-photo guard')}),
+  'depth-range':entry('Create an adjustment mask from inferred relative inverse depth; 0 far, 1 near',{min:number('Depth minimum',0,1),max:number('Depth maximum',0,1),softness:number('Range transition',0,1),adjustments:localProperties.adjustments,photoId:string('Optional selected-photo guard')}),
+  'lens-blur':entry('Apply real depth-guided near/far blur around an adjustable focus interval; relative depth is not metres',{enabled:{type:'boolean'},amount:number('Blur radius as original short-edge fraction',0,.15),min:number('Focus far boundary',0,1),max:number('Focus near boundary',0,1),softness:number('Depth transition to full defocus',0,1),photoId:string('Optional selected-photo guard')}),
+  'remove-mask':entry('Inpaint a masked area from surrounding pixels',{id:string('Mask ID; defaults to most recent'),algorithm:string('Inpainting method',{enum:['ns','telea']}),radius:number('Neighborhood radius in original pixels',.1,100)}),
+  preferences:entry('Read or update workspace preferences',Object.fromEntries(['autoAdvance','filenames','extensions','shortcuts'].map(key=>[key,{type:'boolean'}]))),
+  label:entry('Set a color label on the selected photos',{value:string('Empty clears the color',{enum:['','red','yellow','green','blue','purple']})},['value']),
+  'lens-profiles':entry('List the bundled licensed Lensfun rectilinear profiles',{query:string('Optional maker/model search')}),
+  'lens-match':entry('Find exact EXIF camera/lens candidates without applying or inventing a calibration'),
+  'lens-apply':entry('Apply a calibrated Lensfun profile at the actual focal length',{
+    id:string('Profile ID from lens-profiles or lens-match'),focal:number('Actual focal length in millimeters',0.001,Number.MAX_VALUE),cropFactor:number('Actual camera crop factor; inferred from an exact camera match where possible',0.001,Number.MAX_VALUE),photoId:string('Optional selected-photo identity guard')
+  },['id']),
+  optics:entry('Update manual lens and projective geometry correction on the active photo',{
+    changes:{type:'object',description:'Manual lens/geometry parameters and calibrated-profile switches',properties:{...Object.fromEntries(Object.entries(OPTICS_CONTROLS).map(([key,{range}])=>[key,number(key,range[0],range[1])])),enabled:{type:'boolean'},profileDistortion:{type:'boolean'},profileTCA:{type:'boolean'}}},photoId:string('Optional selected-photo identity guard')
+  },['changes']),
+  'optics-reset':entry('Remove lens and perspective corrections while retaining other edits',{photoId:string('Optional selected-photo identity guard')}),
+  straighten:entry('Solve rotation from two original-image points on a horizontal or vertical reference',{
+    start:pointRule,end:pointRule,axis:string('Desired line axis',{enum:['horizontal','vertical']}),photoId:string('Optional selected-photo identity guard')
+  },['start','end']),
+  'straighten-tool':entry('Choose two image points in the GUI for an actual straightening reference',{axis:string('Reference line axis',{enum:['horizontal','vertical']})}),
+  'mask.combine':entry('Combine two mask coverages into one group; retain first adjustments and consume second mask',{id:string('First mask ID'),operandId:string('Second mask ID'),operation:string('Coverage operation',{enum:['add','subtract','intersect']}),photoId:string('Optional selected-photo guard')},['id','operandId','operation']),
+  'mask.component-update':entry('Edit component coverage inside a composite mask; adjustments remain on its group',{id:string('Composite mask ID'),path:{type:'array',items:{type:'integer',enum:[0,1]},minItems:1,description:'Nested zero/one child indexes'},changes:{type:'object',description:'Same coverage changes as mask.update; no adjustments'},photoId:string('Optional selected-photo guard')},['id','path','changes']),
   'grid-layout':entry('Set the library grid layout',{layout:string('Layout',{enum:['square','mosaic']})},['layout']),
   'select-inverse':entry('Invert selection in the current view'),
   'virtual-copy':entry('Create a separate edit recipe sharing the original library file'),
@@ -72,6 +105,12 @@ export const definitions={
   tether:entry('Open the tethered capture panel and discover connected still cameras'),
   'camera-list':entry('Discover actual WIA or gphoto2 still cameras and report backend availability'),
   'camera-capture':entry('Trigger the selected supported camera, keep camera originals, and import downloaded photos',{id:string('Camera ID from camera-list')},['id']),
+  'share-configure':entry('Configure a self-hosted OpenLR review server',{endpoint:string('Review server HTTP(S) URL'),token:string('Server administrator bearer token')},['endpoint','token']),
+  'share-publish':entry('Publish edited JPEG previews of a selected library album to the configured review server',{
+    album:string('Album ID; defaults to the current album scope'),comments:{type:'boolean',description:'Allow review comments'},likes:{type:'boolean',description:'Allow reviewer likes'}
+  }),
+  'share-reviews':entry('Read shared album comments and likes into the current GUI',{album:string('Album ID; defaults to current scope')}),
+  'share-revoke':entry('Revoke a shared album secret link',{album:string('Album ID; defaults to current scope')}),
   select:entry('Select a photo in the current view',{id:string('Photo ID from state'),toggle:{type:'boolean',description:'Toggle membership in the selection'},range:{type:'boolean',description:'Select the visible range from the selection anchor'}},['id']),
   'select-many':entry('Select an explicit list of visible photo IDs; an empty array clears selection',{ids:{type:'array',items:{type:'string'},description:'Visible photo IDs'}},['ids']),
   'select-all':entry('Select every photo in the current filtered view'),
@@ -95,8 +134,8 @@ export const definitions={
   'album-rename':entry('Rename an album',{id:string('Album ID'),name:string('New nonempty name')},['id','name']),
   'album-delete':entry('Delete an album while retaining its photos and other memberships',{id:string('Album ID')},['id']),
   membership:entry('Toggle selected photo membership in an album',{album:string('Album ID from state')},['album']),
-  rate:entry('Set the selected photo star rating',{value:number('Star rating',0,5,{type:'integer'})},['value']),
-  flag:entry('Set picked, rejected, or unflagged',{value:string('Empty string clears the flag',{enum:['pick','reject','']})},['value']),
+  rate:entry('Set the selected photo star rating',{value:number('Star rating',0,5,{type:'integer'}),advance:{type:'boolean'}},['value']),
+  flag:entry('Set picked, rejected, or unflagged',{value:string('Empty string clears the flag',{enum:['pick','reject','']}),advance:{type:'boolean'}},['value']),
   keywords:entry('Set keywords on the selected photo',{value:string('Keywords text')},['value']),
   delete:entry('Move the selected photo to Deleted without removing its original'),
   restore:entry('Restore the selected photo from Deleted'),
@@ -177,6 +216,10 @@ export function validateArgs(command,args){
   }
   if(command==='mask.add'||command==='repair.add')validateLocalTool(command.split('.')[0],args[command.split('.')[0]])
   if(command==='mask.update'||command==='repair.update')validateLocalChanges(command.split('.')[0],args.changes)
+  if(command==='mask.component-update'){validateLocalChanges('mask',args.changes);if(!args.path.length||args.path.some(value=>value!==0&&value!==1))throw Error('Invalid component path');if(args.changes.adjustments)throw Error('Adjustments belong to the composite group')}
   if(command==='ai-mask'&&args.adjustments!==undefined)validateLocalChanges('mask',{adjustments:args.adjustments})
+  if(command==='depth-range'&&args.adjustments!==undefined)validateLocalChanges('mask',{adjustments:args.adjustments})
+  if(command==='lens-blur')validateDepthChanges(Object.fromEntries(Object.entries(args).filter(([key])=>key!=='photoId')))
+  if(command==='optics')validateOptics(args.changes)
   return args
 }

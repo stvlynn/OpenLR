@@ -71,7 +71,7 @@ export async function synchronize(args,backend){
   try{
     const stored=await db.transaction('sync','readonly',tx=>tx.objectStore('sync').get(key))
     const base=stored?.manifest||empty(),local=empty()
-    const records=await db.all('photos'),byId=map(records)
+    const records=await db.all('photos')
     local.photos=map(records.map(({thumbnail,...p})=>p))
     local.albums=map(await db.all('albums'));local.presets=map(await db.all('presets'))
     const manifestName='openlr-manifest.json',response=await call('Get',manifestName)
@@ -119,18 +119,16 @@ export async function synchronize(args,backend){
       if(result.status===412)throw Error('Another device just synced. Run sync again to merge its changes.')
       if(result.status<200||result.status>=300)throw Error('The WebDAV folder could not store the catalog.')
     }
-    await db.transaction([...stores,'sync','originals'],'readwrite',tx=>{
+    const writes=changes.flatMap(({photo,original})=>original?[photo,original]:[photo])
+    await db.withMedia(writes,(packed,commit)=>commit([...stores,'sync','originals'],'readwrite',tx=>{
       for(const s of stores){
         const dest=tx.objectStore(s)
-        for(const id of Object.keys(local[s]))if(!next[s][id]){dest.delete(id);if(s==='photos')tx.objectStore('originals').delete(id)}
+        for(const id of Object.keys(local[s]))if(!next[s][id]){db.deleteRecord(tx,s,id);if(s==='photos')db.deleteRecord(tx,'originals',id)}
         if(s!=='photos')for(const row of Object.values(next[s]))dest.put(row)
       }
-      for(const {photo,original} of changes){
-        tx.objectStore('photos').put(photo)
-        if(original)tx.objectStore('originals').put(original)
-      }
+      for(const row of packed)tx.objectStore(row.file?'originals':'photos').put(row)
       tx.objectStore('sync').put({id:key,manifest:next})
-    })
+    }))
     return {synced:true,uploaded:uploads.size,updated:changes.length,conflicts}
   }finally{await call('Disconnect')}
 }

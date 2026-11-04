@@ -180,7 +180,7 @@ func (l *Local) root(id string) (LocalRoot, *os.Root, error) {
 
 var localPhotoExtensions = func() map[string]bool {
 	result := make(map[string]bool)
-	for _, ext := range strings.Fields("jpg jpeg png gif webp avif mp4 m4v mov mkv webm bmp tif tiff heic heif ico 3fr ari arw bay braw cap cine cr2 cr3 crw cs1 dc2 dcr dng drf eip erf fff gpr iiq k25 kdc mdc mef mos mrw nef nrw obm orf pef ptx pxn qtk raf raw rdc rw2 rwl rwz sr2 srf srw sti x3f") {
+	for _, ext := range strings.Fields("jpg jpeg png gif webp avif jxl mp4 m4v mov mkv webm bmp tif tiff heic heif ico 3fr ari arw bay braw cap cine cr2 cr3 crw cs1 dc2 dcr dng drf eip erf fff gpr iiq k25 kdc mdc mef mos mrw nef nrw obm orf pef ptx pxn qtk raf raw rdc rw2 rwl rwz sr2 srf srw sti x3f") {
 		result["."+ext] = true
 	}
 	return result
@@ -240,7 +240,8 @@ func (l *Local) OpenFolder(id, relative string) (*LocalFolder, error) {
 		data, readErr := dir.ReadFile(path + ".openlr.json")
 		if readErr == nil {
 			var sidecar localSidecar
-			if err := json.Unmarshal(data, &sidecar); err != nil || sidecar.Version != 1 || len(sidecar.Recipe) == 0 {
+			var recipe map[string]json.RawMessage
+			if err := json.Unmarshal(data, &sidecar); err != nil || sidecar.Version != 1 || json.Unmarshal(sidecar.Recipe, &recipe) != nil || recipe == nil {
 				photo.Error = "Cannot read OpenLR edit sidecar"
 			} else {
 				photo.Recipe = sidecar.Recipe
@@ -318,7 +319,7 @@ func (l *Local) servePhoto(w http.ResponseWriter, r *http.Request) {
 	}
 	defer dir.Close()
 	rel, err := localRelative(parts[1])
-	if err != nil || !localPhotoExtensions[strings.ToLower(filepath.Ext(rel))] {
+	if err != nil || (!localPhotoExtensions[strings.ToLower(filepath.Ext(rel))] && !strings.EqualFold(filepath.Ext(rel), ".xmp")) {
 		http.NotFound(w, r)
 		return
 	}

@@ -1,11 +1,14 @@
 import {controls} from './render.js'
 import {geometry,validCrop} from './geometry.js'
+import {validateFill} from './fill.js'
+import {validatePoint} from './point-color.js'
 import {validateLocalTool} from './local-tools.js'
 import {validateArgs} from './agent-protocol.js'
 import {validateOptics} from './optics.js'
 
 const ns={rdf:'http://www.w3.org/1999/02/22-rdf-syntax-ns#',xmp:'http://ns.adobe.com/xap/1.0/',dc:'http://purl.org/dc/elements/1.1/',crs:'http://ns.adobe.com/camera-raw-settings/1.0/',olr:'https://github.com/stvlynn/OpenLR/ns/1.0/'}
-const fields={Exposure:'Exposure2012',Contrast:'Contrast2012',Highlights:'Highlights2012',Shadows:'Shadows2012',Whites:'Whites2012',Blacks:'Blacks2012',Saturation:'Saturation',Vibrance:'Vibrance',Texture:'Texture',Clarity:'Clarity2012',Sharpening:'Sharpness','Noise reduction':'LuminanceSmoothing'}
+export const CRS_FIELDS={Exposure:'Exposure2012',Contrast:'Contrast2012',Highlights:'Highlights2012',Shadows:'Shadows2012',Whites:'Whites2012',Blacks:'Blacks2012',Saturation:'Saturation',Vibrance:'Vibrance',Texture:'Texture',Clarity:'Clarity2012',Sharpening:'Sharpness','Noise reduction':'LuminanceSmoothing'}
+const fields=CRS_FIELDS
 const ranges=Object.assign({},...Object.values(controls))
 const escapeXml=s=>String(s).replaceAll('&','&amp;').replaceAll('"','&quot;').replaceAll('<','&lt;').replaceAll('>','&gt;')
 export function exportXmp(p){
@@ -23,7 +26,9 @@ function safeRecipe(recipe){
   if(!recipe||typeof recipe!=='object'||Array.isArray(recipe))throw Error('Invalid XMP recipe')
   const result={}
   for(const [key,value] of Object.entries(recipe)){
-    if(key==='trim'){
+    if(key==='pointColors')result.pointColors=value.map(validatePoint)
+    else if(key==='fills')result.fills=value.map(validateFill)
+    else if(key==='trim'){
       if(!Number.isFinite(value?.start)||!Number.isFinite(value.end)||value.start<0||value.end<=value.start)throw Error('Invalid video trim points')
       result.trim={start:value.start,end:value.end}
     }else if(key==='optics'){

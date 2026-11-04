@@ -38,6 +38,7 @@ func main() {
 	camera := newCamera()
 	mygo.Bind(camera)
 	mygo.Protocol.HandleFunc("cameraphoto", camera.servePhoto)
+	mygo.Bind(newSharing())
 	mygo.App.OnQuit(desktop.cancelAll)
 	var window *mygo.Window
 	openWindow := func() {

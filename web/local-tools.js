@@ -1,7 +1,9 @@
 // Local recipes always use fractions of the decoded, oriented original image.
 import {validateSoftMask,sampleSoftMask} from './soft-mask.js'
+import {RANGE_TYPES,validateRange,rangeWeight,combineCoverage} from './range-masks.js'
+import {depthRangeWeight,applyLensBlur} from './depth-effects.js'
 export const LOCAL_CONTROLS={Exposure:[-5,5,0.05],Contrast:[-100,100,1],Saturation:[-100,100,1]}
-export const LOCAL_COMMANDS=['mask.add','mask.update','mask.remove','repair.add','repair.update','repair.remove']
+export const LOCAL_COMMANDS=['mask.add','mask.update','mask.remove','mask.combine','mask.component-update','repair.add','repair.update','repair.remove']
 const clamp=(v,min=0,max=1)=>Math.min(max,Math.max(min,v))
 function scalar(value,min,max,name){
   if(typeof value!=='number'||!Number.isFinite(value)||value<min||value>max)throw Error(name+' must be between '+min+' and '+max)
@@ -18,24 +20,28 @@ function points(value){
 function object(value){if(!value||typeof value!=='object'||Array.isArray(value))throw Error('Expected a tool object');return value}
 export function validateLocalChanges(kind,changes){
   object(changes)
-  const allowed=kind==='mask'?['enabled','opacity','feather','start','end','center','rx','ry','points','radius','invert','adjustments','raster']:['enabled','opacity','feather','source','points','radius']
+  const allowed=kind==='mask'?['enabled','opacity','feather','start','end','center','rx','ry','points','radius','invert','adjustments','raster','color','tolerance','softness','min','max','operation']:['enabled','opacity','feather','source','points','radius']
   if(Object.keys(changes).some(key=>!allowed.includes(key)))throw Error('Unknown local tool change')
   for(const [key,value]of Object.entries(changes)){
     if(['enabled','invert'].includes(key)){if(typeof value!=='boolean')throw Error(key+' must be boolean')}
     else if(['start','end','center','source'].includes(key))point(value,key)
     else if(key==='points')points(value)
     else if(key==='raster')validateSoftMask(value)
+    else if(key==='color'){if(typeof value!=='string'||!/^#[\da-f]{6}$/i.test(value))throw Error('Expected #RRGGBB color')}
+    else if(key==='operation'){if(!['add','subtract','intersect'].includes(value))throw Error('Invalid composite operation')}
     else if(key==='adjustments'){
       for(const [name,v]of Object.entries(object(value))){if(!Object.hasOwn(LOCAL_CONTROLS,name))throw Error('Unknown local adjustment: '+name);scalar(v,...LOCAL_CONTROLS[name].slice(0,2),name)}
     }else scalar(value,['radius','rx','ry'].includes(key)?0.00001:0,1,key)
   }
   return changes
 }
-export function validateLocalTool(kind,value){
+export function validateLocalTool(kind,value,depth=0){
   object(value)
-  const repair=kind==='repair', types=repair?['clone','heal']:['linear','radial','brush','semantic']
+  if(depth>32)throw Error('Composite mask nesting is too deep')
+  const repair=kind==='repair', types=repair?['clone','heal']:['linear','radial','brush','semantic',...RANGE_TYPES,'depth-range','composite']
   if(!types.includes(value.type))throw Error('Expected tool type '+types.join(', '))
-  const allowed=['id','type','enabled','opacity','feather',...(repair?['source','points','radius']:['adjustments','invert',...(value.type==='semantic'?['raster','provenance']:value.type==='linear'?['start','end']:value.type==='radial'?['center','rx','ry']:['points','radius'])])]
+  const extra=value.type==='depth-range'?['raster','provenance','min','max','softness']:value.type==='composite'?['operation','components']:value.type==='color-range'?['color','tolerance','softness']:value.type==='luminance-range'?['min','max','softness']:value.type==='semantic'?['raster','provenance']:value.type==='linear'?['start','end']:value.type==='radial'?['center','rx','ry']:['points','radius']
+  const allowed=['id','type','enabled','opacity','feather',...(repair?['source','points','radius']:['adjustments','invert',...extra])]
   if(Object.keys(value).some(k=>!allowed.includes(k)))throw Error('Unknown local tool property')
   const result={type:value.type,enabled:value.enabled??true,opacity:scalar(value.opacity??1,0,1,'opacity'),feather:scalar(value.feather??0.5,0,1,'feather')}
   if(typeof result.enabled!=='boolean')throw Error('enabled must be boolean')
@@ -50,13 +56,18 @@ export function validateLocalTool(kind,value){
       if(!Object.hasOwn(LOCAL_CONTROLS,key))throw Error('Unknown local adjustment: '+key)
       result.adjustments[key]=scalar(v,...LOCAL_CONTROLS[key].slice(0,2),key)
     }
-    if(value.type==='linear'){
+    if(RANGE_TYPES.includes(value.type))Object.assign(result,validateRange(value.type,value))
+    else if(value.type==='composite'){
+      if(!['add','subtract','intersect'].includes(value.operation)||!Array.isArray(value.components)||value.components.length!==2)throw Error('Composite needs an operation and two components')
+      result.operation=value.operation;result.components=value.components.map(component=>validateLocalTool('mask',component,depth+1))
+    }else if(value.type==='linear'){
       result.start=point(value.start,'start');result.end=point(value.end,'end')
       if(Math.hypot(result.end.x-result.start.x,result.end.y-result.start.y)<1e-8)throw Error('Gradient endpoints must differ')
     }else if(value.type==='radial'){
       result.center=point(value.center,'center');result.rx=scalar(value.rx,0.00001,1,'rx');result.ry=scalar(value.ry,0.00001,1,'ry')
-    }else if(value.type==='semantic'){
+    }else if(value.type==='semantic'||value.type==='depth-range'){
       result.raster=validateSoftMask(value.raster)
+      if(value.type==='depth-range')Object.assign(result,validateRange(value.type,value))
       if(value.provenance!==undefined)result.provenance=structuredClone(object(value.provenance))
     }
   }
@@ -65,8 +76,24 @@ export function validateLocalTool(kind,value){
 export function updateLocalTools(edit,command,args){
   const [kind,action]=command.split('.'),collection=kind==='mask'?'masks':'repairs'
   if(!LOCAL_COMMANDS.includes(command))throw Error('Unknown local tool command')
-  const local={masks:[...(edit.localTools?.masks??[])],repairs:[...(edit.localTools?.repairs??[])]},list=local[collection]
-  if(action==='add'){
+  const local={...edit.localTools,masks:[...(edit.localTools?.masks??[])],repairs:[...(edit.localTools?.repairs??[])]},list=local[collection]
+  if(action==='combine'){
+    const index=list.findIndex(item=>item.id===args.id),operand=list.findIndex(item=>item.id===args.operandId)
+    if(index<0||operand<0||index===operand)throw Error('Choose two different existing masks')
+    const a=list[index],b=list[operand],coverage=tool=>({...tool,adjustments:{}})
+    list[index]=validateLocalTool('mask',{type:'composite',id:a.id,operation:args.operation,components:[coverage({...a,enabled:true,opacity:1}),coverage(b)],adjustments:a.adjustments,enabled:a.enabled,opacity:a.opacity,invert:false})
+    list.splice(operand,1)
+  }else if(action==='component-update'){
+    const index=list.findIndex(item=>item.id===args.id)
+    if(index<0||!Array.isArray(args.path)||!args.path.length||args.path.some(value=>value!==0&&value!==1))throw Error('Expected a component path of zero/one indexes')
+    const root=structuredClone(list[index]);let parent=root
+    for(const value of args.path.slice(0,-1)){if(!parent.components)throw Error('Component path was not found');parent=parent.components[value]}
+    const child=parent.components?.[args.path.at(-1)];if(!child)throw Error('Component path was not found')
+    const changes=validateLocalChanges('mask',args.changes)
+    if(changes.adjustments)throw Error('Adjustments belong to the complete composite mask')
+    parent.components[args.path.at(-1)]=validateLocalTool('mask',{...child,...changes})
+    list[index]=validateLocalTool('mask',root)
+  }else if(action==='add'){
     const item=validateLocalTool(kind,args[kind])
     item.id=crypto.randomUUID();list.push(item)
   }else{
@@ -96,9 +123,13 @@ function falloff(distance,feather){
   const t=(1-distance)/feather
   return t*t*(3-2*t)
 }
-export function localWeight(tool,x,y,width,height){
+export function localWeight(tool,x,y,width,height,rgb){
+  if(tool.enabled===false)return 0
   let weight
-  if(tool.type==='semantic')weight=sampleSoftMask(tool.raster,x,y)
+  if(tool.type==='depth-range')weight=depthRangeWeight(sampleSoftMask(tool.raster,x,y),tool.min,tool.max,tool.softness)
+  else if(RANGE_TYPES.includes(tool.type))weight=rangeWeight(tool,rgb)
+  else if(tool.type==='composite')weight=combineCoverage(...tool.components.map(component=>localWeight(component,x,y,width,height,rgb)),tool.operation)
+  else if(tool.type==='semantic')weight=sampleSoftMask(tool.raster,x,y)
   else if(tool.type==='linear'){
     const dx=(tool.end.x-tool.start.x)*width,dy=(tool.end.y-tool.start.y)*height
     weight=clamp(((x-tool.start.x)*width*dx+(y-tool.start.y)*height*dy)/(dx*dx+dy*dy))
@@ -112,7 +143,7 @@ export function localWeight(tool,x,y,width,height){
   return (tool.invert?1-weight:weight)*tool.opacity
 }
 function bounds(tool,width,height){
-  if(tool.type==='linear'||tool.type==='semantic'||tool.invert)return {x0:0,y0:0,x1:width,y1:height}
+  if(['linear','semantic','depth-range','composite',...RANGE_TYPES].includes(tool.type)||tool.invert)return {x0:0,y0:0,x1:width,y1:height}
   let left,right,top,bottom
   if(tool.type==='radial'){
     left=(tool.center.x-tool.rx)*width;right=(tool.center.x+tool.rx)*width
@@ -178,15 +209,21 @@ export function applyLocalTools(pixels,local={}){
     }
     for(let y=y0;y<y1;y++)data.set(patch.subarray((y-y0)*patchWidth*4,(y-y0+1)*patchWidth*4),(y*width+x0)*4)
   }
+  const hasRange=tool=>RANGE_TYPES.includes(tool.type)||tool.components?.some(hasRange)
+  const reference=(local.masks??[]).some(hasRange)?data.slice():null
+  applyLensBlur(pixels,local.depth,local.lensBlur)
   for(const tool of local.masks??[]){
     if(tool.enabled===false||!tool.opacity)continue
     const {x0,y0,x1,y1}=bounds(tool,width,height)
-    for(let y=y0;y<y1;y++)for(let x=x0;x<x1;x++)adjust(data,(y*width+x)*4,tool.adjustments,localWeight(tool,(x+0.5)/width,(y+0.5)/height,width,height))
+    for(let y=y0;y<y1;y++)for(let x=x0;x<x1;x++){
+      const i=(y*width+x)*4
+      adjust(data,i,tool.adjustments,localWeight(tool,(x+0.5)/width,(y+0.5)/height,width,height,reference?.subarray(i,i+3)))
+    }
   }
   return pixels
 }
 export function renderLocalSource(image,local,maxEdge=Infinity){
-  if(![...(local?.masks??[]),...(local?.repairs??[])].some(tool=>tool.enabled!==false&&tool.opacity))return image
+  if(!local?.lensBlur?.enabled&&![...(local?.masks??[]),...(local?.repairs??[])].some(tool=>tool.enabled!==false&&tool.opacity))return image
   const canvas=document.createElement('canvas'),scale=Math.min(1,maxEdge/Math.max(image.width,image.height))
   canvas.width=Math.max(1,Math.round(image.width*scale));canvas.height=Math.max(1,Math.round(image.height*scale))
   const context=canvas.getContext('2d',{willReadFrequently:true})

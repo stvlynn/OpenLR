@@ -1,0 +1,186 @@
+[
+  {
+    "path": "LICENSE",
+    "mode": "100644",
+    "type": "blob",
+    "sha": "d645695673349e3947e8e5ae42332d0ac3164cd7",
+    "size": 11358,
+    "url": "https://api.github.com/repos/pmndrs/denoiser-weights/git/blobs/d645695673349e3947e8e5ae42332d0ac3164cd7"
+  },
+  {
+    "path": "README.md",
+    "mode": "100644",
+    "type": "blob",
+    "sha": "ee68c1ae99b7a7ebde590a067a6b5e58953111bd",
+    "size": 4763,
+    "url": "https://api.github.com/repos/pmndrs/denoiser-weights/git/blobs/ee68c1ae99b7a7ebde590a067a6b5e58953111bd"
+  },
+  {
+    "path": "models/rt_ldr.fp16.onnx",
+    "mode": "100644",
+    "type": "blob",
+    "sha": "4ebef800156abd5081dce43b485a893b46006c5e",
+    "size": 1835266,
+    "url": "https://api.github.com/repos/pmndrs/denoiser-weights/git/blobs/4ebef800156abd5081dce43b485a893b46006c5e"
+  },
+  {
+    "path": "models/rt_ldr.onnx",
+    "mode": "100644",
+    "type": "blob",
+    "sha": "b6aa1f9616c5e47addc06d2080e5d243e9346c8a",
+    "size": 3664533,
+    "url": "https://api.github.com/repos/pmndrs/denoiser-weights/git/blobs/b6aa1f9616c5e47addc06d2080e5d243e9346c8a"
+  },
+  {
+    "path": "models/rt_ldr_alb.fp16.onnx",
+    "mode": "100644",
+    "type": "blob",
+    "sha": "3af9a0acea3235267d08402206e76debbb5a7da8",
+    "size": 1840450,
+    "url": "https://api.github.com/repos/pmndrs/denoiser-weights/git/blobs/3af9a0acea3235267d08402206e76debbb5a7da8"
+  },
+  {
+    "path": "models/rt_ldr_alb.onnx",
+    "mode": "100644",
+    "type": "blob",
+    "sha": "781de7d39aed9fd108d17d60742a553704e4d824",
+    "size": 3674901,
+    "url": "https://api.github.com/repos/pmndrs/denoiser-weights/git/blobs/781de7d39aed9fd108d17d60742a553704e4d824"
+  },
+  {
+    "path": "models/rt_ldr_alb_nrm.fp16.onnx",
+    "mode": "100644",
+    "type": "blob",
+    "sha": "f07c008e176403eda8f6a05771e0a5e82fa8485a",
+    "size": 1845634,
+    "url": "https://api.github.com/repos/pmndrs/denoiser-weights/git/blobs/f07c008e176403eda8f6a05771e0a5e82fa8485a"
+  },
+  {
+    "path": "models/rt_ldr_alb_nrm.onnx",
+    "mode": "100644",
+    "type": "blob",
+    "sha": "2a5b019535284c54f4b93cd061d5de5afd990e32",
+    "size": 3685269,
+    "url": "https://api.github.com/repos/pmndrs/denoiser-weights/git/blobs/2a5b019535284c54f4b93cd061d5de5afd990e32"
+  },
+  {
+    "path": "models/rt_ldr_alb_nrm_small.fp16.onnx",
+    "mode": "100644",
+    "type": "blob",
+    "sha": "daf36174b4074298185675f6077654c3b9b0f62b",
+    "size": 646067,
+    "url": "https://api.github.com/repos/pmndrs/denoiser-weights/git/blobs/daf36174b4074298185675f6077654c3b9b0f62b"
+  },
+  {
+    "path": "models/rt_ldr_alb_nrm_small.onnx",
+    "mode": "100644",
+    "type": "blob",
+    "sha": "9e1f407983b1730f1804f714516b009c1e4eb0b9",
+    "size": 1286161,
+    "url": "https://api.github.com/repos/pmndrs/denoiser-weights/git/blobs/9e1f407983b1730f1804f714516b009c1e4eb0b9"
+  },
+  {
+    "path": "models/rt_ldr_alb_small.fp16.onnx",
+    "mode": "100644",
+    "type": "blob",
+    "sha": "7c91cebf7f6a976412b9c9dc52a97282a6b2c0b4",
+    "size": 642611,
+    "url": "https://api.github.com/repos/pmndrs/denoiser-weights/git/blobs/7c91cebf7f6a976412b9c9dc52a97282a6b2c0b4"
+  },
+  {
+    "path": "models/rt_ldr_alb_small.onnx",
+    "mode": "100644",
+    "type": "blob",
+    "sha": "b3d29e0930034b6b02a222e0f32339ad94e57637",
+    "size": 1279249,
+    "url": "https://api.github.com/repos/pmndrs/denoiser-weights/git/blobs/b3d29e0930034b6b02a222e0f32339ad94e57637"
+  },
+  {
+    "path": "models/rt_ldr_calb_cnrm.fp16.onnx",
+    "mode": "100644",
+    "type": "blob",
+    "sha": "753e7cc5063a12471aaba6afad02a17df572a845",
+    "size": 1845634,
+    "url": "https://api.github.com/repos/pmndrs/denoiser-weights/git/blobs/753e7cc5063a12471aaba6afad02a17df572a845"
+  },
+  {
+    "path": "models/rt_ldr_calb_cnrm.fp16.tail.onnx",
+    "mode": "100644",
+    "type": "blob",
+    "sha": "b2dd888009a9d28eaf404ac207a32a187aaa2e37",
+    "size": 1842884,
+    "url": "https://api.github.com/repos/pmndrs/denoiser-weights/git/blobs/b2dd888009a9d28eaf404ac207a32a187aaa2e37"
+  },
+  {
+    "path": "models/rt_ldr_calb_cnrm.onnx",
+    "mode": "100644",
+    "type": "blob",
+    "sha": "60241504fae4964236b1862bae76c0f9af7b99f9",
+    "size": 3685269,
+    "url": "https://api.github.com/repos/pmndrs/denoiser-weights/git/blobs/60241504fae4964236b1862bae76c0f9af7b99f9"
+  },
+  {
+    "path": "models/rt_ldr_calb_cnrm.tail.onnx",
+    "mode": "100644",
+    "type": "blob",
+    "sha": "5122de60df53e63af7de0e300f8c27b510a6e5a2",
+    "size": 3677269,
+    "url": "https://api.github.com/repos/pmndrs/denoiser-weights/git/blobs/5122de60df53e63af7de0e300f8c27b510a6e5a2"
+  },
+  {
+    "path": "models/rt_ldr_calb_cnrm_small.fp16.onnx",
+    "mode": "100644",
+    "type": "blob",
+    "sha": "e0934d92ea5fb0df932c6c37608058c3b4ab750b",
+    "size": 646067,
+    "url": "https://api.github.com/repos/pmndrs/denoiser-weights/git/blobs/e0934d92ea5fb0df932c6c37608058c3b4ab750b"
+  },
+  {
+    "path": "models/rt_ldr_calb_cnrm_small.fp16.tail.onnx",
+    "mode": "100644",
+    "type": "blob",
+    "sha": "007e8d26c1b83802b266946631e55c132fef959f",
+    "size": 643314,
+    "url": "https://api.github.com/repos/pmndrs/denoiser-weights/git/blobs/007e8d26c1b83802b266946631e55c132fef959f"
+  },
+  {
+    "path": "models/rt_ldr_calb_cnrm_small.onnx",
+    "mode": "100644",
+    "type": "blob",
+    "sha": "be7b0bd0ef8d064dd7331a9027b42d6840780ffa",
+    "size": 1286161,
+    "url": "https://api.github.com/repos/pmndrs/denoiser-weights/git/blobs/be7b0bd0ef8d064dd7331a9027b42d6840780ffa"
+  },
+  {
+    "path": "models/rt_ldr_calb_cnrm_small.tail.onnx",
+    "mode": "100644",
+    "type": "blob",
+    "sha": "6921304e04d6cbbb2355db69d2f83e38272ec719",
+    "size": 1278158,
+    "url": "https://api.github.com/repos/pmndrs/denoiser-weights/git/blobs/6921304e04d6cbbb2355db69d2f83e38272ec719"
+  },
+  {
+    "path": "models/rt_ldr_small.fp16.onnx",
+    "mode": "100644",
+    "type": "blob",
+    "sha": "8c7ac268fcc3df9a7886cc198c37c0ac0bbf9742",
+    "size": 639155,
+    "url": "https://api.github.com/repos/pmndrs/denoiser-weights/git/blobs/8c7ac268fcc3df9a7886cc198c37c0ac0bbf9742"
+  },
+  {
+    "path": "models/rt_ldr_small.onnx",
+    "mode": "100644",
+    "type": "blob",
+    "sha": "32f9aef1a432aadcb23f83b58ad37c991da52e32",
+    "size": 1272337,
+    "url": "https://api.github.com/repos/pmndrs/denoiser-weights/git/blobs/32f9aef1a432aadcb23f83b58ad37c991da52e32"
+  },
+  {
+    "path": "tzas/LICENSE.txt",
+    "mode": "100644",
+    "type": "blob",
+    "sha": "d645695673349e3947e8e5ae42332d0ac3164cd7",
+    "size": 11358,
+    "url": "https://api.github.com/repos/pmndrs/denoiser-weights/git/blobs/d645695673349e3947e8e5ae42332d0ac3164cd7"
+  }
+]

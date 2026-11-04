@@ -2,6 +2,8 @@ import {decodeFile} from './transfer.js'
 import {isVideo,openVideo,poster,clipRange,exportVideo} from './video.js'
 import {decodePhoto, PHOTO_ACCEPT} from './decode.js'
 import {Presets} from './presets.js'
+import {LibraryHistory} from './library-history.js'
+import {preferences,setPreferences,mountPreferences,displayName,colorLabels} from './preferences.js'
 import {displayedPhotos,findStacks,smartMatch,stackMenu} from './stacks.js'
 import {exportXmp,readXmp,exportPackage} from './xmp.js'
 import {mountSync,synchronize} from './sync.js'
@@ -11,6 +13,7 @@ import * as db from './catalog.js'
 import * as local from './local.js'
 import * as external from './external.js'
 import * as camera from './camera.js'
+import * as sharing from './sharing.js'
 import {cropGesture, geometry, validCrop} from './geometry.js'
 import {drawHistogram,histogram,autoExposure} from './histogram.js'
 import {controls, render, toBlob} from './render.js'
@@ -23,10 +26,16 @@ import {mountOrganization} from './organization-ui.js'
 import {mergePhotos} from './merge.js'
 import {mountMerge} from './merge-ui.js'
 import {exportDng} from './dng.js'
+import {validateOptics,compileOptics,listLensProfiles,matchLensProfiles,lensProfile,straighten} from './optics.js'
+import {mountOptics} from './optics-ui.js'
 import {LOCAL_COMMANDS,updateLocalTools} from './local-tools.js'
 import {createLocalToolsUI,viewToOriginal} from './local-tools-ui.js'
 import {neutralBalance} from './white-balance.js'
+import {validatePoint,pointPanel,sampleColor,clippingOverlay} from './point-color.js'
+import {removeMaskedArea} from './fill.js'
 import {generateAiMask} from './ai-mask.js'
+import {estimateDepth} from './depth.js'
+import {validateDepthSettings} from './depth-effects.js'
 
 const $ = id => document.getElementById(id)
 const option = (value,label) => new Option(label,value)
@@ -34,6 +43,7 @@ let photos=[], albums=[], selected='', scope='all', mode='grid', search='', orde
 let compare=false, film=true, zoom=false, cropping=false, bitmap=null, bitmapId='', queue=Promise.resolve()
 const urls=new Map(), undo=[], redo=[]
 const organization=new Organization()
+const libraryHistory=new LibraryHistory()
 const presets=new Presets()
 let updateOrganization=()=>{}
 let updateMerge=()=>{},updateStacks=()=>{}
@@ -49,13 +59,14 @@ function scheduleSlide(){
 }
 function stopSlides(){clearTimeout(slideTimer);slideTimer=null;document.body.classList.remove('slideshow')}
 async function savePhotoRows(rows){
-  await db.transaction('photos','readwrite',tx=>{for(const row of rows)tx.objectStore('photos').put(row)})
+  await db.withMedia(rows,(packed,commit)=>commit('photos','readwrite',tx=>{for(const row of packed)tx.objectStore('photos').put(row)}))
   const changed=new Map(rows.map(row=>[row.id,row]))
   photos=photos.map(row=>changed.get(row.id)||row)
 }
-let localToolsUI
-let sampling=false, pair=false, inspector=true
-let playingMedia=null,frameTicket=0
+let localToolsUI,opticsUI
+let sampling=false, pair=false, inspector=true, clipping=false,selectedPoint=''
+let updatePoints=()=>{}
+let playingMedia=null,frameTicket=0,sliderFrame=0
 function stopPlayback(){
   playingMedia?.video.pause()
   cancelAnimationFrame(frameTicket)
@@ -98,7 +109,7 @@ function clearSources(){
   stopPlayback();playingMedia?.close();playingMedia=null
   bitmap?.close?.();bitmap=null;bitmapId=''
   for(const id of urls.keys())invalidate(id)
-  undo.length=redo.length=0
+  undo.length=redo.length=0;libraryHistory.clear()
 }
 async function showLibrary(){
   local.leave();clearSources()
@@ -131,7 +142,8 @@ function tile(photo){
   img.src=thumb(photo)
   img.alt=''
   img.loading='lazy'
-  name.textContent=photo.name+(photo.virtual?' · Copy':'')+(photo.stackId?' ▤':'')
+  name.textContent=displayName(photo);name.hidden=!preferences.filenames
+  button.dataset.label=photo.label||''
   button.style.setProperty('--aspect',photo.width&&photo.height?photo.width/photo.height:1)
   button.append(img,name)
   local.observeThumbnail(photo,img,()=>{
@@ -149,6 +161,7 @@ function syncTiles(container,items){
       const node=nodes[i], url=thumb(p)
       node.classList.toggle('selected',organization.selection.has(p.id))
       node.classList.toggle('active',p.id===selected)
+      node.lastElementChild.textContent=displayName(p);node.lastElementChild.hidden=!preferences.filenames;node.dataset.label=p.label||''
       node.setAttribute('aria-pressed',organization.selection.has(p.id))
       if(node.firstChild.src!==url)node.firstChild.src=url
     })
@@ -165,7 +178,9 @@ function paintStage(image, edit){
   if(pair)stage.replaceChildren(render(image,{},edge),preview)
   else stage.replaceChildren(preview)
   localToolsUI?.mount(preview,{image,edit:recipe,enabled:!playingMedia&&!cropping&&!compare&&!sampling&&!pair})
+  opticsUI?.mount(preview,{image,edit:recipe,available:!playingMedia&&!cropping&&!compare&&!sampling&&!pair})
   if($('histogram-panel').open)drawHistogram($('histogram'),histogram(preview))
+  if(clipping)clippingOverlay(preview)
   $('stage').classList.toggle('cropping',cropping)
   $('stage').classList.toggle('zoom',zoom)
 }
@@ -209,8 +224,10 @@ async function draw(){
   $('gallery').dataset.layout=gridLayout
   updateMerge(snapshot())
   localToolsUI?.sync()
+  opticsUI?.sync()
   if(!p){stopPlayback();$('video-bar').hidden=true;return}
   $('rate').value=p.rating
+  $('color-label').value=p.label||''
   $('flag').value=p.flag
   $('keywords').value=p.keywords
   $('delete').textContent=p.deleted?'Restore':'Delete'
@@ -219,7 +236,10 @@ async function draw(){
   $('info').textContent=describe(p)
   $('compare').setAttribute('aria-pressed',compare)
   $('pair').setAttribute('aria-pressed',pair)
-  $('sample').setAttribute('aria-pressed',sampling)
+  $('sample').setAttribute('aria-pressed',sampling==='white')
+  $('remove-mask').disabled=!p.edit.localTools?.masks?.length
+  $('clip-indicator').setAttribute('aria-pressed',clipping)
+  updatePoints(p.edit.pointColors||[],selectedPoint);selectedPoint=''
   $('aspect').value=p.edit.aspect || ''
   for(const input of document.querySelectorAll('[data-control]')){
     input.value=p.edit[input.dataset.control] || 0
@@ -321,8 +341,29 @@ async function applySelection(changes,recordUndo=false){
 }
 async function execute(command,args){
   const p=active()
+  if(['view','local-tool','crop-tool','sample-tool','compare','compare-pair','select','scope','library','local-open','local-browse'].includes(command))opticsUI?.deactivate()
   let result
+  const advance=(command==='rate'||command==='flag')&&(args.advance??preferences.autoAdvance)&&organization.selection.size===1
+  const nextId=advance?visible()[visible().findIndex(row=>row.id===selected)+1]?.id:null
   switch(command){
+    case 'library-undo':case 'library-redo':{
+      if(local.state())throw Error('Open the photo library first')
+      await libraryHistory.replay(command==='library-undo',async(step,key)=>{
+        const byId=new Map(photos.map(p=>[p.id,p]))
+        const rows=step.rows.filter(change=>byId.has(change.id)).map(change=>({...byId.get(change.id),...change[key]}))
+        await db.withMedia(rows,(packed,commit)=>commit(['photos','albums'],'readwrite',tx=>{
+          for(const row of packed)tx.objectStore('photos').put(row)
+          for(const change of step.albums){
+            if(change[key])tx.objectStore('albums').put(change[key])
+            else tx.objectStore('albums').delete(change.id)
+          }
+        }))
+        const updated=new Map(rows.map(row=>[row.id,row]))
+        photos=photos.map(row=>updated.get(row.id)||row);albums=await db.all('albums')
+        if(!['trash','all','picked'].includes(scope)&&!albums.some(a=>a.id===scope))scope='all'
+        organization.resetSelection()
+      });break
+    }
     case 'state':{
       if(!args.summary)return snapshot()
       const photo=active()
@@ -332,6 +373,7 @@ async function execute(command,args){
       const list=visible(),offset=number(args.offset??0,0,Number.MAX_SAFE_INTEGER),limit=number(args.limit??50,1,Number.MAX_SAFE_INTEGER)
       return {total:list.length,offset,photos:list.slice(offset,offset+limit).map(({id,name,rating,flag,width,height,keywords})=>({id,name,rating,flag,width,height,keywords}))}
     }
+    case 'preferences': if(!Object.keys(args).length)return {...preferences};result=setPreferences(args);break
     case 'select-inverse':selected=organization.chooseMany(visible(),visible().filter(row=>!organization.selection.has(row.id)).map(row=>row.id));break
     case 'grid-layout':gridLayout=enumValue(args.layout,['square','mosaic']);localStorage.setItem('grid-layout',gridLayout);mode='grid';break
     case 'stack':case 'auto-stack':{
@@ -374,7 +416,12 @@ async function execute(command,args){
       if(local.state())await showLibrary()
       result=await importFiles([file]);break
     }
-    case 'sample-tool':if(!p)throw Error('Select a photo first');mode='detail';sampling=!sampling;pair=cropping=compare=false;break
+    case 'clipping':clipping=!clipping;mode='detail';break
+    case 'sample-tool':case 'point-tool':{
+      if(!p)throw Error('Select a photo first')
+      const tool=command==='point-tool'?'point':'white'
+      mode='detail';sampling=sampling===tool?false:tool;pair=cropping=compare=clipping=false;break
+    }
     case 'compare-pair':if(!p)throw Error('Select a photo first');mode='detail';pair=!pair;sampling=compare=cropping=zoom=false;break
     case 'sync':{
       if(!globalThis.mygo?.call)throw Error('Sync requires the desktop app')
@@ -386,6 +433,17 @@ async function execute(command,args){
       }
       break
     }
+    case 'lens-profiles':return listLensProfiles(args.query)
+    case 'lens-match':{
+      if(!p||isVideo(p))throw Error('Select a photo to match camera and lens metadata')
+      p.metadata??=await metadata((await original(p.id)).file)
+      return matchLensProfiles(p.metadata)
+    }
+    case 'straighten-tool':{
+      if(!p||isVideo(p))throw Error('Select a photo to straighten')
+      mode='detail';inspector=true;compare=cropping=pair=sampling=false;localToolsUI.deactivate()
+      opticsUI.setMode(enumValue(args.axis??'horizontal',['horizontal','vertical']));break
+    }
     case 'presets':return presets.items
     case 'preset-delete':await presets.remove(args.id);break
     case 'import': if(local.state())await showLibrary();result=await importFiles(args.files);break
@@ -395,6 +453,15 @@ async function execute(command,args){
       if(!local.state())throw Error('Open a local folder first')
       result=await openLocal(local.state().root.id,args.relative||'.');break
     case 'library': await showLibrary();break
+    case 'share-configure': return sharing.configure(args)
+    case 'share-publish':case 'share-reviews':case 'share-revoke':{
+      if(local.state())throw Error('Share an album from Photo library')
+      const album=albums.find(album=>album.id===(args.album||scope))
+      if(!album)throw Error('Select a library album first')
+      if(command==='share-reviews')return sharing.reviews(album.id)
+      if(command==='share-revoke')return sharing.revoke(album.id)
+      return sharing.publish(album,photos.filter(photo=>!photo.deleted&&(photo.albums.includes(album.id)||smartMatch(photo,album.rule))),source,args)
+    }
     case 'tether': return camera.show()
     case 'camera-list': return camera.discover()
     case 'camera-capture':{
@@ -408,7 +475,9 @@ async function execute(command,args){
     case 'external-edit':{
       if(!p||isVideo(p))throw Error('Select a photo for external editing')
       const copy=await execute('export',{format:'image/tiff'})
-      return external.send(copy.blob,copy.filename,p.id)
+      const sent=await external.send(copy.blob,copy.filename,p.id)
+      notice('Save the TIFF in your editor to bring the edited copy back.')
+      return sent
     }
     case 'external-check':{
       const saved=await external.changes(),imported=[]
@@ -452,6 +521,7 @@ async function execute(command,args){
       if(!p)throw Error('Select a photo first')
       mode='detail';inspector=true;pair=sampling=compare=cropping=false
       localToolsUI.setMode(enumValue(args.tool,['off','brush','linear','radial','clone','heal']))
+      opticsUI?.deactivate()
       break
     }
     case 'panel':{
@@ -504,6 +574,38 @@ async function execute(command,args){
         await draw();return snapshot()
       }
       switch(command){
+        case 'optics':case 'lens-apply':case 'optics-reset':case 'straighten':{
+          if(isVideo(p))throw Error('Optics and geometry correction require a still photo')
+          if(args.photoId!==undefined&&args.photoId!==p.id)throw Error('The selected photo changed; optics edit was canceled')
+          await source(p.id)
+          let optics
+          if(command==='optics')optics=validateOptics({...p.edit.optics,...args.changes})
+          if(command==='lens-apply'){
+            const matched=matchLensProfiles(p.metadata),cropFactor=args.cropFactor??(matched.cameras.length===1?matched.cameras[0].cropFactor:undefined)
+            optics=validateOptics({...p.edit.optics,enabled:true,profile:lensProfile(args.id,args.focal??p.metadata?.FocalLength,cropFactor),profileDistortion:true,profileTCA:true})
+          }
+          if(command==='straighten'){
+            const axis=enumValue(args.axis??'horizontal',['horizontal','vertical']),baseAxis=(p.edit.turn||0)%2?(axis==='horizontal'?'vertical':'horizontal'):axis
+            optics=straighten(p,p.edit.optics,args.start,args.end,baseAxis)
+          }
+          if(optics)compileOptics(p,optics)
+          const {optics:previous,...other}=p.edit
+          await replace(p,{edit:optics?{...other,optics}:other});undo.push({id:p.id,edit:p.edit});redo.length=0;compare=cropping=false
+          break
+        }
+        case 'depth-estimate':case 'depth-range':case 'lens-blur':{
+          if(args.photoId!==undefined&&args.photoId!==p.id)throw Error('The selected photo changed; depth operation was canceled')
+          const inputEdit=p.edit,localTools={...p.edit.localTools}
+          let settings
+          if(command==='lens-blur')settings=validateDepthSettings({...localTools.lensBlur,...Object.fromEntries(Object.entries(args).filter(([key])=>key!=='photoId'))})
+          if(!localTools.depth&&(command!=='lens-blur'||settings.enabled))localTools.depth=await estimateDepth(await source(p.id))
+          if(active()?.id!==p.id||active()?.edit!==inputEdit)throw Error('The photo or edits changed; depth operation was canceled')
+          let edit={...p.edit,localTools}
+          if(command==='depth-range')edit=updateLocalTools(edit,'mask.add',{mask:{type:'depth-range',raster:localTools.depth.raster,provenance:localTools.depth.provenance,min:args.min??.2,max:args.max??.5,softness:args.softness??.1,adjustments:args.adjustments??{Exposure:1}}})
+          if(command==='lens-blur')localTools.lensBlur=settings
+          await replace(p,{edit});undo.push({id:p.id,edit:p.edit});redo.length=0;compare=cropping=false
+          await draw();return {depth:localTools.depth?.provenance,metrics:localTools.depth?.metrics,lensBlur:localTools.lensBlur,maskId:command==='depth-range'?edit.localTools.masks.at(-1).id:undefined}
+        }
         case 'ai-mask':{
           if(args.photoId!==undefined&&args.photoId!==p.id)throw Error('The selected photo changed; AI mask was canceled')
           const inputEdit=p.edit,result=await generateAiMask(await source(p.id),{target:args.target,adjustments:args.adjustments})
@@ -516,6 +618,7 @@ async function execute(command,args){
           if(!Number.isInteger(args.value))throw Error('Rating must be an integer')
           number(args.value,0,5);await applySelection(()=>({rating:args.value}));break
         case 'flag': enumValue(args.value,['','pick','reject']);await applySelection(()=>({flag:args.value}));break
+        case 'label':await applySelection(()=>({label:enumValue(args.value,colorLabels)}));break
         case 'keywords': await applySelection(()=>({keywords:String(args.value)}));break
         case 'delete':case 'restore': await applySelection(()=>({deleted:command==='delete'}));break
         case 'membership':{
@@ -584,6 +687,13 @@ async function execute(command,args){
           }
           break
         }
+        case 'remove-mask':{
+          const masks=p.edit.localTools?.masks||[], mask=args.id?masks.find(m=>m.id===args.id):masks.at(-1)
+          if(!mask)throw Error('Create a mask for the area to remove')
+          const algorithm=enumValue(args.algorithm??'ns',['ns','telea'])
+          const edit=await removeMaskedArea(await source(p.id),p.edit,mask,algorithm,number(args.radius??3,.1,100))
+          await replace(p,{edit});undo.push({id:p.id,edit:p.edit});redo.length=0;break
+        }
         case 'preset-save':result=await presets.create(args.name,p.edit);break
         case 'preset-apply':{
           await replace(p,{edit:{...p.edit,...presets.get(args.id).edit}})
@@ -594,6 +704,23 @@ async function execute(command,args){
           const exposure=autoExposure(histogram(render(await source(p.id),{},400)))
           await replace(p,{edit:{...p.edit,Exposure:exposure}})
           undo.push({id:p.id,edit:p.edit});redo.length=0;break
+        }
+        case 'sample-color':{
+          const canvas=render(await source(p.id),p.edit,1280)
+          return {color:sampleColor(canvas,number(args.x,0,1),number(args.y,0,1))}
+        }
+        case 'point-add':case 'point-update':case 'point-remove':{
+          const points=[...(p.edit.pointColors||[])]
+          if(command==='point-add'){
+            const point=validatePoint({id:crypto.randomUUID(),color:args.color,hue:0,saturation:0,luminance:0,range:15})
+            points.push(point);selectedPoint=point.id;sampling=false;result=point
+          }else{
+            const index=points.findIndex(v=>v.id===args.id)
+            if(index<0)throw Error('Color sample not found')
+            if(command==='point-remove')points.splice(index,1)
+            else points[index]=validatePoint({...points[index],...args})
+          }
+          await replace(p,{edit:{...p.edit,pointColors:points}});undo.push({id:p.id,edit:p.edit});redo.length=0;break
         }
         case 'white-balance':{
           const values=neutralBalance(await source(p.id),number(args.x,0,1),number(args.y,0,1))
@@ -629,6 +756,7 @@ async function execute(command,args){
       }
     }
   }
+  if(nextId&&visible().some(row=>row.id===nextId))selected=organization.chooseMany(visible(),[nextId])
   await draw()
   return result??snapshot()
 }
@@ -638,7 +766,9 @@ const ready=Promise.all([db.all('photos'),db.all('albums'),presets.load()]).then
 })
 export function run(command,args={},observe){
   const next=queue.then(()=>ready).then(async()=>{
+    const previous=libraryHistory.checkpoint(command,photos,albums,local.state())
     const result=await execute(command,args)
+    libraryHistory.record(previous,photos,albums)
     const unchangedPoll=command==='external-check'&&!result.imported?.length
     if(!unchangedPoll&&!['state','photos','presets','histogram','preview','export','export-radiance','local-folders','screenshot','tether-devices'].includes(command)){
       window.dispatchEvent(new Event('openlr-change'))
@@ -670,9 +800,11 @@ for(const [group,items] of Object.entries(controls)){
     input.setAttribute('aria-label',key)
     input.oninput=()=>{
       output.value=input.value
-      if(bitmapId===selected){compare=false;paintStage(bitmap,{...active().edit,[key]:Number(input.value)})}
+      const id=selected,value=Number(input.value)
+      cancelAnimationFrame(sliderFrame)
+      sliderFrame=requestAnimationFrame(()=>{if(bitmap&&bitmapId===id&&selected===id&&mode==='detail'){compare=false;paintStage(bitmap,{...active().edit,[key]:value})}})
     }
-    input.onchange=()=>act('edit',{key,value:Number(input.value)})
+    input.onchange=()=>{cancelAnimationFrame(sliderFrame);act('edit',{key,value:Number(input.value)})}
     label.append(key,output,input);details.append(label)
   }
   $('adjustments').append(details)
@@ -702,17 +834,21 @@ for(const id of ['gallery','film']){
 $('grid').onclick=()=>act('view',{mode:'grid'})
 $('detail').onclick=()=>act('view',{mode:'detail'})
 $('stage').onclick=e=>{
+  if(opticsUI?.consumeClick())return
   if(sampling&&e.target.tagName==='CANVAS'){
     const rect=e.target.getBoundingClientRect()
+    if(sampling==='point'){act('point-add',{color:sampleColor(e.target,(e.clientX-rect.left)/rect.width,(e.clientY-rect.top)/rect.height)});return}
     const point=viewToOriginal({x:(e.clientX-rect.left)/rect.width,y:(e.clientY-rect.top)/rect.height},bitmap,active().edit)
-    act('white-balance',point)
+    if(point)act('white-balance',point);else notice('Choose a point inside the corrected source image')
   }else if(!cropping&&!pair)act('zoom')
 }
+$('remove-mask').onclick=()=>{const id=document.querySelector('[aria-label="Local edit selection"]')?.value;act('remove-mask',id?{id}:{})}
 $('sample').onclick=()=>act('sample-tool')
 $('pair').onclick=()=>act('compare-pair')
 $('rate').onchange=e=>act('rate',{value:Number(e.target.value)})
 $('flag').onchange=e=>act('flag',{value:e.target.value})
 $('keywords').onchange=e=>act('keywords',{value:e.target.value})
+$('color-label').onchange=e=>act('label',{value:e.target.value})
 $('delete').onclick=()=>act(active()?.deleted?'restore':'delete')
 $('membership').onchange=e=>act('membership',{album:e.target.value})
 $('compare').onclick=()=>act('compare')
@@ -761,10 +897,12 @@ $('export-dialog').onclose=async e=>{
 document.onkeydown=e=>{
   if(document.querySelector('dialog[open]')||e.target.matches('input,select,textarea'))return
   const key=e.key.toLowerCase(), mod=e.ctrlKey||e.metaKey
-  if(mod&&key==='a')act('select-all')
+  if(!mod&&!preferences.shortcuts&&key!=='escape')return
+  if(mod&&key===',')$('settings').click()
+  else if(mod&&key==='a')act('select-all')
   else if(mod&&key==='c')act('copy-edits')
   else if(mod&&key==='v')act('paste-edits')
-  else if(mod&&key==='z')act(e.shiftKey?'redo':'undo')
+  else if(mod&&key==='z')act(mode==='grid'&&!local.state()?(e.shiftKey?'library-redo':'library-undo'):(e.shiftKey?'redo':'undo'))
   else if(mod&&key==='f')$('search').focus()
   else if(mod&&e.shiftKey&&key==='i')choosePhotos()
   else if(mod&&key==='e'){
@@ -783,10 +921,11 @@ document.onkeydown=e=>{
   else if(mod&&key==='[')$('left').click()
   else if(mod&&key===']')$('right').click()
   else if(!mod&&key==='escape'){stopSlides();act('view',{mode:'grid'})}
-  else if(!mod&&/^[0-5]$/.test(key))act('rate',{value:Number(key)})
-  else if(!mod&&['z','u','x'].includes(key))act('flag',{value:{z:'pick',u:'',x:'reject'}[key]})
+  else if(!mod&&/^Digit[0-5]$/.test(e.code))act('rate',{value:Number(e.code.slice(-1)),...(e.shiftKey?{advance:true}:{})})
+  else if(!mod&&['z','u','x'].includes(key))act('flag',{value:{z:'pick',u:'',x:'reject'}[key],...(e.shiftKey?{advance:true}:{})})
   else if(!mod&&key==='delete')$('delete').click()
   else if(!mod&&key==='\\')act('compare')
+  else if(!mod&&key==='j')act('clipping')
   else if(!mod&&key==='w')act('sample-tool')
   else if(!mod&&key==='c')act('crop-tool')
   else if(!mod&&key==='/')act('film')
@@ -797,13 +936,18 @@ document.onkeydown=e=>{
   }else return
   e.preventDefault()
 }
+updatePoints=pointPanel(act)
+$('clip-indicator').onclick=()=>act('clipping')
+mountPreferences(act)
 mountSync(run,notice)
 local.mount((command,args)=>act(command,args),notice)
 external.mount((command,args)=>run(command,args).catch(error=>{notice(error.message);throw error}),notice)
 camera.mount(run,notice)
+sharing.mount(run,notice)
 ready.catch(e=>notice(e.message))
 updateOrganization=mountOrganization(act)
 updateStacks=stackMenu(act)
 $('layout').onclick=()=>act('grid-layout',{layout:gridLayout==='square'?'mosaic':'square'})
 $('end-slides').onclick=()=>act('slideshow',{stop:true})
 updateMerge=mountMerge(run,notice)
+opticsUI=mountOptics({run,getActive:active,notify:notice})

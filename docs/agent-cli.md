@@ -42,7 +42,13 @@ See [catalog organization](catalog-organization.md) for multi-selection, batch m
 
 `export --format image/x-adobe-dng --output camera.dng` preserves an existing DNG or creates a true 16-bit LinearRaw DNG from a decodable camera RAW. See [DNG export](dng-export.md) for the difference, embedded settings, and validation limits. Rendered images are rejected as RAW sources.
 
+[Optics and geometry](optics-geometry.md) adds `lens-profiles`, `lens-match`, `lens-apply`, `optics`, `optics-reset`, `straighten`, and the GUI `straighten-tool`. Profile matching returns exact metadata candidates for explicit application; corrections use real radial/channel and projective resampling. Original-coordinate local tools and XMP recipes share the same geometry.
+
 ## Shared-session transport
+
+Disk-backed Local commands (`local-folders`, `local-open`, `local-browse`, `library`) are documented in [Local folders](local-folders.md). [External editor](external-editors.md) commands (`external-editor`, `external-edit`, `external-check`) return a stable saved TIFF as a new derived photo. [Tethered capture](tethered-capture.md) adds `camera-list`, `tether`, and `camera-capture`; explicitly enabled camera simulators are always labeled as such.
+
+[Shared albums](shared-albums.md) adds `share-configure`, `share-publish`, `share-reviews`, and `share-revoke`. These commands publish edited previews from the current library album to an independently deployed OpenLR review server and read browser comments/likes back into the same workspace.
 
 The MyGo host writes a session descriptor to the platform user configuration directory, `OpenLR/agent.json` (`%APPDATA%\OpenLR\agent.json` on Windows). `OPENLR_AGENT_FILE` or `--session` selects another descriptor. It contains a loopback URL, bearer token, PID, and protocol version. Do not commit or print the bearer token.
 

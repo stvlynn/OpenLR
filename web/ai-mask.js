@@ -2,7 +2,7 @@ import {AI_TARGETS,modelFor} from './ai-models.js'
 import {runImageWorker} from './image-worker.js'
 import {encodeSoftMask} from './soft-mask.js'
 
-export async function generateAiMask(image,{target='subject',adjustments={Exposure:1}}={}){
+export async function generateAiMask(image,{target='subject',adjustments={}}={}){
   if(!AI_TARGETS.includes(target))throw Error('Unsupported semantic target')
   const model=modelFor(target),canvas=document.createElement('canvas')
   if(target==='sky'){

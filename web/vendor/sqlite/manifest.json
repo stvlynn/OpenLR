@@ -1,0 +1,29 @@
+{
+  "package": "sql.js",
+  "version": "1.15.2",
+  "source": "https://github.com/sql-js/sql.js/tree/v1.15.2",
+  "license": "MIT",
+  "modification": "Added ES module default export after unchanged UMD factory; WASM unchanged",
+  "files": {
+    "sql.js": {
+      "bytes": 45953,
+      "sha256": "19f6fdc6c971499817c4d65d15536d5c6aa462fd20f30d667dde6c4606f9a774"
+    },
+    "sql-wasm.wasm": {
+      "bytes": 685235,
+      "sha256": "0dfeecda2070b36da0cd4f6afa250af9453de528a983770f85b13d5d6b667572"
+    },
+    "LICENSE": {
+      "bytes": 2199,
+      "sha256": "60a3f6e4d7b29b4321359e683b36cf198d24f58e24582070f56e6fa89d5ee2be"
+    },
+    "AUTHORS": {
+      "bytes": 133,
+      "sha256": "2bb11c65286bd0f2919022e119671036ff8d85c6cd1522b6ebcc1362e67f2ce5"
+    },
+    "LICENSE.EMSCRIPTEN": {
+      "bytes": 5093,
+      "sha256": "620a78084fc7ca97c0b5dea9abf891f3ffcadfdbf305276f099c9c4e12fc1d86"
+    }
+  }
+}

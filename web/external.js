@@ -33,11 +33,13 @@ export function mount(run,report){
   const bar=document.createElement('div');bar.className='external-editor'
   const chooseButton=document.createElement('button');chooseButton.textContent='Choose external editor…'
   chooseButton.onclick=()=>run('external-editor')
+  const photoshop=document.createElement('button');photoshop.textContent='Use Photoshop'
+  photoshop.onclick=()=>run('external-editor',{photoshop:true})
   button=document.createElement('button');button.textContent='Edit copy externally'
   button.onclick=()=>run('external-edit')
   const check=document.createElement('button');check.textContent='Check saved copies';check.onclick=()=>run('external-check')
-  for(const control of [chooseButton,button,check])control.disabled=!globalThis.mygo?.call
-  bar.append(chooseButton,button,check);document.querySelector('aside').append(bar)
+  for(const control of [chooseButton,photoshop,button,check])control.disabled=!globalThis.mygo?.call
+  bar.append(chooseButton,photoshop,button,check);document.querySelector('aside').append(bar)
   if(globalThis.mygo?.call){
     call('Editor').then(editor=>{configured=Boolean(editor);button.title=editor||'Choose an external editor first'}).catch(error=>report(error.message))
     let busy=false

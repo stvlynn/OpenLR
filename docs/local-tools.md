@@ -1,5 +1,7 @@
 # Masks and local repairs
 
+Color/luminance ranges, editable add/subtract/intersect groups, real depth range and depth-guided lens blur are documented in [range and depth tools](range-depth-tools.md). Local semantic subject/person/sky/background inference is documented in [AI masks](ai-masks.md).
+
 Open **Masks & local repair** in the editor, choose a tool, and drag on the image. Linear gradients progress from zero at the first point to full strength at the second. Radial gradients begin at the center and fade to zero at the ellipse edge. Brush masks cover the continuous stroke, including the segments between pointer samples. New masks start with +1 EV so coverage is visible. Exposure, contrast, saturation, opacity, feather, inversion, and enable/disable are edited in the inspector; the edit selector chooses an existing recipe, and Remove deletes it. Linear ramps have no separate feather control.
 
 For **Clone**, Alt-click the source (or click Choose repair source, then the image), and drag the target stroke. The source-to-target offset remains fixed along that stroke. **Heal texture** samples the same source but matches its weighted mean RGB color to the destination before blending; this preserves source texture while reducing tonal seams. It is an original, deterministic mean-matching implementation, not generative removal, Poisson healing, or automatic object selection. Sources outside the image are skipped instead of smearing an edge. Sources outside the active crop still work.

@@ -77,6 +77,7 @@ export function observeThumbnail(photo,img,onReady){
 export function mount(run,onError){
   dispatch=run;report=onError
   section=document.createElement('section');section.className='local-folders'
+  section.hidden=!globalThis.mygo?.call
   document.querySelector('nav').prepend(section)
   drawNavigation()
   if(globalThis.mygo?.call)call('Folders').then(value=>{roots=value;drawNavigation()}).catch(error=>report(error.message))
@@ -84,13 +85,13 @@ export function mount(run,onError){
 
 export function drawNavigation(){
   if(!section)return
-  const heading=document.createElement('h2');heading.textContent='Storage'
+  const heading=document.createElement('h2');heading.textContent='Local'
   const button=(text,command,args={})=>{
     const btn=document.createElement('button');btn.textContent=text;btn.onclick=()=>dispatch(command,args)
     return btn
   }
-  const library=button('Photo library','library');library.setAttribute('aria-pressed',!folder)
-  const choose=button('Open local folder…','local-open');choose.disabled=!globalThis.mygo?.call
+  const library=button('Photo library','library');library.hidden=!folder
+  const choose=button('Open folder…','local-open');choose.disabled=!globalThis.mygo?.call
   choose.title=choose.disabled?messages.desktop:'Read photos in place; originals are not copied'
   section.replaceChildren(heading,library,choose)
   for(const root of roots){

@@ -6,7 +6,7 @@ Date: 2026-11-05. Actual environment: Windows, Chrome 155 headless, AMD Ryzen 7 
 
 `ai/candidates.json` records inspected model revisions, byte sizes and published labels. U²-NetP is a 4.575 MB Apache-2.0 salient-object model; OpenCV Zoo PPHumanSeg is a 6.164 MB Apache-2.0 person model with explicit directory/weight licensing. They answer different questions and are not relabeled as one generic semantic classifier.
 
-The optional sky provider is Xenova's quantized Facebook DETR ResNet-50 panoptic ONNX, 44,483,407 bytes at `ea24b2d4e0bfae31f0a1299ba3fb892a2df064de`, inherited Apache-2.0 model terms. FP32/FP16 variants are 172,282,717 / 86,559,030 bytes; none are redundantly shipped. MIT sky-specific U²-Net candidates (175.997 / 88.085 MB) were assessed but not used for fake results. NVIDIA SegFormer's original non-commercial use restriction excluded it.
+The selected optional sky provider is Xenova's **FP32** Facebook DETR ResNet-50 panoptic ONNX, 172,282,717 bytes at `ea24b2d4e0bfae31f0a1299ba3fb892a2df064de`, inherited Apache-2.0 model terms. The 44,483,407-byte quantized model was evaluated and rejected for poor coverage/artifacts. No sky weight is shipped in the application bundle. MIT sky-specific U²-Net candidates (175.997 / 88.085 MB) were assessed. NVIDIA SegFormer's original non-commercial use restriction excluded it.
 
 The Hugging Face configuration labels **157** `sky-other`, but that legacy table does not correctly describe the panoptic weight's original COCO category IDs. Using it gave no sky (selected-class probabilities about 10⁻⁹); this failure is preserved in `ai/benchmark-sky-legacy-label.json`. Original DETR training uses annotation `category_id` directly; the original COCO table gives **187 = sky-other-merged**, **1 = person**. The exact taxonomy is retained as `web/models/COCO-PANOPTIC-CATEGORIES.json`, from revision `7bb4655548f98f3fedc07bf37e9040a992b054b0`. Correct category 187 yields a real sky query with confidence 0.9991 on the SpaceX photo.
 
@@ -22,11 +22,13 @@ On the NASA astronaut, standard-normalization interior-person scores were 0.9997
 
 CPU timing varied with load: early warm U²-NetP was 1.274 s and a later pass 2.253 s; warm PPHumanSeg 52–54 ms. The earlier full run measured Sky at 2.595 s (320 short edge) / 6.386 s (512). Latest sky-only results are in the separate JSON. Load costs are reported separately; ordinary per-job Workers incur load again. These observations are machine/fixture-specific, not latency guarantees.
 
-Qualitative results and manual probes expose fine-object/tower limitations. Region rectangles identify open sky and solid rocket/platform interiors; they are not exhaustive annotations. There is no dense ground truth, validation-set IoU, or cross-camera generalization claim. The production 320/640 resize policy balances the observed latency/coverage; larger input is not assumed to improve this quantized export.
+The final FP32 ablation is `ai/benchmark-sky-fp32.json`. At 320 short edge, standard normalization yielded sky-region coverage 0.98592 / non-sky 0.24199 and inference 3.101 s. At **512** short edge it yielded 0.999989 / 0.012544 and 7.537 s. Omitting normalization produced no accepted sky query at either size. Production uses short-edge 512 / long-edge maximum 1024. Quantized 320 probes were 0.5637 / 0.2955; quantized 512 showed serious artifacts. Model precision and correct preprocessing mattered more than package size.
+
+Qualitative results and manual probes still expose fine-object/tower limitations. Rectangles identify open sky and solid rocket/platform interiors; they are not exhaustive annotations. There is no dense ground truth, validation-set IoU, or cross-camera generalization claim.
 
 ![Actual model comparison](ai/qualitative.png)
 
-The full figure originally recorded independent-sigmoid sky results; `ai/sky-qualitative.png` and `ai/benchmark-sky.json` contain the current panoptic competition result. This distinction keeps intermediate ablations separate from acceptance evidence.
+The full figure originally recorded independent-sigmoid sky results. `ai/sky-qualitative.png` and `ai/benchmark-sky.json` contain quantized panoptic competition. **`ai/sky-qualitative-fp32.png` and `ai/benchmark-sky-fp32.json` are final-provider evidence.** This distinction keeps intermediate ablations separate from acceptance evidence. Browser tests exposed Chromium's serialized IndexedDB value limit (~133 MB); native integration exposed ephemeral WKWebView Blob-write failures. The final cache uses atomic 16 MB ArrayBuffer chunks and passes restart/offline reuse with Blob writes explicitly rejected in the test environment.
 
 ## Acceptance
 

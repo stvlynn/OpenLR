@@ -1,0 +1,20 @@
+[
+  {
+    "id": "oidn",
+    "file": "oidn-rt-ldr-small.onnx",
+    "url": "https://raw.githubusercontent.com/pmndrs/denoiser-weights/24f30f6b04fc6e8c3b1b1993227d230d3a9344f1/models/rt_ldr_small.onnx",
+    "revision": "24f30f6b04fc6e8c3b1b1993227d230d3a9344f1",
+    "license": "Apache-2.0",
+    "bytes": 1272337,
+    "sha256": "16436607277968bbca20bb3deac330eeaec349f82b3dadcf2242dd7b2b1b7e0c"
+  },
+  {
+    "id": "espcn",
+    "file": "espcn-x3.onnx",
+    "url": "https://huggingface.co/onnxmodelzoo/super-resolution-10/resolve/395472c4b6b92f788357237983d83fd913cfe7e3/super-resolution-10.onnx",
+    "revision": "395472c4b6b92f788357237983d83fd913cfe7e3",
+    "license": "apache-2.0",
+    "bytes": 240078,
+    "sha256": "85f36ff88cc504a24af5e0602148bc56a8aa09a58eca8c0da2756f3e8186035e"
+  }
+]

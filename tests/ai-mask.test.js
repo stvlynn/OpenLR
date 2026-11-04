@@ -34,6 +34,7 @@ test('real local subject/person inference, UI, original preservation and persist
   const browser=await chromium.launch({channel:process.env.CHROME_CHANNEL||'chrome',headless:true})
   t.after(()=>browser.close())
   const page=await browser.newPage({viewport:{width:1400,height:1000}}),url='http://127.0.0.1:'+server.address().port
+  await page.addInitScript(()=>{const put=IDBObjectStore.prototype.put;IDBObjectStore.prototype.put=function(value,...args){if(this.name==='weights'&&(value instanceof Blob||value?.bytes instanceof Blob))throw Error('Error preparing Blob/File data to be stored in object store');return put.call(this,value,...args)}})
   await page.goto(url)
   await page.evaluate(async()=>{
     const {run}=await import('./app.js'),file=new File([await(await fetch('./fixtures/ai/astronaut.png')).blob()],'astronaut.png',{type:'image/png'})

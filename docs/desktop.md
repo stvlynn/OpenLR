@@ -15,6 +15,8 @@ Windows 10 needs the [WebView2 runtime](https://developer.microsoft.com/microsof
 
 ## Native boundary
 
+Native adapters for [Local folders](local-folders.md), [external editor roundtrips](external-editors.md), [tethered capture](tethered-capture.md) and [shared album publication](shared-albums.md) all route through the same GUI command dispatcher and agent transport. Their separate documentation records filesystem/network boundaries and their actual validation scope.
+
 `saveExport(blob, filename)` in `web/desktop.js` returns `true` after completion, `false` when a native save dialog is canceled, and throws on failure. It uses `Desktop.BeginExport`, `WriteExport`, `FinishExport` and `CancelExport` in MyGo. Browser preview uses an ordinary Blob download. The transfer uses bounded-memory chunks and has no fixed total size cap. Temporary files protect an existing destination until transfer completion; the file replacement operation follows the host filesystem's semantics.
 
 The host's local agent endpoint is recorded in `os.UserConfigDir()/OpenLR/agent.json` (on Windows `%APPDATA%/OpenLR/agent.json`), or the path in `OPENLR_AGENT_FILE`. Its JSON fields are `version`, `url`, `token` and `pid`. Requests must send `Authorization: Bearer <token>`; the endpoint listens only on a random loopback port. `GET /health` returns availability. `POST /command` accepts `{command,args}`, waits for `web/agent.js` to run the command on live application state, and returns that bridge's JSON response. A pending request ends when the GUI replies, the client disconnects, or the app closes. Connection data is local machine state and must not be committed or shared.

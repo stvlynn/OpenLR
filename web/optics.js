@@ -124,11 +124,12 @@ export function compileOptics(image,value={}){
     if(h[6]*x+h[7]*y+h[8]<=0.05)throw Error('Perspective crosses the image horizon; reduce the transform')
     if(h===backward)radius=Math.max(radius,Math.hypot(...project(h,x,y)))
   }
-  let previous=0
+  let previous=0,previousRed=0,previousBlue=0
   for(let i=1;i<=128;i++){
     const r=radius*i/128,d=radial(r)
-    if(!Number.isFinite(d)||d<=previous||[0,2].some(channel=>!(tcaFactor(d,channel)>0)))throw Error('Lens parameters produce a folded or invalid image; reduce distortion or perspective')
-    previous=d
+    const mappedRed=d*tcaFactor(d,0),mappedBlue=d*tcaFactor(d,2)
+    if(!Number.isFinite(d)||d<=previous||!Number.isFinite(mappedRed)||!Number.isFinite(mappedBlue)||mappedRed<=previousRed||mappedBlue<=previousBlue)throw Error('Lens parameters produce a folded or invalid image; reduce distortion or perspective')
+    previous=d;previousRed=mappedRed;previousBlue=mappedBlue
   }
   const active=enabled&&Boolean(distortion||tca||Object.keys(OPTICS_CONTROLS).some(key=>v(key)!==OPTICS_CONTROLS[key].initial))
   const normalized=(x,y)=>({x:x/(2*rx)+0.5,y:y/(2*ry)+0.5})
@@ -188,6 +189,7 @@ export function renderOpticsSource(image,recipe,reference=image,maxEdge=Infinity
   return canvas
 }
 export function straighten(image,recipe,start,end,axis='horizontal'){
+  if(!['horizontal','vertical'].includes(axis))throw Error('Expected a horizontal or vertical reference axis')
   const map=compileOptics(image,recipe),a=map.fromOriginal(start),b=map.fromOriginal(end)
   if(!a||!b||Math.hypot((a.x-b.x)*image.width,(a.y-b.y)*image.height)<2)throw Error('Choose two distinct points on a real image line')
   const angle=Math.atan2((b.y-a.y)*image.height,(b.x-a.x)*image.width)*180/Math.PI

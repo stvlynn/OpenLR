@@ -1,0 +1,25 @@
+# Lens calibration and perspective evidence
+
+Reviewed 2026-11-05. This record distinguishes mathematical/source evidence from product behavior. OpenLR does not copy proprietary Lightroom code, calibration assets or UI strings.
+
+## Primary sources
+
+- Lensfun repository pinned to [`bc5615d6278cb5fb75dd53e74015367453d5591d`](https://github.com/lensfun/lensfun/tree/bc5615d6278cb5fb75dd53e74015367453d5591d). The bundled original `compact-canon.xml`, `slr-canon.xml`, `slr-nikon.xml` and `mil-sony.xml` are separately licensed calibration database material under **CC BY-SA 3.0**, with the original `data/COPYING.CC_BY-SA_3.0` retained. Lensfun software's LGPL/GPL terms do not replace the database license.
+- [Lensfun calibration element documentation](https://lensfun.github.io/manual/v0.3.2/elem_calibration.html) and [distortion calibration tutorial](https://lensfun.github.io/calibration-tutorial/lens-distortion.html) define radial models, calibration focal lengths and normalization. Source inspection of modifier distortion/TCA calculations confirmed model direction and focal-preserving coefficient normalization. The application implements the equations independently in JavaScript; no Lensfun C/C++ or lensfunpy code is redistributed.
+- Context7 `/letmaik/lensfunpy` documentation was queried for `Database.find_cameras`, `find_lenses`, `Modifier.initialize`, `apply_geometry_distortion`, and `apply_subpixel_geometry_distortion`. It confirms separate geometry and per-channel coordinate remapping and the need for actual crop/focal inputs. It is an integration reference; OpenLR does not depend on Python or claim bit-identical Lensfun interpolation.
+- Adobe's [perspective correction lesson](https://www.adobe.com/learn/lightroom-cc/web/perspective-correction), [straightening/perspective lesson](https://www.adobe.com/learn/lightroom-cc/web/straighten-photos-perspective-correction) and [crop/straighten lesson](https://www.adobe.com/learn/lightroom-cc/web/crop-straighten-photos-lightroom-cc) establish the user-facing distinction between manual geometry, guided references and automatic correction. OpenLR implements manual controls and an actual two-point rotation solve. It does not label them Auto or claim Adobe algorithm equivalence.
+- Read-only local Lightroom `TranslatedStrings.txt` inspection found manual lens distortion and perspective aspect/horizontal/rotate/scale/vertical/offset labels (lines 324, 347–354, 477, 482–487) and guided/auto labels (705–711). This static label evidence only confirms feature vocabulary; it is not runtime or algorithm evidence. No Adobe resource was imported.
+
+## Implemented model
+
+The Lensfun source uses Hugin-normalized radius: a unit radius reaches the midpoint of the long image edge (half the short dimension). For distortion, poly3 is `r_d = r_u * (1-k1+k1*r_u²)`, poly5 is `r_d = r_u * (1+k1*r_u²+k2*r_u⁴)`, and PTLens is `r_d = r_u * (a*r_u³+b*r_u²+c*r_u+1-a-b-c)`. The focal-preserving mapping removes the constant central scale: poly3 uses `k1/(1-k1)³`; PTLens uses `a/d⁴`, `b/d³`, `c/d²` with `d=1-a-b-c`. Poly5 has central scale one.
+
+Current/calibration sensor scaling uses `calibrationCrop/currentCrop * hypot(calibrationAspect,1)/hypot(currentAspect,1)`. Linear TCA has red/blue magnification `kr/kb`; polynomial TCA uses per-channel `b*r²+c*r+v`, applied at distortion-mapped radius. Manual radial and channel-scale residuals then compose with these sampled coefficients. Only monotone, finite maps that cover the necessary canvas radius are accepted. Interpolation is explicitly linear between adjacent same-model focal samples, rather than claiming Lensfun's complete interpolation implementation.
+
+Projective correction is an invertible homography with transparent out-of-source sampling. The green/reference map is the canonical coordinate system for local tools; color-channel displacement must not move a brush's stored original position. Crop/flip/quarter-turn are composed around that shared mapping. Synthetic line and boundary tests exercise those invariants independently of UI screenshots.
+
+## Real fixture evidence and limits
+
+The CC0 Canon PowerShot G1 CRW from raw.pixls.us sample 2073 is decoded by LibRaw. Its [public EXIF report](https://raw.pixls.us/getfile.php/2073/exif/crw_1693.crw.exif.txt) identifies Canon PowerShot G1 and actual focal length **14.6 mm** (not its 35 mm equivalent). The current exifr parser does not expose these older CIFF tags. The browser test therefore verifies zero invented matches and manually selects the G1 Standard profile, focal 14.6 and crop 4.843 before measuring a changed preview and persisted provenance. This test is a real RAW integration check, not a chart-derived measurement of that physical lens's residual distortion.
+
+Not implemented: automatic scene/lens calibration, multi-line perspective optimization, fisheye projection conversion, ACM models, Lensfun vignetting or optical-center offsets. Focus-dependent variation, decoder-specific sensor crops and every physical profile require further measured validation. Documentation and UI expose the supported subset and retain missing calibration as missing.

@@ -1,4 +1,5 @@
 import {geometry} from './geometry.js'
+import {filledSource} from './fill.js'
 import {renderLocalSource} from './local-tools.js'
 import {renderOpticsSource} from './optics.js'
 import {createMixer, mixerControls, spatialEffects, toneCurve} from './color.js'
@@ -22,7 +23,8 @@ export function render(image, edit={}, maxSize=Infinity) {
   const geom=geometry(image,edit,maxSize)
   const {x,y,w,h,width,height,turn,flip}=geom
   const sourceEdge=Math.max(width*image.width/w,height*image.height/h)
-  const localSource=renderOpticsSource(renderLocalSource(image,edit.localTools,sourceEdge),edit.optics,image,sourceEdge)
+  const base=filledSource(image,edit.fills,sourceEdge)
+  const localSource=renderOpticsSource(renderLocalSource(base,edit.localTools,sourceEdge),edit.optics,image,sourceEdge)
   const sourceScaleX=localSource.width/image.width,sourceScaleY=localSource.height/image.height
   canvas.width = turn%2 ? height : width
   canvas.height = turn%2 ? width : height
@@ -31,7 +33,7 @@ export function render(image, edit={}, maxSize=Infinity) {
   ctx.rotate(turn*Math.PI/2)
   ctx.scale(flip ? -1 : 1,1)
   ctx.drawImage(localSource,x*sourceScaleX,y*sourceScaleY,w*sourceScaleX,h*sourceScaleY,-width/2,-height/2,width,height)
-  if (!Object.values(controls).some(group=>Object.keys(group).some(key=>edit[key]))) return canvas
+  if (!edit.pointColors?.length&&!Object.values(controls).some(group=>Object.keys(group).some(key=>edit[key]))) return canvas
   const pixels=ctx.getImageData(0,0,canvas.width,canvas.height), data=pixels.data
   const value = name => (edit[name] || 0)/100
   const gain=2**(edit.Exposure || 0), slope=2**value('Contrast')
@@ -39,7 +41,17 @@ export function render(image, edit={}, maxSize=Infinity) {
   const warmth=value('Temperature'), tint=value('Tint'), sat=value('Saturation'), vib=value('Vibrance')
   const mixer=createMixer(edit), curve=toneCurve(edit)
   const redGain=gain*2**warmth,greenGain=gain*2**(-tint/2),blueGain=gain*2**(-warmth)
-  for (let i=0;i<data.length;i+=4) {
+  if(!shadows&&!lights&&!white&&!black&&!sat&&!vib){
+    // With no luminance-dependent adjustments each channel is independent.
+    // Apply the same linear-light affine transform once per possible input.
+    if(redGain!==1||greenGain!==1||blueGain!==1||slope!==1){
+      const [red,green,blue]=[redGain,greenGain,blueGain].map(channelGain=>
+        Uint8ClampedArray.from(linear,v=>encode((v*channelGain-.18)*slope+.18)))
+      for(let i=0;i<data.length;i+=4){
+        data[i]=red[data[i]];data[i+1]=green[data[i+1]];data[i+2]=blue[data[i+2]]
+      }
+    }
+  }else for (let i=0;i<data.length;i+=4) {
     const r=linear[data[i]]*redGain, g=linear[data[i+1]]*greenGain, b=linear[data[i+2]]*blueGain
     const lum=0.2126*r+0.7152*g+0.0722*b, y=Math.min(1,lum)
     const shift=shadows*y*(1-y)**3*2+lights*y**3*(1-y)*2+white*y**4*0.35+black*(1-y)**4*0.12

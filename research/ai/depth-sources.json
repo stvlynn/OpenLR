@@ -1,0 +1,18 @@
+{
+  "upstreamRevision": "a561b849ebae10a6f5ef49e26c83cbbcd36c71bf",
+  "modelRevision": "03876f8651c73a60fe4c2c48294e09fcb6838fcf",
+  "sources": [
+    {
+      "url": "https://raw.githubusercontent.com/DepthAnything/Depth-Anything-V2/a561b849ebae10a6f5ef49e26c83cbbcd36c71bf/LICENSE",
+      "target": "web/models/LICENSE.DepthAnythingV2"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/DepthAnything/Depth-Anything-V2/a561b849ebae10a6f5ef49e26c83cbbcd36c71bf/README.md",
+      "target": "research/ai/README.DepthAnythingV2.md"
+    },
+    {
+      "url": "https://huggingface.co/depth-anything/Depth-Anything-V2-Small/resolve/03876f8651c73a60fe4c2c48294e09fcb6838fcf/README.md",
+      "target": "web/models/README.DepthAnythingV2Small.md"
+    }
+  ]
+}
