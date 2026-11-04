@@ -424,6 +424,9 @@ async function draw() {
     $('play-video').textContent = video.video.paused ? 'Play' : 'Pause'
   }
 }
+function cropDraft() {
+  return cropping && cropSurface.owner === selected ? { ...cropSurface.box } : null
+}
 function snapshot() {
   const items = visible().map(({ thumbnail, ...p }) => p)
   return {
@@ -449,6 +452,7 @@ function snapshot() {
     pair,
     sampling,
     cropping,
+    cropDraft: cropDraft(),
     film,
     zoom,
     albums,
@@ -604,6 +608,7 @@ async function execute(command, args) {
         mode,
         visibleCount: visible().length,
         selectionCount: organization.selection.size,
+        cropDraft: cropDraft(),
         photo: photo
           ? {
               id: photo.id,
@@ -1070,6 +1075,10 @@ async function execute(command, args) {
       else await document.documentElement.requestFullscreen()
       break
     }
+    case 'crop-nudge':
+      if (!cropping || !p || cropSurface.owner !== p.id) throw Error('Open the crop tool first')
+      cropSurface.nudge(args.dx, args.dy)
+      return { cropDraft: cropDraft() }
     case 'crop-cancel':
       cropping = false
       cropSurface.reset()
@@ -1665,7 +1674,7 @@ export function run(command, args = {}, observe) {
           'migration-report'
         ].includes(command)
       ) {
-        window.dispatchEvent(new Event('openlr-change'))
+        notifyWorkspaceChange()
       }
       return observe ? observe(result, snapshot()) : result
     })
@@ -1737,7 +1746,10 @@ $('xmp-file').onchange = async (e) => {
 }
 $('crop-tool').onclick = () => act('crop-tool')
 $('clear-crop').onclick = () => act('edit', { key: 'crop', value: null })
-const cropSurface = new CropSurface($('stage'), () => act('crop-tool'))
+function notifyWorkspaceChange() {
+  window.dispatchEvent(new Event('openlr-change'))
+}
+const cropSurface = new CropSurface($('stage'), () => act('crop-tool'), notifyWorkspaceChange)
 async function choosePhotos() {
   if (!globalThis.mygo?.call) {
     $('files').click()
@@ -1905,10 +1917,10 @@ document.onkeydown = (e) => {
   else if (cropping && key === 'enter') act('crop-tool')
   else if (cropping && key.startsWith('arrow')) {
     const step = e.shiftKey ? 10 : 1
-    cropSurface.nudge(
-      key === 'arrowleft' ? -step : key === 'arrowright' ? step : 0,
-      key === 'arrowup' ? -step : key === 'arrowdown' ? step : 0
-    )
+    act('crop-nudge', {
+      dx: key === 'arrowleft' ? -step : key === 'arrowright' ? step : 0,
+      dy: key === 'arrowup' ? -step : key === 'arrowdown' ? step : 0
+    })
   } else if (mod && key === ',') $('settings').click()
   else if (mod && key === 'a') act('select-all')
   else if (mod && key === 'c') act('copy-edits')

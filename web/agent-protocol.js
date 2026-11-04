@@ -726,6 +726,14 @@ export const definitions = {
   histogram: entry('Return RGB and luminance bin counts sampled from the current edited image'),
   'auto-tone': entry('Set exposure using the median luminance of the original'),
   'crop-tool': entry('Open the crop rectangle tool, or commit a drawn rectangle'),
+  'crop-nudge': entry(
+    'Move the open crop draft by preview pixels',
+    {
+      dx: { type: 'integer', description: 'Horizontal preview pixels, positive to the right' },
+      dy: { type: 'integer', description: 'Vertical preview pixels, positive downward' }
+    },
+    ['dx', 'dy']
+  ),
   'crop-cancel': entry('Discard the uncommitted crop rectangle'),
   reset: entry('Reset all selected-photo edits'),
   undo: entry('Undo an edit on the selected photo in the current GUI session'),

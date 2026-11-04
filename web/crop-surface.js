@@ -1,18 +1,23 @@
 import { geometry } from './geometry.js'
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value))
 export class CropSurface {
-  constructor(stage, finish) {
+  constructor(stage, finish, notify) {
     this.stage = stage
     this.finish = finish
     this.changed = false
     stage.addEventListener('pointerdown', (e) => this.start(e))
     stage.addEventListener('pointermove', (e) => this.move(e))
     stage.addEventListener('pointerup', (e) => {
-      if (this.drag && e.pointerId === this.drag.pointer) this.drag = null
+      if (this.drag && e.pointerId === this.drag.pointer) {
+        const moved = this.drag.box !== this.box
+        this.drag = null
+        if (moved) notify()
+      }
     })
     stage.addEventListener('pointercancel', () => {
       if (this.drag) {
         this.box = this.drag.box
+        this.changed = this.drag.changed
         this.drag = null
         this.draw()
       }
@@ -80,10 +85,10 @@ export class CropSurface {
     )
       return
     const p = this.point(e),
-      box = { ...this.box },
+      box = this.box,
       full = box.w > 0.999 && box.h > 0.999
     const grip = e.target.dataset.grip || (e.target === this.canvas || full ? 'new' : 'move')
-    this.drag = { pointer: e.pointerId, p, box, grip }
+    this.drag = { pointer: e.pointerId, p, box, grip, changed: this.changed }
     this.stage.setPointerCapture(e.pointerId)
     e.preventDefault()
   }
@@ -132,6 +137,7 @@ export class CropSurface {
     this.draw()
   }
   nudge(dx, dy) {
+    if (this.drag) throw Error('Finish dragging the crop rectangle first')
     this.box = {
       ...this.box,
       x: clamp(this.box.x + dx / this.canvas.width, 0, 1 - this.box.w),

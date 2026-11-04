@@ -28,7 +28,12 @@ test('draw, resize, move, cancel and commit a crop using the workspace handles',
     await page.mouse.move(x2, y2, { steps: 4 })
     await page.mouse.up()
   }
+  await page.evaluate(() => {
+    window.dragRevisions = 0
+    window.addEventListener('openlr-change', () => window.dragRevisions++)
+  })
   await drag(canvas.x + 40, canvas.y + 30, canvas.x + 240, canvas.y + 210)
+  assert.equal(await page.evaluate(() => window.dragRevisions), 1)
   const grip = await surface.locator('[data-grip=se]').boundingBox()
   await drag(grip.x + 5, grip.y + 5, grip.x + 45, grip.y + 35)
   await drag(canvas.x + 120, canvas.y + 100, canvas.x + 160, canvas.y + 120)
@@ -40,8 +45,17 @@ test('draw, resize, move, cancel and commit a crop using the workspace handles',
   assert.ok(Math.abs(crop.w - 0.6) < 0.015 && Math.abs(crop.h - 0.7) < 0.015)
   await page.keyboard.press('c')
   await surface.waitFor()
+  const draft = () =>
+    page.evaluate(async () => (await window.openlr.run('state', { summary: true })).cropDraft)
+  const initial = await draft()
   await page.keyboard.press('ArrowRight')
+  const nudged = await draft()
+  assert.ok(nudged.x > initial.x)
+  assert.equal(nudged.y, initial.y)
+  const reversed = await page.evaluate(() => window.openlr.run('crop-nudge', { dx: -1, dy: 0 }))
+  assert.ok(Math.abs(reversed.cropDraft.x - initial.x) < 1e-9)
   await page.keyboard.press('Escape')
   await surface.waitFor({ state: 'detached' })
+  assert.equal(await draft(), null)
   assert.deepEqual((await recipe()).crop, crop)
 })
