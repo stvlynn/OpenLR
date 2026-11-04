@@ -1,0 +1,21 @@
+{
+  "name": "openlr",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/*.test.js",
+    "desktop": "node scripts/desktop.mjs dev",
+    "build:desktop": "node scripts/desktop.mjs build",
+    "doctor": "node scripts/desktop.mjs doctor"
+  },
+  "devDependencies": {
+    "playwright-core": "1.56.1"
+  },
+  "dependencies": {
+    "@colorhythm/libraw-wasm": "1.1.1"
+  },
+  "bin": {
+    "openlr": "cli/openlr.mjs"
+  },
+  "license": "AGPL-3.0-only"
+}

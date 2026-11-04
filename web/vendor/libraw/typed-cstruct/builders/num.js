@@ -1,0 +1,91 @@
+import { readBool, readChar, readF32, readF64, readI8, readI16, readI32, readI64, readI128, readU8, readU16, readU32, readU64, readU128, writeBool, writeChar, writeF32, writeF64, writeI8, writeI16, writeI32, writeI64, writeI128, writeU8, writeU16, writeU32, writeU64, writeU128, } from "../utils.js";
+export const u8 = {
+    size: 1,
+    read: readU8,
+    write: writeU8,
+};
+export const i8 = {
+    size: 1,
+    read: readI8,
+    write: writeI8,
+};
+export const u16 = {
+    size: 2,
+    read: readU16,
+    write: writeU16,
+};
+export const i16 = {
+    size: 2,
+    read: readI16,
+    write: writeI16,
+};
+export const u32 = {
+    size: 4,
+    read: readU32,
+    write: writeU32,
+};
+export const i32 = {
+    size: 4,
+    read: readI32,
+    write: writeI32,
+};
+export const u64 = {
+    size: 8,
+    read: readU64,
+    write: writeU64,
+};
+export const i64 = {
+    size: 8,
+    read: readI64,
+    write: writeI64,
+};
+export const u128 = {
+    size: 16,
+    read: readU128,
+    write: writeU128,
+};
+export const i128 = {
+    size: 16,
+    read: readI128,
+    write: writeI128,
+};
+export const f32 = {
+    size: 4,
+    read: readF32,
+    write: writeF32,
+};
+export const f64 = {
+    size: 8,
+    read: readF64,
+    write: writeF64,
+};
+export const bool = {
+    size: 1,
+    read: readBool,
+    write: writeBool,
+};
+export const char = {
+    size: 1,
+    read: readChar,
+    write: writeChar,
+};
+export function enumLike(realType, variants) {
+    return {
+        size: realType.size,
+        read(opts, ctx) {
+            const value = realType.read(opts, ctx);
+            const variant = Object.entries(variants).find(([_, v]) => v === value)?.[0];
+            if (variant === undefined) {
+                throw new Error(`Unknown enum value: ${value}`);
+            }
+            return variant;
+        },
+        write(value, opts, ctx) {
+            const variant = variants[value];
+            if (variant === undefined) {
+                throw new Error(`Unknown enum variant: ${String(value)}`);
+            }
+            return realType.write?.(variant, opts, ctx);
+        },
+    };
+}

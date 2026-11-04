@@ -1,0 +1,9 @@
+node_modules/
+*.exe
+build/
+test-results/
+.DS_Store
+.tools/
+.mygo/
+*.syso
+.workspace/

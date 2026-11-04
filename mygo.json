@@ -1,0 +1,15 @@
+{
+  "name": "OpenLR",
+  "slug": "openlr",
+  "identifier": "app.openlr.desktop",
+  "version": "0.1.0",
+  "frontendDist": "web",
+  "bindings": ".mygo/bindings.ts",
+  "out": "build",
+  "macos": { "minimumSystemVersion": "12.0" },
+  "linux": {
+    "comment": "Local photo editing workspace",
+    "categories": ["Graphics", "Photography"],
+    "command": "openlr"
+  }
+}

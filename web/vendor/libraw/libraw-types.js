@@ -1,0 +1,836 @@
+import * as __typ from './typed-cstruct/index.js';
+export function INT64() {
+    return __typ.i64;
+}
+export function LibRaw_image_formats() {
+    return __typ.enumLike(__typ.u32, {
+        LIBRAW_IMAGE_BITMAP: 2,
+        LIBRAW_IMAGE_H265: 4,
+        LIBRAW_IMAGE_JPEG: 1,
+        LIBRAW_IMAGE_JPEGXL: 3,
+    });
+}
+export function LibRaw_internal_thumbnail_formats() {
+    return __typ.enumLike(__typ.u32, {
+        LIBRAW_INTERNAL_THUMBNAIL_DNG_YCBCR: 10,
+        LIBRAW_INTERNAL_THUMBNAIL_JPEG: 4,
+        LIBRAW_INTERNAL_THUMBNAIL_JPEGXL: 11,
+        LIBRAW_INTERNAL_THUMBNAIL_KODAK_RGB: 3,
+        LIBRAW_INTERNAL_THUMBNAIL_KODAK_THUMB: 1,
+        LIBRAW_INTERNAL_THUMBNAIL_KODAK_YCBCR: 2,
+        LIBRAW_INTERNAL_THUMBNAIL_LAYER: 5,
+        LIBRAW_INTERNAL_THUMBNAIL_PPM: 7,
+        LIBRAW_INTERNAL_THUMBNAIL_PPM16: 8,
+        LIBRAW_INTERNAL_THUMBNAIL_ROLLEI: 6,
+        LIBRAW_INTERNAL_THUMBNAIL_UNKNOWN: 0,
+        LIBRAW_INTERNAL_THUMBNAIL_X3F: 9,
+    });
+}
+export function LibRaw_thumbnail_formats() {
+    return __typ.enumLike(__typ.u32, {
+        LIBRAW_THUMBNAIL_BITMAP: 2,
+        LIBRAW_THUMBNAIL_BITMAP16: 3,
+        LIBRAW_THUMBNAIL_H265: 6,
+        LIBRAW_THUMBNAIL_JPEG: 1,
+        LIBRAW_THUMBNAIL_JPEGXL: 7,
+        LIBRAW_THUMBNAIL_LAYER: 4,
+        LIBRAW_THUMBNAIL_ROLLEI: 5,
+        LIBRAW_THUMBNAIL_UNKNOWN: 0,
+    });
+}
+export function UINT64() {
+    return __typ.u64;
+}
+export function libraw_P1_color_t() {
+    return new __typ.Struct()
+        .field('romm_cam', __typ.sizedArray(__typ.f32, 9));
+}
+export function libraw_afinfo_item_t() {
+    return new __typ.Struct()
+        .field('AFInfoData_tag', __typ.u32)
+        .field('AFInfoData_order', __typ.i16)
+        .field('AFInfoData_version', __typ.u32)
+        .field('AFInfoData_length', __typ.u32)
+        .field('AFInfoData', __typ.ptr(uchar()));
+}
+export function libraw_area_t() {
+    return new __typ.Struct()
+        .field('t', __typ.i16)
+        .field('l', __typ.i16)
+        .field('b', __typ.i16)
+        .field('r', __typ.i16);
+}
+export function libraw_canon_makernotes_t() {
+    return new __typ.Struct()
+        .field('ColorDataVer', __typ.i32)
+        .field('ColorDataSubVer', __typ.i32)
+        .field('SpecularWhiteLevel', __typ.i32)
+        .field('NormalWhiteLevel', __typ.i32)
+        .field('ChannelBlackLevel', __typ.sizedArray(__typ.i32, 4))
+        .field('AverageBlackLevel', __typ.i32)
+        .field('multishot', __typ.sizedArray(__typ.u32, 4))
+        .field('MeteringMode', __typ.i16)
+        .field('SpotMeteringMode', __typ.i16)
+        .field('FlashMeteringMode', uchar())
+        .field('FlashExposureLock', __typ.i16)
+        .field('ExposureMode', __typ.i16)
+        .field('AESetting', __typ.i16)
+        .field('ImageStabilization', __typ.i16)
+        .field('FlashMode', __typ.i16)
+        .field('FlashActivity', __typ.i16)
+        .field('FlashBits', __typ.i16)
+        .field('ManualFlashOutput', __typ.i16)
+        .field('FlashOutput', __typ.i16)
+        .field('FlashGuideNumber', __typ.i16)
+        .field('ContinuousDrive', __typ.i16)
+        .field('SensorWidth', __typ.i16)
+        .field('SensorHeight', __typ.i16)
+        .field('AFMicroAdjMode', __typ.i32)
+        .field('AFMicroAdjValue', __typ.f32)
+        .field('MakernotesFlip', __typ.i16)
+        .field('AutoRotateMode', __typ.i16)
+        .field('RecordMode', __typ.i16)
+        .field('SRAWQuality', __typ.i16)
+        .field('wbi', __typ.u32)
+        .field('RF_lensID', __typ.i16)
+        .field('AutoLightingOptimizer', __typ.i32)
+        .field('HighlightTonePriority', __typ.i32)
+        .field('Quality', __typ.i16)
+        .field('CanonLog', __typ.i32)
+        .field('DefaultCropAbsolute', libraw_area_t())
+        .field('RecommendedImageArea', libraw_area_t())
+        .field('LeftOpticalBlack', libraw_area_t())
+        .field('UpperOpticalBlack', libraw_area_t())
+        .field('ActiveArea', libraw_area_t())
+        .field('ISOgain', __typ.sizedArray(__typ.i16, 2));
+}
+export function libraw_colordata_t() {
+    return new __typ.Struct()
+        .field('curve', __typ.sizedArray(ushort(), 65536))
+        .field('cblack', __typ.sizedArray(__typ.u32, 4104))
+        .field('black', __typ.u32)
+        .field('data_maximum', __typ.u32)
+        .field('maximum', __typ.u32)
+        .field('linear_max', __typ.sizedArray(__typ.u32, 4))
+        .field('fmaximum', __typ.f32)
+        .field('fnorm', __typ.f32)
+        .field('white', __typ.sizedArray(__typ.sizedArray(ushort(), 8), 8))
+        .field('cam_mul', __typ.sizedArray(__typ.f32, 4))
+        .field('pre_mul', __typ.sizedArray(__typ.f32, 4))
+        .field('cmatrix', __typ.sizedArray(__typ.sizedArray(__typ.f32, 4), 3))
+        .field('ccm', __typ.sizedArray(__typ.sizedArray(__typ.f32, 4), 3))
+        .field('rgb_cam', __typ.sizedArray(__typ.sizedArray(__typ.f32, 4), 3))
+        .field('cam_xyz', __typ.sizedArray(__typ.sizedArray(__typ.f32, 3), 4))
+        .field('phase_one_data', ph1_t())
+        .field('flash_used', __typ.f32)
+        .field('canon_ev', __typ.f32)
+        .field('model2', __typ.sizedArray(__typ.u8, 64))
+        .field('UniqueCameraModel', __typ.sizedArray(__typ.u8, 64))
+        .field('LocalizedCameraModel', __typ.sizedArray(__typ.u8, 64))
+        .field('ImageUniqueID', __typ.sizedArray(__typ.u8, 64))
+        .field('RawDataUniqueID', __typ.sizedArray(__typ.u8, 17))
+        .field('OriginalRawFileName', __typ.sizedArray(__typ.u8, 64))
+        .field('profile', __typ.ptr(__typ.u32))
+        .field('profile_length', __typ.u32)
+        .field('black_stat', __typ.sizedArray(__typ.u32, 8))
+        .field('dng_color', __typ.sizedArray(libraw_dng_color_t(), 2))
+        .field('dng_levels', libraw_dng_levels_t())
+        .field('WB_Coeffs', __typ.sizedArray(__typ.sizedArray(__typ.i32, 4), 256))
+        .field('WBCT_Coeffs', __typ.sizedArray(__typ.sizedArray(__typ.f32, 5), 64))
+        .field('as_shot_wb_applied', __typ.i32)
+        .field('P1_color', __typ.sizedArray(libraw_P1_color_t(), 2))
+        .field('raw_bps', __typ.u32)
+        .field('ExifColorSpace', __typ.i32);
+}
+export function libraw_data_t() {
+    return new __typ.Struct()
+        .field('image', __typ.ptr(__typ.sizedArray(ushort(), 4)))
+        .field('sizes', libraw_image_sizes_t())
+        .field('idata', libraw_iparams_t())
+        .field('lens', libraw_lensinfo_t())
+        .field('makernotes', libraw_makernotes_t())
+        .field('shootinginfo', libraw_shootinginfo_t())
+        .field('params', libraw_output_params_t())
+        .field('rawparams', libraw_raw_unpack_params_t())
+        .field('progress_flags', __typ.u32)
+        .field('process_warnings', __typ.u32)
+        .field('color', libraw_colordata_t())
+        .field('other', libraw_imgother_t())
+        .field('thumbnail', libraw_thumbnail_t())
+        .field('thumbs_list', libraw_thumbnail_list_t())
+        .field('rawdata', libraw_rawdata_t())
+        .field('parent_class', __typ.ptr(__typ.u32));
+}
+export function libraw_dng_color_t() {
+    return new __typ.Struct()
+        .field('parsedfields', __typ.u32)
+        .field('illuminant', ushort())
+        .field('calibration', __typ.sizedArray(__typ.sizedArray(__typ.f32, 4), 4))
+        .field('colormatrix', __typ.sizedArray(__typ.sizedArray(__typ.f32, 3), 4))
+        .field('forwardmatrix', __typ.sizedArray(__typ.sizedArray(__typ.f32, 4), 3));
+}
+export function libraw_dng_levels_t() {
+    return new __typ.Struct()
+        .field('parsedfields', __typ.u32)
+        .field('dng_cblack', __typ.sizedArray(__typ.u32, 4104))
+        .field('dng_black', __typ.u32)
+        .field('dng_fcblack', __typ.sizedArray(__typ.f32, 4104))
+        .field('dng_fblack', __typ.f32)
+        .field('dng_whitelevel', __typ.sizedArray(__typ.u32, 4))
+        .field('default_crop', __typ.sizedArray(ushort(), 4))
+        .field('user_crop', __typ.sizedArray(__typ.f32, 4))
+        .field('preview_colorspace', __typ.u32)
+        .field('analogbalance', __typ.sizedArray(__typ.f32, 4))
+        .field('asshotneutral', __typ.sizedArray(__typ.f32, 4))
+        .field('baseline_exposure', __typ.f32)
+        .field('LinearResponseLimit', __typ.f32)
+        .field('rawopcodes', __typ.sizedArray(libraw_dng_rawopcode_t(), 3));
+}
+export function libraw_dng_rawopcode_t() {
+    return new __typ.Struct()
+        .field('len', __typ.u32)
+        .field('data', __typ.ptr(__typ.u32));
+}
+export function libraw_dnglens_t() {
+    return new __typ.Struct()
+        .field('MinFocal', __typ.f32)
+        .field('MaxFocal', __typ.f32)
+        .field('MaxAp4MinFocal', __typ.f32)
+        .field('MaxAp4MaxFocal', __typ.f32);
+}
+export function libraw_fuji_info_t() {
+    return new __typ.Struct()
+        .field('ExpoMidPointShift', __typ.f32)
+        .field('DynamicRange', ushort())
+        .field('FilmMode', ushort())
+        .field('DynamicRangeSetting', ushort())
+        .field('DevelopmentDynamicRange', ushort())
+        .field('AutoDynamicRange', ushort())
+        .field('DRangePriority', ushort())
+        .field('DRangePriorityAuto', ushort())
+        .field('DRangePriorityFixed', ushort())
+        .field('FujiModel', __typ.sizedArray(__typ.u8, 33))
+        .field('FujiModel2', __typ.sizedArray(__typ.u8, 33))
+        .field('BrightnessCompensation', __typ.f32)
+        .field('FocusMode', ushort())
+        .field('AFMode', ushort())
+        .field('FocusPixel', __typ.sizedArray(ushort(), 2))
+        .field('PrioritySettings', ushort())
+        .field('FocusSettings', __typ.u32)
+        .field('AF_C_Settings', __typ.u32)
+        .field('FocusWarning', ushort())
+        .field('ImageStabilization', __typ.sizedArray(ushort(), 3))
+        .field('FlashMode', ushort())
+        .field('WB_Preset', ushort())
+        .field('ShutterType', ushort())
+        .field('ExrMode', ushort())
+        .field('Macro', ushort())
+        .field('Rating', __typ.u32)
+        .field('CropMode', ushort())
+        .field('SerialSignature', __typ.sizedArray(__typ.u8, 13))
+        .field('SensorID', __typ.sizedArray(__typ.u8, 5))
+        .field('RAFVersion', __typ.sizedArray(__typ.u8, 5))
+        .field('RAFDataGeneration', __typ.i32)
+        .field('RAFDataVersion', ushort())
+        .field('isTSNERDTS', __typ.i32)
+        .field('DriveMode', __typ.i16)
+        .field('BlackLevel', __typ.sizedArray(ushort(), 9))
+        .field('RAFData_ImageSizeTable', __typ.sizedArray(__typ.u32, 32))
+        .field('AutoBracketing', __typ.i32)
+        .field('SequenceNumber', __typ.i32)
+        .field('SeriesLength', __typ.i32)
+        .field('PixelShiftOffset', __typ.sizedArray(__typ.f32, 2))
+        .field('ImageCount', __typ.i32);
+}
+export function libraw_gps_info_t() {
+    return new __typ.Struct()
+        .field('latitude', __typ.sizedArray(__typ.f32, 3))
+        .field('longitude', __typ.sizedArray(__typ.f32, 3))
+        .field('gpstimestamp', __typ.sizedArray(__typ.f32, 3))
+        .field('altitude', __typ.f32)
+        .field('altref', __typ.u8)
+        .field('latref', __typ.u8)
+        .field('longref', __typ.u8)
+        .field('gpsstatus', __typ.u8)
+        .field('gpsparsed', __typ.u8);
+}
+export function libraw_hasselblad_makernotes_t() {
+    return new __typ.Struct()
+        .field('BaseISO', __typ.i32)
+        .field('Gain', __typ.f64)
+        .field('Sensor', __typ.sizedArray(__typ.u8, 8))
+        .field('SensorUnit', __typ.sizedArray(__typ.u8, 64))
+        .field('HostBody', __typ.sizedArray(__typ.u8, 64))
+        .field('SensorCode', __typ.i32)
+        .field('SensorSubCode', __typ.i32)
+        .field('CoatingCode', __typ.i32)
+        .field('uncropped', __typ.i32)
+        .field('CaptureSequenceInitiator', __typ.sizedArray(__typ.u8, 32))
+        .field('SensorUnitConnector', __typ.sizedArray(__typ.u8, 64))
+        .field('format', __typ.i32)
+        .field('nIFD_CM', __typ.sizedArray(__typ.i32, 2))
+        .field('RecommendedCrop', __typ.sizedArray(__typ.i32, 2))
+        .field('mnColorMatrix', __typ.sizedArray(__typ.sizedArray(__typ.f64, 3), 4));
+}
+export function libraw_image_sizes_t() {
+    return new __typ.Struct()
+        .field('raw_height', ushort())
+        .field('raw_width', ushort())
+        .field('height', ushort())
+        .field('width', ushort())
+        .field('top_margin', ushort())
+        .field('left_margin', ushort())
+        .field('iheight', ushort())
+        .field('iwidth', ushort())
+        .field('raw_pitch', __typ.u32)
+        .field('pixel_aspect', __typ.f64)
+        .field('flip', __typ.i32)
+        .field('mask', __typ.sizedArray(__typ.sizedArray(__typ.i32, 4), 8))
+        .field('raw_aspect', ushort())
+        .field('raw_inset_crops', __typ.sizedArray(libraw_raw_inset_crop_t(), 2));
+}
+export function libraw_imgother_t() {
+    return new __typ.Struct()
+        .field('iso_speed', __typ.f32)
+        .field('shutter', __typ.f32)
+        .field('aperture', __typ.f32)
+        .field('focal_len', __typ.f32)
+        .field('timestamp', time_t())
+        .field('shot_order', __typ.u32)
+        .field('gpsdata', __typ.sizedArray(__typ.u32, 32))
+        .field('parsed_gps', libraw_gps_info_t())
+        .field('desc', __typ.sizedArray(__typ.u8, 512))
+        .field('artist', __typ.sizedArray(__typ.u8, 64))
+        .field('analogbalance', __typ.sizedArray(__typ.f32, 4));
+}
+export function libraw_internal_output_params_t() {
+    return new __typ.Struct()
+        .field('mix_green', __typ.u32)
+        .field('raw_color', __typ.u32)
+        .field('zero_is_bad', __typ.u32)
+        .field('shrink', ushort())
+        .field('fuji_width', ushort());
+}
+export function libraw_iparams_t() {
+    return new __typ.Struct()
+        .field('guard', __typ.sizedArray(__typ.u8, 4))
+        .field('make', __typ.sizedArray(__typ.u8, 64))
+        .field('model', __typ.sizedArray(__typ.u8, 64))
+        .field('software', __typ.sizedArray(__typ.u8, 64))
+        .field('normalized_make', __typ.sizedArray(__typ.u8, 64))
+        .field('normalized_model', __typ.sizedArray(__typ.u8, 64))
+        .field('maker_index', __typ.u32)
+        .field('raw_count', __typ.u32)
+        .field('dng_version', __typ.u32)
+        .field('is_foveon', __typ.u32)
+        .field('colors', __typ.i32)
+        .field('filters', __typ.u32)
+        .field('xtrans', __typ.sizedArray(__typ.sizedArray(__typ.u8, 6), 6))
+        .field('xtrans_abs', __typ.sizedArray(__typ.sizedArray(__typ.u8, 6), 6))
+        .field('cdesc', __typ.sizedArray(__typ.u8, 5))
+        .field('xmplen', __typ.u32)
+        .field('xmpdata', __typ.ptr(__typ.u8));
+}
+export function libraw_kodak_makernotes_t() {
+    return new __typ.Struct()
+        .field('BlackLevelTop', ushort())
+        .field('BlackLevelBottom', ushort())
+        .field('offset_left', __typ.i16)
+        .field('offset_top', __typ.i16)
+        .field('clipBlack', ushort())
+        .field('clipWhite', ushort())
+        .field('romm_camDaylight', __typ.sizedArray(__typ.sizedArray(__typ.f32, 3), 3))
+        .field('romm_camTungsten', __typ.sizedArray(__typ.sizedArray(__typ.f32, 3), 3))
+        .field('romm_camFluorescent', __typ.sizedArray(__typ.sizedArray(__typ.f32, 3), 3))
+        .field('romm_camFlash', __typ.sizedArray(__typ.sizedArray(__typ.f32, 3), 3))
+        .field('romm_camCustom', __typ.sizedArray(__typ.sizedArray(__typ.f32, 3), 3))
+        .field('romm_camAuto', __typ.sizedArray(__typ.sizedArray(__typ.f32, 3), 3))
+        .field('val018percent', ushort())
+        .field('val100percent', ushort())
+        .field('val170percent', ushort())
+        .field('MakerNoteKodak8a', __typ.i16)
+        .field('ISOCalibrationGain', __typ.f32)
+        .field('AnalogISO', __typ.f32);
+}
+export function libraw_lensinfo_t() {
+    return new __typ.Struct()
+        .field('MinFocal', __typ.f32)
+        .field('MaxFocal', __typ.f32)
+        .field('MaxAp4MinFocal', __typ.f32)
+        .field('MaxAp4MaxFocal', __typ.f32)
+        .field('EXIF_MaxAp', __typ.f32)
+        .field('LensMake', __typ.sizedArray(__typ.u8, 128))
+        .field('Lens', __typ.sizedArray(__typ.u8, 128))
+        .field('LensSerial', __typ.sizedArray(__typ.u8, 128))
+        .field('InternalLensSerial', __typ.sizedArray(__typ.u8, 128))
+        .field('FocalLengthIn35mmFormat', ushort())
+        .field('nikon', libraw_nikonlens_t())
+        .field('dng', libraw_dnglens_t())
+        .field('makernotes', libraw_makernotes_lens_t());
+}
+export function libraw_makernotes_lens_t() {
+    return new __typ.Struct()
+        .field('LensID', UINT64())
+        .field('Lens', __typ.sizedArray(__typ.u8, 128))
+        .field('LensFormat', ushort())
+        .field('LensMount', ushort())
+        .field('CamID', UINT64())
+        .field('CameraFormat', ushort())
+        .field('CameraMount', ushort())
+        .field('body', __typ.sizedArray(__typ.u8, 64))
+        .field('FocalType', __typ.i16)
+        .field('LensFeatures_pre', __typ.sizedArray(__typ.u8, 16))
+        .field('LensFeatures_suf', __typ.sizedArray(__typ.u8, 16))
+        .field('MinFocal', __typ.f32)
+        .field('MaxFocal', __typ.f32)
+        .field('MaxAp4MinFocal', __typ.f32)
+        .field('MaxAp4MaxFocal', __typ.f32)
+        .field('MinAp4MinFocal', __typ.f32)
+        .field('MinAp4MaxFocal', __typ.f32)
+        .field('MaxAp', __typ.f32)
+        .field('MinAp', __typ.f32)
+        .field('CurFocal', __typ.f32)
+        .field('CurAp', __typ.f32)
+        .field('MaxAp4CurFocal', __typ.f32)
+        .field('MinAp4CurFocal', __typ.f32)
+        .field('MinFocusDistance', __typ.f32)
+        .field('FocusRangeIndex', __typ.f32)
+        .field('LensFStops', __typ.f32)
+        .field('TeleconverterID', UINT64())
+        .field('Teleconverter', __typ.sizedArray(__typ.u8, 128))
+        .field('AdapterID', UINT64())
+        .field('Adapter', __typ.sizedArray(__typ.u8, 128))
+        .field('AttachmentID', UINT64())
+        .field('Attachment', __typ.sizedArray(__typ.u8, 128))
+        .field('FocalUnits', ushort())
+        .field('FocalLengthIn35mmFormat', __typ.f32);
+}
+export function libraw_makernotes_t() {
+    return new __typ.Struct()
+        .field('canon', libraw_canon_makernotes_t())
+        .field('nikon', libraw_nikon_makernotes_t())
+        .field('hasselblad', libraw_hasselblad_makernotes_t())
+        .field('fuji', libraw_fuji_info_t())
+        .field('olympus', libraw_olympus_makernotes_t())
+        .field('sony', libraw_sony_info_t())
+        .field('kodak', libraw_kodak_makernotes_t())
+        .field('panasonic', libraw_panasonic_makernotes_t())
+        .field('pentax', libraw_pentax_makernotes_t())
+        .field('phaseone', libraw_p1_makernotes_t())
+        .field('ricoh', libraw_ricoh_makernotes_t())
+        .field('samsung', libraw_samsung_makernotes_t())
+        .field('common', libraw_metadata_common_t());
+}
+export function libraw_metadata_common_t() {
+    return new __typ.Struct()
+        .field('FlashEC', __typ.f32)
+        .field('FlashGN', __typ.f32)
+        .field('CameraTemperature', __typ.f32)
+        .field('SensorTemperature', __typ.f32)
+        .field('SensorTemperature2', __typ.f32)
+        .field('LensTemperature', __typ.f32)
+        .field('AmbientTemperature', __typ.f32)
+        .field('BatteryTemperature', __typ.f32)
+        .field('exifAmbientTemperature', __typ.f32)
+        .field('exifHumidity', __typ.f32)
+        .field('exifPressure', __typ.f32)
+        .field('exifWaterDepth', __typ.f32)
+        .field('exifAcceleration', __typ.f32)
+        .field('exifCameraElevationAngle', __typ.f32)
+        .field('real_ISO', __typ.f32)
+        .field('exifExposureIndex', __typ.f32)
+        .field('ColorSpace', ushort())
+        .field('firmware', __typ.sizedArray(__typ.u8, 128))
+        .field('ExposureCalibrationShift', __typ.f32)
+        .field('afdata', __typ.sizedArray(libraw_afinfo_item_t(), 4))
+        .field('afcount', __typ.i32);
+}
+export function libraw_nikon_makernotes_t() {
+    return new __typ.Struct()
+        .field('ExposureBracketValue', __typ.f64)
+        .field('ActiveDLighting', ushort())
+        .field('ShootingMode', ushort())
+        .field('ImageStabilization', __typ.sizedArray(uchar(), 7))
+        .field('VibrationReduction', uchar())
+        .field('VRMode', uchar())
+        .field('FlashSetting', __typ.sizedArray(__typ.u8, 13))
+        .field('FlashType', __typ.sizedArray(__typ.u8, 20))
+        .field('FlashExposureCompensation', __typ.sizedArray(uchar(), 4))
+        .field('ExternalFlashExposureComp', __typ.sizedArray(uchar(), 4))
+        .field('FlashExposureBracketValue', __typ.sizedArray(uchar(), 4))
+        .field('FlashMode', uchar())
+        .field('FlashExposureCompensation2', __typ.i8)
+        .field('FlashExposureCompensation3', __typ.i8)
+        .field('FlashExposureCompensation4', __typ.i8)
+        .field('FlashSource', uchar())
+        .field('FlashFirmware', __typ.sizedArray(uchar(), 2))
+        .field('ExternalFlashFlags', uchar())
+        .field('FlashControlCommanderMode', uchar())
+        .field('FlashOutputAndCompensation', uchar())
+        .field('FlashFocalLength', uchar())
+        .field('FlashGNDistance', uchar())
+        .field('FlashGroupControlMode', __typ.sizedArray(uchar(), 4))
+        .field('FlashGroupOutputAndCompensation', __typ.sizedArray(uchar(), 4))
+        .field('FlashColorFilter', uchar())
+        .field('NEFCompression', ushort())
+        .field('ExposureMode', __typ.i32)
+        .field('ExposureProgram', __typ.i32)
+        .field('nMEshots', __typ.i32)
+        .field('MEgainOn', __typ.i32)
+        .field('ME_WB', __typ.sizedArray(__typ.f64, 4))
+        .field('AFFineTune', uchar())
+        .field('AFFineTuneIndex', uchar())
+        .field('AFFineTuneAdj', __typ.i8)
+        .field('LensDataVersion', __typ.u32)
+        .field('FlashInfoVersion', __typ.u32)
+        .field('ColorBalanceVersion', __typ.u32)
+        .field('key', uchar())
+        .field('NEFBitDepth', __typ.sizedArray(ushort(), 4))
+        .field('HighSpeedCropFormat', ushort())
+        .field('SensorHighSpeedCrop', libraw_sensor_highspeed_crop_t())
+        .field('SensorWidth', ushort())
+        .field('SensorHeight', ushort())
+        .field('Active_D_Lighting', ushort())
+        .field('PictureControlVersion', __typ.u32)
+        .field('PictureControlName', __typ.sizedArray(__typ.u8, 20))
+        .field('PictureControlBase', __typ.sizedArray(__typ.u8, 20))
+        .field('ShotInfoVersion', __typ.u32)
+        .field('ShotInfoFirmware', __typ.sizedArray(__typ.u8, 9))
+        .field('BurstTable_0x0056_len', __typ.u32)
+        .field('BurstTable_0x0056', __typ.ptr(uchar()))
+        .field('BurstTable_0x0056_ver', ushort())
+        .field('BurstTable_0x0056_gid', ushort())
+        .field('BurstTable_0x0056_fnum', uchar())
+        .field('MakernotesFlip', __typ.i16)
+        .field('RollAngle', __typ.f64)
+        .field('PitchAngle', __typ.f64)
+        .field('YawAngle', __typ.f64);
+}
+export function libraw_nikonlens_t() {
+    return new __typ.Struct()
+        .field('EffectiveMaxAp', __typ.f32)
+        .field('LensIDNumber', uchar())
+        .field('LensFStops', uchar())
+        .field('MCUVersion', uchar())
+        .field('LensType', uchar());
+}
+export function libraw_olympus_makernotes_t() {
+    return new __typ.Struct()
+        .field('CameraType2', __typ.sizedArray(__typ.u8, 6))
+        .field('ValidBits', ushort())
+        .field('tagX640', __typ.u32)
+        .field('tagX641', __typ.u32)
+        .field('tagX642', __typ.u32)
+        .field('tagX643', __typ.u32)
+        .field('tagX644', __typ.u32)
+        .field('tagX645', __typ.u32)
+        .field('tagX646', __typ.u32)
+        .field('tagX647', __typ.u32)
+        .field('tagX648', __typ.u32)
+        .field('tagX649', __typ.u32)
+        .field('tagX650', __typ.u32)
+        .field('tagX651', __typ.u32)
+        .field('tagX652', __typ.u32)
+        .field('tagX653', __typ.u32)
+        .field('SensorCalibration', __typ.sizedArray(__typ.i32, 2))
+        .field('DriveMode', __typ.sizedArray(ushort(), 5))
+        .field('ColorSpace', ushort())
+        .field('FocusMode', __typ.sizedArray(ushort(), 2))
+        .field('AutoFocus', ushort())
+        .field('AFPoint', ushort())
+        .field('AFAreas', __typ.sizedArray(__typ.u32, 64))
+        .field('AFPointSelected', __typ.sizedArray(__typ.f64, 5))
+        .field('AFResult', ushort())
+        .field('AFFineTune', uchar())
+        .field('AFFineTuneAdj', __typ.sizedArray(__typ.i16, 3))
+        .field('SpecialMode', __typ.sizedArray(__typ.u32, 3))
+        .field('ZoomStepCount', ushort())
+        .field('FocusStepCount', ushort())
+        .field('FocusStepInfinity', ushort())
+        .field('FocusStepNear', ushort())
+        .field('FocusDistance', __typ.f64)
+        .field('AspectFrame', __typ.sizedArray(ushort(), 4))
+        .field('StackedImage', __typ.sizedArray(__typ.u32, 2))
+        .field('isLiveND', uchar())
+        .field('LiveNDfactor', __typ.u32)
+        .field('Panorama_mode', ushort())
+        .field('Panorama_frameNum', ushort());
+}
+export function libraw_output_params_t() {
+    return new __typ.Struct()
+        .field('greybox', __typ.sizedArray(__typ.u32, 4))
+        .field('cropbox', __typ.sizedArray(__typ.u32, 4))
+        .field('aber', __typ.sizedArray(__typ.f64, 4))
+        .field('gamm', __typ.sizedArray(__typ.f64, 6))
+        .field('user_mul', __typ.sizedArray(__typ.f32, 4))
+        .field('bright', __typ.f32)
+        .field('threshold', __typ.f32)
+        .field('half_size', __typ.i32)
+        .field('four_color_rgb', __typ.i32)
+        .field('highlight', __typ.i32)
+        .field('use_auto_wb', __typ.i32)
+        .field('use_camera_wb', __typ.i32)
+        .field('use_camera_matrix', __typ.i32)
+        .field('output_color', __typ.i32)
+        .field('output_profile', __typ.ptr(__typ.u8))
+        .field('camera_profile', __typ.ptr(__typ.u8))
+        .field('bad_pixels', __typ.ptr(__typ.u8))
+        .field('dark_frame', __typ.ptr(__typ.u8))
+        .field('output_bps', __typ.i32)
+        .field('output_tiff', __typ.i32)
+        .field('output_flags', __typ.i32)
+        .field('user_flip', __typ.i32)
+        .field('user_qual', __typ.i32)
+        .field('user_black', __typ.i32)
+        .field('user_cblack', __typ.sizedArray(__typ.i32, 4))
+        .field('user_sat', __typ.i32)
+        .field('med_passes', __typ.i32)
+        .field('auto_bright_thr', __typ.f32)
+        .field('adjust_maximum_thr', __typ.f32)
+        .field('no_auto_bright', __typ.i32)
+        .field('use_fuji_rotate', __typ.i32)
+        .field('use_p1_correction', __typ.i32)
+        .field('green_matching', __typ.i32)
+        .field('dcb_iterations', __typ.i32)
+        .field('dcb_enhance_fl', __typ.i32)
+        .field('fbdd_noiserd', __typ.i32)
+        .field('exp_correc', __typ.i32)
+        .field('exp_shift', __typ.f32)
+        .field('exp_preser', __typ.f32)
+        .field('no_auto_scale', __typ.i32)
+        .field('no_interpolation', __typ.i32);
+}
+export function libraw_p1_makernotes_t() {
+    return new __typ.Struct()
+        .field('Software', __typ.sizedArray(__typ.u8, 64))
+        .field('SystemType', __typ.sizedArray(__typ.u8, 64))
+        .field('FirmwareString', __typ.sizedArray(__typ.u8, 256))
+        .field('SystemModel', __typ.sizedArray(__typ.u8, 64));
+}
+export function libraw_panasonic_makernotes_t() {
+    return new __typ.Struct()
+        .field('Compression', ushort())
+        .field('BlackLevelDim', ushort())
+        .field('BlackLevel', __typ.sizedArray(__typ.f32, 8))
+        .field('Multishot', __typ.u32)
+        .field('gamma', __typ.f32)
+        .field('HighISOMultiplier', __typ.sizedArray(__typ.i32, 3))
+        .field('FocusStepNear', __typ.i16)
+        .field('FocusStepCount', __typ.i16)
+        .field('ZoomPosition', __typ.u32)
+        .field('LensManufacturer', __typ.u32);
+}
+export function libraw_pentax_makernotes_t() {
+    return new __typ.Struct()
+        .field('DriveMode', __typ.sizedArray(uchar(), 4))
+        .field('FocusMode', __typ.sizedArray(ushort(), 2))
+        .field('AFPointSelected', __typ.sizedArray(ushort(), 2))
+        .field('AFPointSelected_Area', ushort())
+        .field('AFPointsInFocus_version', __typ.i32)
+        .field('AFPointsInFocus', __typ.u32)
+        .field('FocusPosition', ushort())
+        .field('DynamicRangeExpansion', __typ.sizedArray(uchar(), 4))
+        .field('AFAdjustment', __typ.i16)
+        .field('AFPointMode', uchar())
+        .field('MultiExposure', uchar())
+        .field('Quality', ushort());
+}
+export function libraw_processed_image_t() {
+    return new __typ.Struct()
+        .field('type_', LibRaw_image_formats())
+        .field('height', ushort())
+        .field('width', ushort())
+        .field('colors', ushort())
+        .field('bits', ushort())
+        .field('data_size', __typ.u32)
+        .field('data', __typ.sizedArray(__typ.u8, 1));
+}
+export function libraw_raw_inset_crop_t() {
+    return new __typ.Struct()
+        .field('cleft', ushort())
+        .field('ctop', ushort())
+        .field('cwidth', ushort())
+        .field('cheight', ushort());
+}
+export function libraw_raw_unpack_params_t() {
+    return new __typ.Struct()
+        .field('use_rawspeed', __typ.i32)
+        .field('use_dngsdk', __typ.i32)
+        .field('options', __typ.u32)
+        .field('shot_select', __typ.u32)
+        .field('specials', __typ.u32)
+        .field('max_raw_memory_mb', __typ.u32)
+        .field('sony_arw2_posterization_thr', __typ.i32)
+        .field('coolscan_nef_gamma', __typ.f32)
+        .field('p4shot_order', __typ.sizedArray(__typ.u8, 5))
+        .field('custom_camera_strings', __typ.ptr(__typ.ptr(__typ.u8)));
+}
+export function libraw_rawdata_t() {
+    return new __typ.Struct()
+        .field('raw_alloc', __typ.ptr(__typ.u32))
+        .field('raw_image', __typ.ptr(ushort()))
+        .field('color4_image', __typ.ptr(__typ.sizedArray(ushort(), 4)))
+        .field('color3_image', __typ.ptr(__typ.sizedArray(ushort(), 3)))
+        .field('float_image', __typ.ptr(__typ.f32))
+        .field('float3_image', __typ.ptr(__typ.sizedArray(__typ.f32, 3)))
+        .field('float4_image', __typ.ptr(__typ.sizedArray(__typ.f32, 4)))
+        .field('ph1_cblack', __typ.ptr(__typ.sizedArray(__typ.i16, 2)))
+        .field('ph1_rblack', __typ.ptr(__typ.sizedArray(__typ.i16, 2)))
+        .field('iparams', libraw_iparams_t())
+        .field('sizes', libraw_image_sizes_t())
+        .field('ioparams', libraw_internal_output_params_t())
+        .field('color', libraw_colordata_t());
+}
+export function libraw_ricoh_makernotes_t() {
+    return new __typ.Struct()
+        .field('AFStatus', ushort())
+        .field('AFAreaXPosition', __typ.sizedArray(__typ.u32, 2))
+        .field('AFAreaYPosition', __typ.sizedArray(__typ.u32, 2))
+        .field('AFAreaMode', ushort())
+        .field('SensorWidth', __typ.u32)
+        .field('SensorHeight', __typ.u32)
+        .field('CroppedImageWidth', __typ.u32)
+        .field('CroppedImageHeight', __typ.u32)
+        .field('WideAdapter', ushort())
+        .field('CropMode', ushort())
+        .field('NDFilter', ushort())
+        .field('AutoBracketing', ushort())
+        .field('MacroMode', ushort())
+        .field('FlashMode', ushort())
+        .field('FlashExposureComp', __typ.f64)
+        .field('ManualFlashOutput', __typ.f64);
+}
+export function libraw_samsung_makernotes_t() {
+    return new __typ.Struct()
+        .field('ImageSizeFull', __typ.sizedArray(__typ.u32, 4))
+        .field('ImageSizeCrop', __typ.sizedArray(__typ.u32, 4))
+        .field('ColorSpace', __typ.sizedArray(__typ.i32, 2))
+        .field('key', __typ.sizedArray(__typ.u32, 11))
+        .field('DigitalGain', __typ.f64)
+        .field('DeviceType', __typ.i32)
+        .field('LensFirmware', __typ.sizedArray(__typ.u8, 32));
+}
+export function libraw_sensor_highspeed_crop_t() {
+    return new __typ.Struct()
+        .field('cleft', ushort())
+        .field('ctop', ushort())
+        .field('cwidth', ushort())
+        .field('cheight', ushort());
+}
+export function libraw_shootinginfo_t() {
+    return new __typ.Struct()
+        .field('DriveMode', __typ.i16)
+        .field('FocusMode', __typ.i16)
+        .field('MeteringMode', __typ.i16)
+        .field('AFPoint', __typ.i16)
+        .field('ExposureMode', __typ.i16)
+        .field('ExposureProgram', __typ.i16)
+        .field('ImageStabilization', __typ.i16)
+        .field('BodySerial', __typ.sizedArray(__typ.u8, 64))
+        .field('InternalBodySerial', __typ.sizedArray(__typ.u8, 64));
+}
+export function libraw_sony_info_t() {
+    return new __typ.Struct()
+        .field('CameraType', ushort())
+        .field('Sony0x9400_version', uchar())
+        .field('Sony0x9400_ReleaseMode2', uchar())
+        .field('Sony0x9400_SequenceImageNumber', __typ.u32)
+        .field('Sony0x9400_SequenceLength1', uchar())
+        .field('Sony0x9400_SequenceFileNumber', __typ.u32)
+        .field('Sony0x9400_SequenceLength2', uchar())
+        .field('AFAreaModeSetting', __typ.u8)
+        .field('AFAreaMode', __typ.u16)
+        .field('FlexibleSpotPosition', __typ.sizedArray(ushort(), 2))
+        .field('AFPointSelected', __typ.u8)
+        .field('AFPointSelected_0x201e', __typ.u8)
+        .field('nAFPointsUsed', __typ.i16)
+        .field('AFPointsUsed', __typ.sizedArray(__typ.u8, 10))
+        .field('AFTracking', __typ.u8)
+        .field('AFType', __typ.u8)
+        .field('FocusLocation', __typ.sizedArray(ushort(), 4))
+        .field('FocusPosition', ushort())
+        .field('AFMicroAdjValue', __typ.i8)
+        .field('AFMicroAdjOn', __typ.i8)
+        .field('AFMicroAdjRegisteredLenses', uchar())
+        .field('VariableLowPassFilter', ushort())
+        .field('LongExposureNoiseReduction', __typ.u32)
+        .field('HighISONoiseReduction', ushort())
+        .field('HDR', __typ.sizedArray(ushort(), 2))
+        .field('group2010', ushort())
+        .field('group9050', ushort())
+        .field('len_group9050', ushort())
+        .field('real_iso_offset', ushort())
+        .field('MeteringMode_offset', ushort())
+        .field('ExposureProgram_offset', ushort())
+        .field('ReleaseMode2_offset', ushort())
+        .field('MinoltaCamID', __typ.u32)
+        .field('firmware', __typ.f32)
+        .field('ImageCount3_offset', ushort())
+        .field('ImageCount3', __typ.u32)
+        .field('ElectronicFrontCurtainShutter', __typ.u32)
+        .field('MeteringMode2', ushort())
+        .field('SonyDateTime', __typ.sizedArray(__typ.u8, 20))
+        .field('ShotNumberSincePowerUp', __typ.u32)
+        .field('PixelShiftGroupPrefix', ushort())
+        .field('PixelShiftGroupID', __typ.u32)
+        .field('nShotsInPixelShiftGroup', __typ.u8)
+        .field('numInPixelShiftGroup', __typ.u8)
+        .field('prd_ImageHeight', ushort())
+        .field('prd_ImageWidth', ushort())
+        .field('prd_Total_bps', ushort())
+        .field('prd_Active_bps', ushort())
+        .field('prd_StorageMethod', ushort())
+        .field('prd_BayerPattern', ushort())
+        .field('SonyRawFileType', ushort())
+        .field('RAWFileType', ushort())
+        .field('RawSizeType', ushort())
+        .field('Quality', __typ.u32)
+        .field('FileFormat', ushort())
+        .field('MetaVersion', __typ.sizedArray(__typ.u8, 16))
+        .field('AspectRatio', __typ.f32);
+}
+export function libraw_thumbnail_item_t() {
+    return new __typ.Struct()
+        .field('tformat', LibRaw_internal_thumbnail_formats())
+        .field('twidth', ushort())
+        .field('theight', ushort())
+        .field('tflip', ushort())
+        .field('tlength', __typ.u32)
+        .field('tmisc', __typ.u32)
+        .field('toffset', INT64());
+}
+export function libraw_thumbnail_list_t() {
+    return new __typ.Struct()
+        .field('thumbcount', __typ.i32)
+        .field('thumblist', __typ.sizedArray(libraw_thumbnail_item_t(), 8));
+}
+export function libraw_thumbnail_t() {
+    return new __typ.Struct()
+        .field('tformat', LibRaw_thumbnail_formats())
+        .field('twidth', ushort())
+        .field('theight', ushort())
+        .field('tlength', __typ.u32)
+        .field('tcolors', __typ.i32)
+        .field('thumb', __typ.ptr(__typ.u8));
+}
+export function ph1_t() {
+    return new __typ.Struct()
+        .field('format', __typ.i32)
+        .field('key_off', __typ.i32)
+        .field('tag_21a', __typ.i32)
+        .field('t_black', __typ.i32)
+        .field('split_col', __typ.i32)
+        .field('black_col', __typ.i32)
+        .field('split_row', __typ.i32)
+        .field('black_row', __typ.i32)
+        .field('tag_210', __typ.f32);
+}
+export function time_t() {
+    return __typ.i64;
+}
+export function uchar() {
+    return __typ.u8;
+}
+export function ushort() {
+    return __typ.u16;
+}
