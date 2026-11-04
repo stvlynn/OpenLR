@@ -1,0 +1,43 @@
+{
+  "package": "@techstark/opencv-js",
+  "version": "5.0.0-release.1",
+  "license": "Apache-2.0",
+  "opencv": "5.0.0",
+  "unmodifiedArtifact": "opencv.js",
+  "upstream": "https://github.com/TechStark/opencv-js",
+  "source": "https://github.com/opencv/opencv/tree/5.0.0",
+  "files": {
+    "build-information.txt": {
+      "bytes": 5092,
+      "sha256": "877acec104f5f3c8c0a99571ac2a666cdb670dabd01e9bfdd2f71473b241c6ba"
+    },
+    "LICENSE": {
+      "bytes": 11357,
+      "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+    },
+    "LICENSE.EMSCRIPTEN": {
+      "bytes": 5093,
+      "sha256": "620a78084fc7ca97c0b5dea9abf891f3ffcadfdbf305276f099c9c4e12fc1d86"
+    },
+    "LICENSE.flatbuffers": {
+      "bytes": 11359,
+      "sha256": "8c6db340475136df3c1201d458fa5755698eace76e510471ecc9d857d6083dac"
+    },
+    "LICENSE.protobuf": {
+      "bytes": 1733,
+      "sha256": "1358b0346fd95b645464fda29464c7273a2a28f608fd952d1978aff123bec2b5"
+    },
+    "LICENSE.zlib": {
+      "bytes": 1003,
+      "sha256": "e589b065d0b2f203584be60fed4839f7d3f6be99a6862b0c8928940b78b44d11"
+    },
+    "NOTICE": {
+      "bytes": 1334,
+      "sha256": "b7c3670c53c556d2f2fcfd64c46299fe289e852529b6116cac81d9d1b86b09f4"
+    },
+    "opencv.js": {
+      "bytes": 13298869,
+      "sha256": "b873c8211421da7b9bf41ae157a923f05a46a0b8d3e5904c44c6f3ad6d39a1bd"
+    }
+  }
+}

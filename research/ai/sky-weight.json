@@ -1,0 +1,7 @@
+{
+  "url": "https://huggingface.co/Xenova/detr-resnet-50-panoptic/resolve/ea24b2d4e0bfae31f0a1299ba3fb892a2df064de/onnx/model_quantized.onnx",
+  "revision": "ea24b2d4e0bfae31f0a1299ba3fb892a2df064de",
+  "bytes": 44483407,
+  "sha256": "93abfec8b8abd77329f203726b231ee5e5d4c2d52c881a74ab1c1134d888c41d",
+  "localPath": ".tools/ai-models/detr-quantized.onnx"
+}

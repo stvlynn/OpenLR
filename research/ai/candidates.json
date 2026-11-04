@@ -1,0 +1,114 @@
+[
+  {
+    "id": "JianyuanWang/skyseg",
+    "revision": "3ba8c6df1d9ba9ff26f637c7ba9568ac11a9aa7f",
+    "license": "mit",
+    "files": [
+      {
+        "path": "README.md",
+        "bytes": 868
+      },
+      {
+        "path": "skyseg.onnx",
+        "bytes": 175997079,
+        "sha256": "ab9c34c64c3d821220a2886a4a06da4642ffa14d5b30e8d5339056a089aa1d39"
+      }
+    ]
+  },
+  {
+    "id": "voyagerfromeast/skyseg",
+    "revision": "d76f97cf68f049654f087d78d071dfd7505b2561",
+    "license": "mit",
+    "files": [
+      {
+        "path": "README.md",
+        "bytes": 1172
+      },
+      {
+        "path": "skyseg_fp16.onnx",
+        "bytes": 88084505,
+        "sha256": "74d87f4a69378a610a6be662f859c38cfbdfdd75ff74bbfc54842965ed6fc9f7"
+      }
+    ]
+  },
+  {
+    "id": "facebook/detr-resnet-50-panoptic",
+    "revision": "d53b52a799403a8867920f82c869e40732b47037",
+    "license": "apache-2.0",
+    "files": [
+      {
+        "path": "README.md",
+        "bytes": 5851
+      },
+      {
+        "path": "config.json",
+        "bytes": 11607
+      },
+      {
+        "path": "preprocessor_config.json",
+        "bytes": 289
+      }
+    ],
+    "labels": [
+      [
+        "1",
+        "person"
+      ],
+      [
+        "157",
+        "sky-other"
+      ],
+      [
+        "158",
+        "skyscraper"
+      ]
+    ]
+  },
+  {
+    "id": "Xenova/detr-resnet-50-panoptic",
+    "revision": "ea24b2d4e0bfae31f0a1299ba3fb892a2df064de",
+    "files": [
+      {
+        "path": "README.md",
+        "bytes": 1163
+      },
+      {
+        "path": "config.json",
+        "bytes": 11834
+      },
+      {
+        "path": "onnx/model.onnx",
+        "bytes": 172282717,
+        "sha256": "f41a80cd659d1ae2e4981f2423955d983d28657d747e965ddc980b7768042de1"
+      },
+      {
+        "path": "onnx/model_fp16.onnx",
+        "bytes": 86559030,
+        "sha256": "afd9f02d864302d690356fd4bfcb2feed2397a1190bf46a7306cb430464d734a"
+      },
+      {
+        "path": "onnx/model_quantized.onnx",
+        "bytes": 44483407,
+        "sha256": "93abfec8b8abd77329f203726b231ee5e5d4c2d52c881a74ab1c1134d888c41d"
+      },
+      {
+        "path": "preprocessor_config.json",
+        "bytes": 454
+      }
+    ],
+    "labels": [
+      [
+        "1",
+        "person"
+      ],
+      [
+        "157",
+        "sky-other"
+      ],
+      [
+        "158",
+        "skyscraper"
+      ]
+    ]
+  }
+]

@@ -21,6 +21,8 @@ npm run desktop
 - **局部处理**。渐变、径向和画笔蒙版支持局部调整。克隆与纹理修复使用原图坐标，即使后续裁剪也能引用框外像素。
 - **RAW 与输出**。LibRaw 解码传感器数据。支持输出 JPEG、PNG、TIFF、AVIF、JPEG XL 和未改动的原始文件。渲染导出可指定长边和文字水印。当前显示及渲染输出基于 8-bit sRGB。
 
+可选的 [WebDAV 同步](docs/library-sync.md) 在设备间传递导入的图库。多张照片可合并为 HDR 或全景；视频支持剪辑、逐帧调整、音轨保留和导出。导出 DNG、XMP、外部编辑器和相机格式的边界见 [交互范围](research/interaction-coverage.md)。
+
 ## Agent CLI
 
 启动桌面应用，在工作区执行以下命令。GUI 用户和 CLI 操作的是同一份实时状态。

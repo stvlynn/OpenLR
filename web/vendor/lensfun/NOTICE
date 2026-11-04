@@ -1,0 +1,17 @@
+Lensfun calibration database subset
+Source: https://github.com/lensfun/lensfun
+Commit: bc5615d6278cb5fb75dd53e74015367453d5591d
+Original files: data/db/compact-canon.xml, slr-canon.xml, slr-nikon.xml,
+mil-sony.xml and data/COPYING.CC_BY-SA_3.0.
+Copyright Lensfun contributors and individual calibration authors.
+
+The XML calibration database is licensed Creative Commons Attribution-
+ShareAlike 3.0 Unported, separately from Lensfun's software licenses.
+See COPYING.CC_BY-SA_3.0 and https://creativecommons.org/licenses/by-sa/3.0/.
+No Lensfun C/C++ library or lensfunpy package is linked or redistributed.
+
+Original XML is retained. OpenLR's generated lens-data.js is an adaptation
+of these database files: supported rectilinear distortion/TCA calibrations
+and camera identifiers are extracted to JSON; unsupported models and
+vignetting samples are omitted. That generated data retains CC BY-SA 3.0.
+OpenLR's renderer and transform implementation are separate project code.

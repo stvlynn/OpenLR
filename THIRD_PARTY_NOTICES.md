@@ -49,6 +49,16 @@ The EXIF reader uses exifr 7.1.3 by Mike Kovařík, Mutiny.cz (MIT). The unmodif
 
 Interface icons are from lucide-static 1.68.0. The individual SVGs and upstream ISC/MIT notices are in web/vendor/icons/. [Lucide](https://github.com/lucide-icons/lucide).
 
+## Bundled image registration runtime
+
+`web/vendor/opencv/opencv.js` is the unmodified `@techstark/opencv-js` **5.0.0-release.1** npm distribution of OpenCV 5.0.0, licensed Apache-2.0. The retained [NOTICE](web/vendor/opencv/NOTICE), license texts, build information, and SHA-256 inventory identify the wrapper and bundled protobuf (BSD-3-Clause), zlib (zlib license), Flatbuffers (Apache-2.0), and Emscripten runtime (MIT / University of Illinois/NCSA). Their copyrights and license texts remain alongside the runtime. The artifact is pinned in the lockfile and reproduced by `scripts/vendor-opencv.mjs`; it embeds its WASM and makes no CDN request. [OpenCV source](https://github.com/opencv/opencv/tree/5.0.0), [package source](https://github.com/TechStark/opencv-js).
+
+OpenLR uses OpenCV ORB, Hamming descriptor matching, RANSAC homography, and projective warping for [photo merging](docs/photo-merge.md). Its radiance recovery, tone mapping, feather blending, tests, and UI are project code; Adobe's photo-merge implementation is neither copied nor linked.
+
+## Camera RAW validation fixture
+
+`tests/fixtures/raw/canon-powershot-g1.crw` is sample 2073 from [raw.pixls.us](https://raw.pixls.us/), published there under **CC0-1.0**. Its adjacent JSON records the exact source, license, byte count and SHA-256; [CC0 terms](https://creativecommons.org/publicdomain/zero/1.0/legalcode) apply to that sample. It is used for actual non-DNG RAW conversion testing and does not originate from a user's photo library. The fixture does not license Adobe's applications or Canon trademarks. OpenLR's [DNG writer](docs/dng-export.md) is project source; no Adobe DNG SDK is included.
+
 ## TIFF, AVIF and JPEG XL codecs
 
 `web/vendor/codecs/` contains UTIF 3.1.0 (MIT, copyright 2017 Photopea), pako 1.0.11 (MIT and zlib notices), @jsquash/avif 2.1.1 and @jsquash/jxl 1.3.0 (Apache-2.0, Google and Jamie Sinclair), and wasm-feature-detect 1.9.0 (Apache-2.0). Package licenses and original module notices are retained. OpenLR adds ESM wrappers around unchanged UTIF/pako bodies and rewrites jSquash's wasm-feature-detect imports to relative local imports with explicit modification comments. WASM binaries are unmodified published package artifacts.
@@ -56,3 +66,19 @@ Interface icons are from lucide-static 1.68.0. The individual SVGs and upstream 
 The compiled codecs also contain libavif 1.0.1 (including its dav1d-derived source notices), libaom 3.7.0, libwebp/sharpyuv, libjxl, Brotli, Highway, skcms and the Emscripten runtime. Their required license, authors and applicable patent-grant texts are retained in `web/vendor/codecs/notices/`. Exact source revisions/URLs and hashes are recorded in its `sources.json`; runtime asset hashes are in `manifest.json`. These components retain their own BSD/MIT/Apache/zlib terms; OpenLR's AGPL declaration does not replace them. Preserve the complete notices directory in distributions.
 
 See [image codecs](docs/image-codecs.md) for fixed npm gitHeads, underlying source build inputs, API behavior, adaptation/build steps and actual validation. The package's permissive wrapper license is not presented as the only license of its embedded C/C++ codecs.
+
+Original + settings archives use fflate 0.8.3 (MIT, Arjun Barrett). Unmodified browser module and license in web/vendor/fflate/. [Upstream](https://github.com/101arrowz/fflate).
+
+The native application menu in menu.go adapts MyGo menu construction, separators and action callback routing from Arion's apps/desktop/bootstrap/windows.go at 3b1acc15ce251014ba720ee333c3cd74a75ea49b, AGPL-3.0-only. OpenLR supplies its own labels, photo actions and frontend event routing.
+
+Video conversion uses the unmodified Mediabunny 1.65.1 browser module (MPL-2.0). The distribution and license are in web/vendor/mediabunny/. [Corresponding source](https://github.com/Vanilagy/mediabunny/tree/v1.65.1).
+
+## Local segmentation runtime and weights
+
+`web/vendor/onnx/` contains unmodified WASM CPU assets of onnxruntime-web 1.31.1, Microsoft and contributors (MIT). Its complete LICENSE and ThirdPartyNotices.txt retain embedded component notices/source references; preserve both in distributions. Actual included files are inventoried in manifest.json; unused npm providers are not claimed to be bundled.
+
+`web/models/` contains unmodified U²-NetP ONNX from rembg v0.0.0 (U²-Net authors Xuebin Qin et al., Apache-2.0) and PPHumanSeg ONNX from OpenCV Zoo 48b10fa505aeb51fbd127fc60a5c660040e823b7 (Apache-2.0, Shenzhen Institute of Artificial Intelligence and Robotics for Society and contributors). Original licenses, model README/preprocessing source and exact URLs/sizes/digests are retained there.
+
+Sky optionally downloads Xenova's unmodified conversion of Facebook DETR ResNet-50 panoptic at ea24b2d4e0bfae31f0a1299ba3fb892a2df064de, under the original model's Apache-2.0 terms. Original license/model card and licensed COCO taxonomy are retained in web/models/. The 44 MB weight is not duplicated in the application bundle. Model metadata does not replace these copyright/license notices. See [AI mask sources and verification](docs/ai-masks.md).
+
+NASA astronaut and SpaceX rocket fixtures are public-domain photographs from scikit-image v0.25.2. Exact sources/rights/digests are in tests/fixtures/ai/README.md; no Adobe or personal photo is used.

@@ -23,3 +23,7 @@
 - 跨相机实拍 RAW 覆盖、Adobe DNG/XMP 与 Lightroom 目录间双向互操作。
 - 完整逐功能和交互等价性。单元或原生冒烟测试的通过仅覆盖相应的断言。
 
+
+Windows、Ubuntu 24.04、macOS 15 Intel 对提交 ee08007 的原生 GUI/CLI 验收均已通过。[三端运行记录](https://github.com/stvlynn/OpenLR/actions/runs/41882461866)
+
+本地后续验收增加了 XMP/原件包、曝光包围与全景、非 DNG 传感器文件输出 LinearRaw DNG、AI 人物和天空蒙版，以及保留音轨的视频裁剪导出。测试机上的初版运行曾发现 WebView2 无法启动模块 Worker，修复后同一解码内核可处理该启动失败。独立相机格式的来源与回读误差见 RAW/DNG 记录。

@@ -1,0 +1,25 @@
+{
+  "license": "CC-BY-SA-3.0",
+  "source": "https://github.com/lensfun/lensfun",
+  "commit": "bc5615d6278cb5fb75dd53e74015367453d5591d",
+  "sourceFiles": {
+    "compact-canon.xml": {
+      "bytes": 247047,
+      "sha256": "7316dd9f47ab4ac3903d37567d3ffbabfc7a47e490ed119a6b68f51cb14012e6"
+    },
+    "slr-canon.xml": {
+      "bytes": 780354,
+      "sha256": "fb54e6145629b081f5210341f399ca43c5aaf9aa2baaafdbccd49a508f254948"
+    },
+    "slr-nikon.xml": {
+      "bytes": 550158,
+      "sha256": "e585fc9f411379e229a7ee889cbca260ff1c366313a314ca94bf14bb5f193b1d"
+    },
+    "mil-sony.xml": {
+      "bytes": 274542,
+      "sha256": "e78648983cef7fd665f9e27f85658c5d7630a5a2e479428a93cdb2dc518cc46a"
+    }
+  },
+  "cameras": 344,
+  "profiles": 449
+}

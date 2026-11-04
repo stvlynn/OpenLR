@@ -1,5 +1,6 @@
 import {geometry} from './geometry.js'
 import {renderLocalSource} from './local-tools.js'
+import {renderOpticsSource} from './optics.js'
 import {createMixer, mixerControls, spatialEffects, toneCurve} from './color.js'
 export const controls = {
   Light: {Exposure:[-5,5,0.05], Contrast:[-100,100,1], Highlights:[-100,100,1], Shadows:[-100,100,1], Whites:[-100,100,1], Blacks:[-100,100,1]},
@@ -20,7 +21,8 @@ export function render(image, edit={}, maxSize=Infinity) {
   const canvas = document.createElement('canvas')
   const geom=geometry(image,edit,maxSize)
   const {x,y,w,h,width,height,turn,flip}=geom
-  const localSource=renderLocalSource(image,edit.localTools,Math.max(width*image.width/w,height*image.height/h))
+  const sourceEdge=Math.max(width*image.width/w,height*image.height/h)
+  const localSource=renderOpticsSource(renderLocalSource(image,edit.localTools,sourceEdge),edit.optics,image,sourceEdge)
   const sourceScaleX=localSource.width/image.width,sourceScaleY=localSource.height/image.height
   canvas.width = turn%2 ? height : width
   canvas.height = turn%2 ? width : height

@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"log"
 	"mime"
+	"os"
 	"runtime"
 
 	"github.com/egoist/mygo"
@@ -29,11 +30,23 @@ func main() {
 	mygo.Bind(desktop)
 	local := newLocal()
 	mygo.Bind(local)
+	mygo.Bind(&Remote{})
 	mygo.Protocol.HandleFunc("localphoto", local.servePhoto)
+	external := newExternal(desktop)
+	mygo.Bind(external)
+	mygo.Protocol.HandleFunc("externalphoto", external.servePhoto)
+	camera := newCamera()
+	mygo.Bind(camera)
+	mygo.Protocol.HandleFunc("cameraphoto", camera.servePhoto)
 	mygo.App.OnQuit(desktop.cancelAll)
 	var window *mygo.Window
 	openWindow := func() {
+		var page mygo.PageOptions
+		if os.Getenv("OPENLR_EPHEMERAL") == "1" {
+			page.Session = mygo.NewEphemeralSession()
+		}
 		window = mygo.NewWindow(mygo.WindowOptions{
+			Page:            page,
 			Title:           "OpenLR",
 			URL:             "/",
 			Width:           1440,
@@ -56,6 +69,7 @@ func main() {
 			log.Fatal("start local agent: ", err)
 		}
 		desktop.agent = agent
+		installMenu()
 		mygo.App.OnQuit(agent.close)
 		openWindow()
 	})

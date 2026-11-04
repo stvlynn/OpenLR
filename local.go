@@ -180,7 +180,7 @@ func (l *Local) root(id string) (LocalRoot, *os.Root, error) {
 
 var localPhotoExtensions = func() map[string]bool {
 	result := make(map[string]bool)
-	for _, ext := range strings.Fields("jpg jpeg png gif webp avif bmp tif tiff heic heif ico 3fr ari arw bay braw cap cine cr2 cr3 crw cs1 dc2 dcr dng drf eip erf fff gpr iiq k25 kdc mdc mef mos mrw nef nrw obm orf pef ptx pxn qtk raf raw rdc rw2 rwl rwz sr2 srf srw sti x3f") {
+	for _, ext := range strings.Fields("jpg jpeg png gif webp avif mp4 m4v mov mkv webm bmp tif tiff heic heif ico 3fr ari arw bay braw cap cine cr2 cr3 crw cs1 dc2 dcr dng drf eip erf fff gpr iiq k25 kdc mdc mef mos mrw nef nrw obm orf pef ptx pxn qtk raf raw rdc rw2 rwl rwz sr2 srf srw sti x3f") {
 		result["."+ext] = true
 	}
 	return result

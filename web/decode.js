@@ -1,3 +1,4 @@
+import {isVideo,poster} from './video.js'
 // One codec boundary for import, reopening originals, preview, and export.
 import {CODEC_TYPES,photoFormat} from './formats.js'
 import {runImageWorker} from './image-worker.js'
@@ -14,7 +15,13 @@ const MESSAGES={
 export class PhotoDecodeError extends Error {
   constructor(code, cause){ super(MESSAGES[code] || MESSAGES.RAW_DECODE,{cause}); this.name='PhotoDecodeError'; this.code=code }
 }
+export async function decodePhotoLinear(file){
+  if(!file?.size)throw new PhotoDecodeError('EMPTY')
+  if(!RAW_EXTENSIONS.includes((file.name||'').split('.').pop().toLowerCase()))throw Error('Linear RAW decoding requires a camera RAW/DNG file')
+  return (await runImageWorker(new URL('./decode-worker.js',import.meta.url),{file,linear:true},[],async({file})=>({frame:await (await import('./raw-kernel.js')).decodeRaw(file,{linear:true})}))).frame
+}
 export async function decodePhoto(file){
+  if(file&&isVideo(file))return (await poster(file)).bitmap
   if(!file?.size) throw new PhotoDecodeError('EMPTY')
   const extension=(file.name || '').split('.').pop().toLowerCase()
   if(!RAW_EXTENSIONS.includes(extension)){

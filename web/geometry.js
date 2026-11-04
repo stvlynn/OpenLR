@@ -1,4 +1,5 @@
-// Crop rectangles are fractions of the oriented original, before reflection and rotation.
+// Crop rectangles are fractions of the optics-corrected base canvas, before
+// reflection and 90-degree rotation. Its bounds retain the original dimensions.
 export function geometry(image,edit={},maxSize=Infinity){
   const box=edit.crop || {x:0,y:0,w:1,h:1}
   const boxW=box.w*image.width, boxH=box.h*image.height

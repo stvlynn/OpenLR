@@ -1,21 +1,7 @@
 import {run,commands} from './app.js'
 import {schema,searchCommands,validateArgs} from './agent-protocol.js'
 
-async function encode(blob){
-  return new Promise((resolve,reject)=>{
-    const reader=new FileReader()
-    reader.onload=()=>resolve(String(reader.result).split(',')[1])
-    reader.onerror=()=>reject(reader.error??new Error('Cannot read image result'))
-    reader.readAsDataURL(blob)
-  })
-}
-
-function decodeFile(file){
-  if(!file||typeof file.name!=='string'||typeof file.base64!=='string')throw new Error('Invalid imported file payload')
-  const raw=atob(file.base64),bytes=new Uint8Array(raw.length)
-  for(let i=0;i<raw.length;i++)bytes[i]=raw.charCodeAt(i)
-  return new File([bytes],file.name,{type:file.type||'application/octet-stream',lastModified:file.lastModified||Date.now()})
-}
+import {decodeFile,encodeBlob} from './transfer.js'
 
 // All GUI and agent mutations use app.run's same serialized, persisted command queue.
 export async function dispatch(command,args={},capture=false){
@@ -34,7 +20,7 @@ export async function dispatch(command,args={},capture=false){
     }
     const result=await run(command,args)
     if(result?.blob instanceof Blob){
-      return {ok:true,result:{kind:'file',filename:result.filename,mimeType:result.blob.type||'application/octet-stream',bytes:result.blob.size,base64:await encode(result.blob)}}
+      return {ok:true,result:{kind:'file',filename:result.filename,mimeType:result.blob.type||'application/octet-stream',bytes:result.blob.size,base64:await encodeBlob(result.blob)}}
     }
     return {ok:true,result}
   }catch(error){
@@ -62,4 +48,15 @@ async function serveNative(){
   }
 }
 
-if(globalThis.mygo?.call)serveNative()
+if(globalThis.mygo?.call){
+  serveNative()
+  if(globalThis.mygo.on)window.addEventListener('openlr-change',()=>globalThis.mygo.call('Desktop.AgentChanged').catch(error=>console.error(error)))
+  globalThis.mygo.on?.('workspaceMenu',async id=>{
+    try{
+      if(id==='choose-photos')document.getElementById('import').click()
+      else if(id==='export-dialog')document.getElementById('export').click()
+      else if(['new-album','grid','detail'].includes(id))document.getElementById(id).click()
+      else await run(id)
+    }catch(error){document.getElementById('notice').textContent=error.message}
+  })
+}

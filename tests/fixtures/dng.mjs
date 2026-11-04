@@ -1,6 +1,6 @@
 // Original generated 12-bit RGGB sensor fixture in an uncompressed DNG container.
 // No embedded JPEG/preview: a successful render must unpack the sensor samples.
-export function makeDng({width=128,height=96,orientation=1}={}){
+export function makeDng({width=128,height=96,orientation=1,exposure=1}={}){
   const tags=[]
   const values=(type,list)=>{
     if(type===2) return Uint8Array.from([...list+'\0'].map(c=>c.charCodeAt(0)))
@@ -38,7 +38,8 @@ export function makeDng({width=128,height=96,orientation=1}={}){
   for(let y=0;y<height;y++) for(let x=0;x<width;x++){
     const channel=y%2===0?(x%2===0?0:1):(x%2===0?1:2)
     const patch=Math.min(2,Math.floor(x*3/width))
-    view.setUint16(end+(y*width+x)*2,channel===patch?2600+Math.round(y/height*500):400,true)
+    const sample=channel===patch?2600+Math.round(y/height*500):400
+    view.setUint16(end+(y*width+x)*2,Math.max(256,Math.min(4095,Math.round(256+(sample-256)*exposure))),true)
   }
   return bytes
 }

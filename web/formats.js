@@ -5,7 +5,12 @@ export const EXPORT_FORMATS=[
   {value:'original',label:'Original',extension:null,quality:false},
   {value:'image/tiff',label:'TIFF',extension:'tif',quality:false},
   {value:'image/avif',label:'AVIF',extension:'avif',quality:true},
-  {value:'image/jxl',label:'JPEG XL',extension:'jxl',quality:true}
+  {value:'image/jxl',label:'JPEG XL',extension:'jxl',quality:true},
+  {value:'video/mp4',label:'MP4',extension:'mp4',quality:false},
+  {value:'video/webm',label:'WebM',extension:'webm',quality:false},
+  {value:'original-settings',label:'Original + settings',extension:'zip',quality:false},
+  {value:'application/rdf+xml',label:'Settings (XMP)',extension:'xmp',quality:false},
+  {value:'image/x-adobe-dng',label:'DNG · original or 16-bit linear RAW',extension:'dng',quality:false}
 ]
 export const EXPORT_TYPES=EXPORT_FORMATS.map(format=>format.value)
 export const CODEC_TYPES=['image/tiff','image/avif','image/jxl']

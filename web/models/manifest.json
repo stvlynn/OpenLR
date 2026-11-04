@@ -1,0 +1,33 @@
+{
+  "sources": {
+    "zoo": "48b10fa505aeb51fbd127fc60a5c660040e823b7",
+    "u2net": "ac7e1c817ecab7c7dff5ce6b1abba61cd213ff29"
+  },
+  "files": {
+    "LICENSE.U2NET": {
+      "url": "https://raw.githubusercontent.com/xuebinqin/U-2-Net/ac7e1c817ecab7c7dff5ce6b1abba61cd213ff29/LICENSE",
+      "bytes": 11357,
+      "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+    },
+    "SOURCE.PPHumanSeg.py": {
+      "url": "https://raw.githubusercontent.com/opencv/opencv_zoo/48b10fa505aeb51fbd127fc60a5c660040e823b7/models/human_segmentation_pphumanseg/pphumanseg.py",
+      "bytes": 2345,
+      "sha256": "f2954226dc0b35ccc69aee2bbaca66c11f981bcbcb6c7d620b326902459b02b6"
+    },
+    "LICENSE.PPHumanSeg": {
+      "url": "https://raw.githubusercontent.com/opencv/opencv_zoo/48b10fa505aeb51fbd127fc60a5c660040e823b7/models/human_segmentation_pphumanseg/LICENSE",
+      "bytes": 11437,
+      "sha256": "d9cf3b547fa4232fb9285f2db52e909f10f00781aaf64a6d0bb90c55149f1363"
+    },
+    "pphumanseg.onnx": {
+      "url": "https://media.githubusercontent.com/media/opencv/opencv_zoo/48b10fa505aeb51fbd127fc60a5c660040e823b7/models/human_segmentation_pphumanseg/human_segmentation_pphumanseg_2023mar.onnx",
+      "bytes": 6163938,
+      "sha256": "552d8a984054e59b5d773d24b9b12022b22046ceb2bbc4c9aaeaceb36a9ddf24"
+    },
+    "u2netp.onnx": {
+      "url": "https://github.com/danielgatis/rembg/releases/download/v0.0.0/u2netp.onnx",
+      "bytes": 4574861,
+      "sha256": "309c8469258dda742793dce0ebea8e6dd393174f89934733ecc8b14c76f4ddd8"
+    }
+  }
+}

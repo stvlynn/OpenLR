@@ -1,7 +1,7 @@
 const connection = new Promise((resolve, reject) => {
-  const request = indexedDB.open('openlr', 2)
+  const request = indexedDB.open('openlr', 3)
   request.onupgradeneeded = () => {
-    for (const name of ['photos','originals','albums','presets']) {
+    for (const name of ['photos','originals','albums','presets','sync']) {
       if(!request.result.objectStoreNames.contains(name))request.result.createObjectStore(name,{keyPath:'id'})
     }
   }

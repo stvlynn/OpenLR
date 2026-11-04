@@ -59,17 +59,25 @@ function registration(cv,source,target,sourceFrame,targetFrame){
 
 function warp(cv,frame,matrix,width,height,weighted=false){
   const src=cv.matFromImageData(frame),dst=new cv.Mat(),h=cv.matFromArray(3,3,cv.CV_64F,matrix)
-  let sourceWeight,destWeight
+  let sourceWeight,destWeight,sourceLinear,destLinear
   try{
     cv.warpPerspective(src,dst,h,new cv.Size(width,height),cv.INTER_LINEAR,cv.BORDER_CONSTANT,new cv.Scalar(0,0,0,0))
     const data=new Uint8ClampedArray(dst.data)
-    if(!weighted)return {data}
+    if(!weighted){
+      let linear
+      if(frame.linear){
+        sourceLinear=cv.matFromArray(frame.height,frame.width,cv.CV_32FC3,frame.linear);destLinear=new cv.Mat()
+        cv.warpPerspective(sourceLinear,destLinear,h,new cv.Size(width,height),cv.INTER_LINEAR,cv.BORDER_CONSTANT,new cv.Scalar(0,0,0))
+        linear=new Float32Array(destLinear.data32F)
+      }
+      return {data,linear}
+    }
     sourceWeight=new cv.Mat(frame.height,frame.width,cv.CV_32FC1)
     const feather=Math.max(1,Math.min(frame.width,frame.height)*0.15)
     for(let y=0;y<frame.height;y++)for(let x=0;x<frame.width;x++)sourceWeight.data32F[y*frame.width+x]=Math.min(1,Math.min(x+1,y+1,frame.width-x,frame.height-y)/feather)*(frame.data[(y*frame.width+x)*4+3]/255)
     destWeight=new cv.Mat();cv.warpPerspective(sourceWeight,destWeight,h,new cv.Size(width,height),cv.INTER_LINEAR,cv.BORDER_CONSTANT,new cv.Scalar(0))
     return {data,weight:new Float32Array(destWeight.data32F)}
-  }finally{src.delete();dst.delete();h.delete();sourceWeight?.delete();destWeight?.delete()}
+  }finally{src.delete();dst.delete();h.delete();sourceWeight?.delete();destWeight?.delete();sourceLinear?.delete();destLinear?.delete()}
 }
 
 export function exposureOffsets(frames,explicit){
@@ -105,7 +113,9 @@ function commonRectangle(aligned,width,height){
 
 export function encodeRadiance(radiance,width,height){
   const header=new TextEncoder().encode('#?RADIANCE\n# OpenLR linear exposure merge\nFORMAT=32-bit_rle_rgbe\n\n-Y '+height+' +X '+width+'\n')
-  const bytes=[],scan=new Uint8Array(width*4)
+  const scan=new Uint8Array(width*4),rle=width>=8&&width<=32767
+  const result=new Uint8Array(header.length+height*(rle?4+4*(width+Math.ceil(width/128)):width*4))
+  result.set(header);let offset=header.length
   for(let y=0;y<height;y++){
     for(let x=0;x<width;x++){
       const i=(y*width+x)*3,max=Math.max(radiance[i],radiance[i+1],radiance[i+2])
@@ -114,15 +124,15 @@ export function encodeRadiance(radiance,width,height){
       for(let c=0;c<3;c++)scan[x*4+c]=Math.min(255,Math.floor(radiance[i+c]*scale))
       scan[x*4+3]=exponent+128
     }
-    if(width<8||width>32767){bytes.push(...scan);continue}
-    bytes.push(2,2,width>>8,width&255)
+    if(!rle){result.set(scan,offset);offset+=scan.length;continue}
+    result.set([2,2,width>>8,width&255],offset);offset+=4
     for(let c=0;c<4;c++)for(let x=0;x<width;){
-      const count=Math.min(128,width-x);bytes.push(count)
-      for(let i=0;i<count;i++)bytes.push(scan[(x+i)*4+c])
+      const count=Math.min(128,width-x);result[offset++]=count
+      for(let i=0;i<count;i++)result[offset++]=scan[(x+i)*4+c]
       x+=count
     }
   }
-  const result=new Uint8Array(header.length+bytes.length);result.set(header);result.set(bytes,header.length);return result
+  return result
 }
 
 function toneMap(radiance,width,height){
@@ -145,7 +155,10 @@ function toneMap(radiance,width,height){
 export function mergeHDR(cv,frames,options={}){
   if(frames.length<2)throw Error('Select at least two exposure-bracketed photos')
   const evs=exposureOffsets(frames,options.evs),indices=evs.map((ev,i)=>i).sort((a,b)=>evs[a]-evs[b]),reference=indices[Math.floor(indices.length/2)]
-  const base=frames[reference],align=options.align!==false,feats=align?frames.map(frame=>features(cv,frame)):[],diagnostics=[]
+  const base=frames[reference],align=options.align!==false,diagnostics=[]
+  const factors=evs.map(ev=>2**(ev-evs[reference]))
+  if(factors.some(value=>!Number.isFinite(value)||value===0))throw Error('Exposure span exceeds the representable floating-point range')
+  const feats=align?frames.map(frame=>features(cv,frame)):[]
   try{
     const aligned=frames.map((frame,i)=>{
       let matrix=identity()
@@ -158,14 +171,14 @@ export function mergeHDR(cv,frames,options={}){
     const crop=commonRectangle(aligned,base.width,base.height)
     if(crop.width*crop.height<base.width*base.height*0.5)throw Error('HDR images do not share enough aligned image area')
     const radiance=new Float32Array(crop.width*crop.height*3)
-    let inconsistent=0,measured=0
+    let inconsistent=0,measured=0,recoverable=0,clipped=0
     for(let y=0;y<crop.height;y++)for(let x=0;x<crop.width;x++){
       const src=((crop.y+y)*base.width+crop.x+x)*4,dst=(y*crop.width+x)*3
       for(let c=0;c<3;c++){
         let sum=0,total=0,best=0,bestWeight=-1
         const estimates=[]
         for(let i=0;i<aligned.length;i++){
-          const z=aligned[i].data[src+c]/255,w=Math.min(z,1-z),value=linear(aligned[i].data[src+c])/(2**(evs[i]-evs[reference]))
+          const z=aligned[i].data[src+c]/255,w=Math.min(z,1-z),value=(aligned[i].linear?.[src/4*3+c]??linear(aligned[i].data[src+c]))/factors[i]
           if(w>bestWeight){bestWeight=w;best=value}
           if(z>0.01&&z<0.99){sum+=w*value;total+=w;estimates.push(value)}
         }
@@ -174,26 +187,30 @@ export function mergeHDR(cv,frames,options={}){
           const mean=estimates.reduce((a,b)=>a+b,0)/estimates.length
           if(mean>0.005&&Math.max(...estimates)-Math.min(...estimates)>mean*0.6)inconsistent++
         }
-        radiance[dst+c]=total?sum/total:best
+        const value=total?sum/total:best
+        if(!Number.isFinite(value)||value>3.402823466e38)throw Error('Recovered radiance exceeds the 32-bit floating-point range')
+        radiance[dst+c]=value
+        if(total)recoverable++;else clipped++
       }
     }
     if(measured&&inconsistent/measured>0.12)throw Error('Exposure-normalized pixels disagree; check EV offsets, moving subjects or alignment')
+    if(!recoverable)throw Error('All source exposures are clipped; no radiance can be recovered')
     const mapped=toneMap(radiance,crop.width,crop.height)
-    return {width:crop.width,height:crop.height,data:mapped.data,radiance:encodeRadiance(radiance,crop.width,crop.height),diagnostics:{kind:'hdr',method:'sRGB-linear calibrated radiance + Reinhard tone mapping',evs,reference,crop,alignment:diagnostics,dynamicRangeStops:mapped.dynamicRangeStops,maxRadiance:mapped.maxRadiance,minRadiance:mapped.minRadiance,inconsistentFraction:measured?inconsistent/measured:0}}
+    return {width:crop.width,height:crop.height,data:mapped.data,radiance:encodeRadiance(radiance,crop.width,crop.height),diagnostics:{kind:'hdr',method:'calibrated linear radiance + Reinhard tone mapping',inputTransfer:frames.map(frame=>frame.linear?'linear16-RAW':'sRGB inverse transfer'),evs,reference,crop,alignment:diagnostics,dynamicRangeStops:mapped.dynamicRangeStops,maxRadiance:mapped.maxRadiance,minRadiance:mapped.minRadiance,inconsistentFraction:measured?inconsistent/measured:0,unrecoverableChannelFraction:clipped/(clipped+recoverable)}}
   }finally{for(const feat of feats)feat.descriptors.delete()}
 }
 
 export function mergePanorama(cv,frames){
   if(frames.length<2)throw Error('Select at least two overlapping photos')
-  const feats=frames.map(frame=>features(cv,frame)),transforms=[identity()],alignment=[]
+  const feats=frames.map(frame=>features(cv,frame)),transforms=[identity()],alignment=[],rejectedPairs=[]
   try{
     for(let i=1;i<frames.length;i++){
       let best
       for(let j=0;j<i;j++)try{
         const found=registration(cv,feats[i],feats[j],frames[i],frames[j])
         if(!best||found.inliers>best.inliers)best={...found,target:j,source:i}
-      }catch{}
-      if(!best)throw Error('Photo '+(i+1)+' has no reliable overlapping match; use textured, overlapping views')
+      }catch(error){rejectedPairs.push({source:i,target:j,message:error.message||String(error)})}
+      if(!best)throw Error('Photo '+(i+1)+' has no reliable overlapping match: '+rejectedPairs.filter(pair=>pair.source===i).map(pair=>pair.message).join('; '))
       transforms.push(multiply(transforms[best.target],best.matrix));alignment.push(best)
     }
     const corners=frames.flatMap((frame,i)=>[[0,0],[frame.width,0],[frame.width,frame.height],[0,frame.height]].map(([x,y])=>project(transforms[i],x,y)))
@@ -212,6 +229,6 @@ export function mergePanorama(cv,frames){
     }
     const data=new Uint8ClampedArray(width*height*4)
     for(let p=0;p<weights.length;p++)if(weights[p]>0){for(let c=0;c<3;c++)data[p*4+c]=encoded(sums[p*3+c]/weights[p]);data[p*4+3]=255}
-    return {width,height,data,diagnostics:{kind:'panorama',method:'ORB + Hamming ratio + RANSAC projective alignment + linear-light feather blend',projection:'perspective',transforms,bounds:{left,top,right,bottom},alignment}}
+    return {width,height,data,diagnostics:{kind:'panorama',method:'ORB + Hamming ratio + RANSAC projective alignment + linear-light feather blend',projection:'perspective',transforms,bounds:{left,top,right,bottom},alignment,rejectedPairs}}
   }finally{for(const feat of feats)feat.descriptors.delete()}
 }

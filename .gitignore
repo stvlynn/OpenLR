@@ -7,3 +7,4 @@ test-results/
 .mygo/
 *.syso
 .workspace/
+resources/cli/openlr.mjs

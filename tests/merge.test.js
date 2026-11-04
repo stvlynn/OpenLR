@@ -60,4 +60,17 @@ test('merge rejects missing exposure calibration, nonoverlap, flat images, and i
   assert.throws(()=>exposureOffsets([{},{}],[0,Infinity]),/finite/)
   assert.throws(()=>mergePanorama(cv,[frame(300,220,{flat:true}),frame(300,220,{flat:true})]),/no reliable/)
   assert.throws(()=>mergePanorama(cv,[frame(360,260,{x:0}),frame(360,260,{x:1500})]),/no reliable/)
+  assert.throws(()=>mergeHDR(cv,[frame(300,220,{hdr:true,ev:-2}),frame(300,220,{hdr:true,ev:2})],{evs:[0,1],align:false}),/disagree/)
+})
+
+test('linear RAW samples retain sub-eight-bit differences through radiance recovery',()=>{
+  const frames=[0,1].map(ev=>{
+    const source=frame(8,4,{flat:true}),values=new Float32Array(8*4*3)
+    for(let i=0;i<values.length;i++)values[i]=(0.100001+(Math.floor(i/3)%2)*0.000008)*(2**ev)
+    return {...source,linear:values}
+  })
+  const result=mergeHDR(cv,frames,{evs:[0,1],align:false})
+  assert.deepEqual(result.diagnostics.inputTransfer,['linear16-RAW','linear16-RAW'])
+  assert.ok(result.diagnostics.maxRadiance-result.diagnostics.minRadiance>0.00001)
+  assert.ok(result.diagnostics.maxRadiance-result.diagnostics.minRadiance<0.00003)
 })

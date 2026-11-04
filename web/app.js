@@ -1,9 +1,16 @@
+import {decodeFile} from './transfer.js'
+import {isVideo,openVideo,poster,clipRange,exportVideo} from './video.js'
 import {decodePhoto, PHOTO_ACCEPT} from './decode.js'
 import {Presets} from './presets.js'
+import {displayedPhotos,findStacks,smartMatch,stackMenu} from './stacks.js'
+import {exportXmp,readXmp,exportPackage} from './xmp.js'
+import {mountSync,synchronize} from './sync.js'
 import {metadata,describe} from './metadata.js'
 import {readExportOptions,applyWatermark} from './export-options.js'
 import * as db from './catalog.js'
 import * as local from './local.js'
+import * as external from './external.js'
+import * as camera from './camera.js'
 import {cropGesture, geometry, validCrop} from './geometry.js'
 import {drawHistogram,histogram,autoExposure} from './histogram.js'
 import {controls, render, toBlob} from './render.js'
@@ -15,9 +22,11 @@ import {Organization,namedVersion,findVersion} from './organization.js'
 import {mountOrganization} from './organization-ui.js'
 import {mergePhotos} from './merge.js'
 import {mountMerge} from './merge-ui.js'
+import {exportDng} from './dng.js'
 import {LOCAL_COMMANDS,updateLocalTools} from './local-tools.js'
 import {createLocalToolsUI,viewToOriginal} from './local-tools-ui.js'
 import {neutralBalance} from './white-balance.js'
+import {generateAiMask} from './ai-mask.js'
 
 const $ = id => document.getElementById(id)
 const option = (value,label) => new Option(label,value)
@@ -27,22 +36,55 @@ const urls=new Map(), undo=[], redo=[]
 const organization=new Organization()
 const presets=new Presets()
 let updateOrganization=()=>{}
-let updateMerge=()=>{}
+let updateMerge=()=>{},updateStacks=()=>{}
+const openStacks=new Set()
+let slideTimer=null,slideDelay=3000,gridLayout=localStorage.getItem('grid-layout')||'square'
+function scheduleSlide(){
+  slideTimer=setTimeout(async()=>{
+    if(slideTimer===null)return
+    const list=visible(),i=list.findIndex(p=>p.id===selected)
+    if(list.length)await act('select',{id:list[(i+1)%list.length].id})
+    if(slideTimer!==null)scheduleSlide()
+  },slideDelay)
+}
+function stopSlides(){clearTimeout(slideTimer);slideTimer=null;document.body.classList.remove('slideshow')}
+async function savePhotoRows(rows){
+  await db.transaction('photos','readwrite',tx=>{for(const row of rows)tx.objectStore('photos').put(row)})
+  const changed=new Map(rows.map(row=>[row.id,row]))
+  photos=photos.map(row=>changed.get(row.id)||row)
+}
 let localToolsUI
 let sampling=false, pair=false, inspector=true
+let playingMedia=null,frameTicket=0
+function stopPlayback(){
+  playingMedia?.video.pause()
+  cancelAnimationFrame(frameTicket)
+}
+function refreshPlayback(){
+  if(!playingMedia||playingMedia.video.paused||!active()||mode!=='detail')return
+  const {video,duration}=playingMedia,photo=active()
+  if(video.currentTime>=clipRange(photo.edit.trim,duration).end)stopPlayback()
+  $('play-video').textContent=video.paused?'Play':'Pause'
+  $('video-position').value=video.currentTime
+  paintStage(video,photo.edit)
+  if(!video.paused)frameTicket=requestAnimationFrame(refreshPlayback)
+}
 const active=()=>photos.find(p=>p.id===selected)
-const matches=p=>Boolean(p.deleted)===(scope==='trash') && (['all','trash'].includes(scope) || (scope==='picked' ? p.flag==='pick' : p.albums.includes(scope))) && [p.name,p.keywords,p.metadata?.Make,p.metadata?.Model,p.metadata?.LensModel].join(' ').toLowerCase().includes(search.toLowerCase()) && organization.matches(p)
+const matches=p=>Boolean(p.deleted)===(scope==='trash') && (['all','trash'].includes(scope) || (scope==='picked' ? p.flag==='pick' : (p.albums.includes(scope)||smartMatch(p,albums.find(a=>a.id===scope)?.rule)))) && [p.name,p.keywords,p.metadata?.Make,p.metadata?.Model,p.metadata?.LensModel].join(' ').toLowerCase().includes(search.toLowerCase()) && organization.matches(p)
 function visible(){
   const result=photos.filter(matches)
-  return result.sort((a,b)=>organization.compare(a,b,order))
+  return displayedPhotos(result.sort((a,b)=>organization.compare(a,b,order)),openStacks)
 }
 async function source(id) {
   if (bitmapId!==id){
     const data=await original(id)
-    const next=await decodePhoto(data.file)
     const photo=photos.find(p=>p.id===id)
+    const media=isVideo(data.file)?await openVideo(data.file):null
+    const next=media?media.video:await decodePhoto(data.file)
+    if(media){photo.duration=media.duration;await media.seek(clipRange(photo.edit.trim,media.duration).start)}
+    stopPlayback();playingMedia?.close();playingMedia=media
     if(photo){photo.width=next.width;photo.height=next.height;photo.metadata??=await metadata(data.file)}
-    bitmap?.close()
+    bitmap?.close?.()
     bitmap=next
     bitmapId=id
   }
@@ -50,10 +92,11 @@ async function source(id) {
 }
 function original(id){
   const photo=photos.find(p=>p.id===id)
-  return local.isLocal(photo)?local.original(photo):db.original(id)
+  return local.isLocal(photo)?local.original(photo):db.original(photo?.originalId??id)
 }
 function clearSources(){
-  bitmap?.close();bitmap=null;bitmapId=''
+  stopPlayback();playingMedia?.close();playingMedia=null
+  bitmap?.close?.();bitmap=null;bitmapId=''
   for(const id of urls.keys())invalidate(id)
   undo.length=redo.length=0
 }
@@ -88,7 +131,8 @@ function tile(photo){
   img.src=thumb(photo)
   img.alt=''
   img.loading='lazy'
-  name.textContent=photo.name
+  name.textContent=photo.name+(photo.virtual?' · Copy':'')+(photo.stackId?' ▤':'')
+  button.style.setProperty('--aspect',photo.width&&photo.height?photo.width/photo.height:1)
   button.append(img,name)
   local.observeThumbnail(photo,img,()=>{
     if(photos.find(p=>p.id===photo.id)!==photo)return
@@ -120,7 +164,7 @@ function paintStage(image, edit){
   stage.classList.toggle('pair',pair)
   if(pair)stage.replaceChildren(render(image,{},edge),preview)
   else stage.replaceChildren(preview)
-  localToolsUI?.mount(preview,{image,edit:recipe,enabled:!cropping&&!compare&&!sampling&&!pair})
+  localToolsUI?.mount(preview,{image,edit:recipe,enabled:!playingMedia&&!cropping&&!compare&&!sampling&&!pair})
   if($('histogram-panel').open)drawHistogram($('histogram'),histogram(preview))
   $('stage').classList.toggle('cropping',cropping)
   $('stage').classList.toggle('zoom',zoom)
@@ -146,7 +190,7 @@ async function draw(){
     const add=document.createElement('button')
     add.className='empty'
     add.textContent=local.state()?'No photos in this folder — open another folder':'Add photos'
-    add.onclick=()=>local.state()?act('local-open'):$('files').click()
+    add.onclick=()=>local.state()?act('local-open'):choosePhotos()
     $('gallery').append(add)
   }
   $('albums').replaceChildren(...albums.map(a=>{
@@ -161,15 +205,16 @@ async function draw(){
   $('new-album').disabled=Boolean(local.state())
   presets.render($('preset-list'))
   $('preset-delete').disabled=presets.builtIn($('preset-list').value)
-  updateOrganization(snapshot())
+  const current=snapshot();updateOrganization(current);updateStacks(current)
+  $('gallery').dataset.layout=gridLayout
   updateMerge(snapshot())
   localToolsUI?.sync()
-  if(!p) return
+  if(!p){stopPlayback();$('video-bar').hidden=true;return}
   $('rate').value=p.rating
   $('flag').value=p.flag
   $('keywords').value=p.keywords
   $('delete').textContent=p.deleted?'Restore':'Delete'
-  $('membership').replaceChildren(option('','Albums'),...albums.map(a=>option(a.id,(p.albums.includes(a.id)?'− ':'＋ ')+a.name)))
+  $('membership').replaceChildren(option('','Albums'),...albums.filter(a=>!a.rule).map(a=>option(a.id,(p.albums.includes(a.id)?'− ':'＋ ')+a.name)))
   $('membership').disabled=Boolean(local.state())
   $('info').textContent=describe(p)
   $('compare').setAttribute('aria-pressed',compare)
@@ -180,26 +225,55 @@ async function draw(){
     input.value=p.edit[input.dataset.control] || 0
     input.previousElementSibling.value=input.value
   }
-  if(detail) paintStage(await source(p.id),p.edit)
+  if(detail)paintStage(await source(p.id),p.edit)
+  else stopPlayback()
+  const video=detail&&isVideo(p)&&playingMedia
+  $('video-bar').hidden=!video
+  if(video){
+    const range=clipRange(p.edit.trim,video.duration)
+    $('video-position').max=video.duration
+    $('video-position').value=video.video.currentTime
+    $('trim-start').value=range.start
+    $('trim-end').value=Number(range.end.toFixed(3))
+    $('play-video').textContent=video.video.paused?'Play':'Pause'
+  }
 }
 function snapshot(){
   const items=visible().map(({thumbnail,...p})=>p)
-  return {codecDiagnostics:getImageWorkerDiagnostics(),selected,scope,mode,inspector,search,order,compare,pair,sampling,cropping,film,zoom,albums,photos:items,local:local.state(),selection:[...organization.selection],filters:{...organization.filters},sortDirection:organization.direction,clipboard:organization.clipboard?{source:organization.clipboard.source,keys:organization.clipboard.keys}:null}
+  return {openStacks:[...openStacks],slideshow:slideTimer!==null,gridLayout,playback:playingMedia&&selected===bitmapId?{time:playingMedia.video.currentTime,playing:!playingMedia.video.paused,duration:playingMedia.duration}:null,codecDiagnostics:getImageWorkerDiagnostics(),selected,scope,mode,inspector,search,order,compare,pair,sampling,cropping,film,zoom,albums,photos:items,local:local.state(),selection:[...organization.selection],filters:{...organization.filters},sortDirection:organization.direction,clipboard:organization.clipboard?{source:organization.clipboard.source,keys:organization.clipboard.keys}:null}
 }
 async function importFiles(files) {
   const failed=[], added=[]
-  for (const file of files){
+  const stem=name=>name.replace(/\.[^.]+$/,'').toLowerCase()
+  const sidecars=new Map(files.filter(file=>/\.xmp$/i.test(file.name)).map(file=>[stem(file.name),file]))
+  for (const file of files.filter(file=>!/\.xmp$/i.test(file.name))){
     let image
     try {
-      image=await decodePhoto(file)
+      const media=isVideo(file)?await poster(file):null
+      image=media?.bitmap??await decodePhoto(file)
       const p={id:crypto.randomUUID(),name:file.name,width:image.width,height:image.height,
         added:Date.now(),rating:0,flag:'',keywords:'',deleted:false,albums:albums.some(a=>a.id===scope)?[scope]:[],edit:{},
-        metadata:await metadata(file),thumbnail:await toBlob(render(image,{},240))}
+        mediaType:file.type,...(media?{duration:media.duration}:{}),metadata:media?{}:await metadata(file),thumbnail:await toBlob(render(image,{},240))}
+      const sidecar=sidecars.get(stem(file.name))
+      if(sidecar){
+        Object.assign(p,readXmp(await sidecar.text()))
+        if(p.edit)p.thumbnail=await toBlob(render(image,p.edit,240))
+        sidecars.delete(stem(file.name))
+      }
       await db.addPhoto(p,file)
       photos.push(p)
       added.push(p.id)
     }catch(error){failed.push({name:file.name,error:error.message})}
     finally{image?.close()}
+  }
+  for(const sidecar of sidecars.values()){
+    try{
+      const targets=photos.filter(photo=>stem(photo.name)===stem(sidecar.name))
+      if(targets.length!==1)throw Error('Select the photo and use Apply XMP')
+      const changes=readXmp(await sidecar.text())
+      await replace(targets[0],changes)
+      if(changes.edit){undo.push({id:targets[0].id,edit:targets[0].edit});redo.length=0}
+    }catch(error){failed.push({name:sidecar.name,error:error.message})}
   }
   if(added.length){
     if(!albums.some(a=>a.id===scope)) scope='all'
@@ -249,9 +323,69 @@ async function execute(command,args){
   const p=active()
   let result
   switch(command){
-    case 'state': return snapshot()
+    case 'state':{
+      if(!args.summary)return snapshot()
+      const photo=active()
+      return {selected,scope,mode,visibleCount:visible().length,selectionCount:organization.selection.size,photo:photo?{id:photo.id,name:photo.name,rating:photo.rating,flag:photo.flag,width:photo.width,height:photo.height}:null}
+    }
+    case 'photos':{
+      const list=visible(),offset=number(args.offset??0,0,Number.MAX_SAFE_INTEGER),limit=number(args.limit??50,1,Number.MAX_SAFE_INTEGER)
+      return {total:list.length,offset,photos:list.slice(offset,offset+limit).map(({id,name,rating,flag,width,height,keywords})=>({id,name,rating,flag,width,height,keywords}))}
+    }
+    case 'select-inverse':selected=organization.chooseMany(visible(),visible().filter(row=>!organization.selection.has(row.id)).map(row=>row.id));break
+    case 'grid-layout':gridLayout=enumValue(args.layout,['square','mosaic']);localStorage.setItem('grid-layout',gridLayout);mode='grid';break
+    case 'stack':case 'auto-stack':{
+      if(local.state())throw Error('Stacks belong to the photo library')
+      const by=enumValue(args.by||'time',['time','similarity'])
+      const groups=command==='stack'?[organization.targets(photos)]:await findStacks(visible(),by,number(args.threshold??(by==='time'?5:.07),0,by==='time'?86400:1))
+      const rows=[]
+      for(const group of groups){
+        if(group.length<2)throw Error('Select at least two photos')
+        if(group.some(p=>p.stackId))throw Error('Ungroup existing stacks first')
+        const id=crypto.randomUUID(),cover=group.find(p=>p.id===selected)||group[0]
+        for(const p of group)rows.push({...p,stackId:id,stackCover:p.id===cover.id})
+      }
+      await savePhotoRows(rows);organization.resetSelection();result={groups:groups.length,photos:rows.length};break
+    }
+    case 'unstack':case 'stack-cover':case 'stack-toggle':{
+      if(!p?.stackId)throw Error('Select a stack')
+      if(command==='stack-toggle'){if(openStacks.has(p.stackId))openStacks.delete(p.stackId);else openStacks.add(p.stackId)}
+      else{
+        const group=photos.filter(row=>row.stackId===p.stackId)
+        await savePhotoRows(group.map(row=>({...row,stackId:command==='unstack'?null:p.stackId,stackCover:command!=='unstack'&&row.id===p.id})))
+      }
+      break
+    }
+    case 'virtual-copy':{
+      if(!p||local.state())throw Error('Select a library photo')
+      const copy={...p,id:crypto.randomUUID(),originalId:p.originalId||p.id,virtual:true,added:Date.now(),stackId:null,stackCover:false,versions:[]}
+      await db.save('photos',copy);photos.push(copy);selected=organization.chooseMany(photos,[copy.id]);break
+    }
+    case 'slideshow':{
+      if(slideTimer!==null||args.stop){stopSlides();break}
+      if(!visible().length)throw Error('No photos in this view')
+      slideDelay=number(args.seconds??3,.2,3600)*1000;mode='detail'
+      document.body.classList.add('slideshow');scheduleSlide();break
+    }
+    case 'save-frame':{
+      if(!p||!isVideo(p))throw Error('Select a video')
+      const canvas=render(await source(p.id),p.edit),blob=await toBlob(canvas,'image/png')
+      const file=new File([blob],p.name.replace(/\.[^.]+$/,'')+'-'+Math.round(playingMedia.video.currentTime*1000)+'.png',{type:'image/png'})
+      if(local.state())await showLibrary()
+      result=await importFiles([file]);break
+    }
     case 'sample-tool':if(!p)throw Error('Select a photo first');mode='detail';sampling=!sampling;pair=cropping=compare=false;break
     case 'compare-pair':if(!p)throw Error('Select a photo first');mode='detail';pair=!pair;sampling=compare=cropping=zoom=false;break
+    case 'sync':{
+      if(!globalThis.mygo?.call)throw Error('Sync requires the desktop app')
+      result=await synchronize({...args,prefer:enumValue(args.prefer||'',['','local','remote'])})
+      if(result.synced){
+        if(!local.state()){clearSources();photos=await db.all('photos')}
+        albums=await db.all('albums');await presets.load()
+        if(!['all','picked','trash'].includes(scope)&&!albums.some(a=>a.id===scope))scope='all'
+      }
+      break
+    }
     case 'presets':return presets.items
     case 'preset-delete':await presets.remove(args.id);break
     case 'import': if(local.state())await showLibrary();result=await importFiles(args.files);break
@@ -261,6 +395,40 @@ async function execute(command,args){
       if(!local.state())throw Error('Open a local folder first')
       result=await openLocal(local.state().root.id,args.relative||'.');break
     case 'library': await showLibrary();break
+    case 'tether': return camera.show()
+    case 'camera-list': return camera.discover()
+    case 'camera-capture':{
+      const shot=await camera.capture(args.id)
+      if(local.state())await showLibrary()
+      const added=await importFiles(shot.files)
+      for(const id of added.added){const photo=photos.find(photo=>photo.id===id);await replace(photo,{cameraCapture:{device:shot.device.name,backend:shot.device.backend,simulated:shot.device.simulated,captured:new Date().toISOString()}})}
+      result={...added,device:shot.device};break
+    }
+    case 'external-editor': return external.choose(Boolean(args.photoshop))
+    case 'external-edit':{
+      if(!p||isVideo(p))throw Error('Select a photo for external editing')
+      const copy=await execute('export',{format:'image/tiff'})
+      return external.send(copy.blob,copy.filename,p.id)
+    }
+    case 'external-check':{
+      const saved=await external.changes(),imported=[]
+      if(!saved.length)return {imported}
+      const catalog=await db.all('photos')
+      for(const item of saved){
+        const existing=catalog.find(photo=>photo.externalSession===item.id&&photo.externalRevision===item.hash)
+        if(!existing){
+          if(local.state())await showLibrary()
+          const added=await importFiles([item.file])
+          if(added.failed.length)throw Error(added.failed[0].error)
+          const photo=photos.find(photo=>photo.id===added.added[0])
+          await replace(photo,{derivedFrom:item.sourceId,externalSession:item.id,externalRevision:item.hash})
+          imported.push(photo.id)
+        }
+        await external.acknowledge(item)
+      }
+      if(imported.length)notice('Saved external copy added to Photo library')
+      result={imported};break
+    }
     case 'select':
       selected=organization.choose(visible(),selected,args);compare=zoom=false;break
     case 'select-many':selected=organization.chooseMany(visible(),args.ids);compare=zoom=false;break
@@ -309,7 +477,7 @@ async function execute(command,args){
     case 'album':{
       const name=String(args.name??'').trim()
       if(!name) throw Error('Enter an album name')
-      const album={id:crypto.randomUUID(),name}
+      const album={id:crypto.randomUUID(),name,...(args.smart?{rule:{...organization.filters,text:search}}:{})}
       await db.save('albums',album);albums.push(album);result=album;break
     }
     case 'film': film=!film;break
@@ -336,6 +504,14 @@ async function execute(command,args){
         await draw();return snapshot()
       }
       switch(command){
+        case 'ai-mask':{
+          if(args.photoId!==undefined&&args.photoId!==p.id)throw Error('The selected photo changed; AI mask was canceled')
+          const inputEdit=p.edit,result=await generateAiMask(await source(p.id),{target:args.target,adjustments:args.adjustments})
+          if(active()?.id!==p.id||active()?.edit!==inputEdit)throw Error('The photo or edits changed; AI mask was canceled')
+          const edit=updateLocalTools(p.edit,'mask.add',{mask:result.mask})
+          await replace(p,{edit});undo.push({id:p.id,edit:p.edit});redo.length=0;compare=cropping=false
+          await draw();return {id:edit.localTools.masks.at(-1).id,target:args.target,metrics:result.metrics}
+        }
         case 'rate':
           if(!Number.isInteger(args.value))throw Error('Rating must be an integer')
           number(args.value,0,5);await applySelection(()=>({rating:args.value}));break
@@ -344,7 +520,7 @@ async function execute(command,args){
         case 'delete':case 'restore': await applySelection(()=>({deleted:command==='delete'}));break
         case 'membership':{
           if(local.state())throw Error('Import local photos into Library before adding them to albums')
-          const id=enumValue(args.album,albums.map(a=>a.id))
+          const id=enumValue(args.album,albums.filter(a=>!a.rule).map(a=>a.id))
           const remove=organization.targets(photos).every(photo=>photo.albums.includes(id))
           await applySelection(photo=>({albums:remove?photo.albums.filter(a=>a!==id):[...new Set([...photo.albums,id])]}));break
         }
@@ -384,6 +560,30 @@ async function execute(command,args){
           if(index>=0){await replace(p,{edit:from[index].edit});from.splice(index,1);to.push({id:p.id,edit:p.edit})}
           break
         }
+        case 'apply-xmp':{
+          const changes=readXmp(args.xml)
+          await replace(p,changes)
+          if(changes.edit){undo.push({id:p.id,edit:p.edit});redo.length=0}
+          break
+        }
+        case 'video-play':case 'video-pause':case 'video-seek':case 'video-trim':{
+          if(!isVideo(p))throw Error('Select a video')
+          mode='detail';await source(p.id)
+          const media=playingMedia
+          if(command==='video-play'){
+            const range=clipRange(p.edit.trim,media.duration)
+            if(media.video.currentTime<range.start||media.video.currentTime>=range.end)await media.seek(range.start)
+            media.video.muted=false
+            await media.video.play();cancelAnimationFrame(frameTicket);frameTicket=requestAnimationFrame(refreshPlayback)
+          }else if(command==='video-pause')stopPlayback()
+          else if(command==='video-seek'){stopPlayback();await media.seek(args.time)}
+          else{
+            const range=clipRange(args,media.duration)
+            stopPlayback();await media.seek(range.start)
+            await replace(p,{edit:{...p.edit,trim:range}});undo.push({id:p.id,edit:p.edit});redo.length=0
+          }
+          break
+        }
         case 'preset-save':result=await presets.create(args.name,p.edit);break
         case 'preset-apply':{
           await replace(p,{edit:{...p.edit,...presets.get(args.id).edit}})
@@ -407,8 +607,19 @@ async function execute(command,args){
           return {blob:data.radiance,filename:p.name.replace(/\.[^.]+$/,'')+'.hdr'}
         }
         case 'export':case 'preview':{
-          const format=command==='preview'?'image/png':enumValue(args.format??'image/jpeg',EXPORT_TYPES)
+          const format=command==='preview'?'image/png':enumValue(args.format??(isVideo(p)?'video/mp4':'image/jpeg'),EXPORT_TYPES)
+          if(format.startsWith('video/')){
+            if(!isVideo(p))throw Error('Select a video')
+            await source(p.id)
+            return exportVideo((await original(p.id)).file,p,{...args,format})
+          }
           if(format==='original')return {blob:(await original(p.id)).file,filename:p.name}
+          if(format==='image/x-adobe-dng'){
+            if(args.maxSize!==undefined||args.watermark)throw Error('DNG preserves RAW pixels; use a rendered format for resizing or watermarks')
+            return exportDng(p,(await original(p.id)).file)
+          }
+          if(format==='original-settings')return exportPackage(p,(await original(p.id)).file)
+          if(format==='application/rdf+xml')return {blob:new Blob([exportXmp(p)],{type:format}),filename:exportFilename(p.name,format)}
           const max=args.maxSize===undefined?(command==='preview'?1280:Infinity):number(args.maxSize,1,Number.MAX_SAFE_INTEGER)
           const canvas=render(await source(p.id),command==='preview'&&compare?{}:p.edit,max)
           if(command==='export')applyWatermark(canvas,args.watermark)
@@ -428,6 +639,10 @@ const ready=Promise.all([db.all('photos'),db.all('albums'),presets.load()]).then
 export function run(command,args={},observe){
   const next=queue.then(()=>ready).then(async()=>{
     const result=await execute(command,args)
+    const unchangedPoll=command==='external-check'&&!result.imported?.length
+    if(!unchangedPoll&&!['state','photos','presets','histogram','preview','export','export-radiance','local-folders','screenshot','tether-devices'].includes(command)){
+      window.dispatchEvent(new Event('openlr-change'))
+    }
     return observe?observe(result,snapshot()):result
   })
   queue=next.catch(()=>{})
@@ -463,11 +678,17 @@ for(const [group,items] of Object.entries(controls)){
   $('adjustments').append(details)
 }
 for(let i=1;i<=5;i++)$('rate').add(option(i,'★'.repeat(i)))
-$('files').accept=PHOTO_ACCEPT
+$('files').accept=PHOTO_ACCEPT+',video/*,.mov,.mkv,.xmp'
+$('apply-xmp').onclick=()=>$('xmp-file').click()
+$('xmp-file').onchange=async e=>{const file=e.target.files[0];if(file)await act('apply-xmp',{xml:await file.text()});e.target.value=''}
 $('crop-tool').onclick=()=>act('crop-tool')
 $('clear-crop').onclick=()=>act('edit',{key:'crop',value:null})
 cropGesture($('stage'),value=>act('edit',{key:'crop',value}))
-$('import').onclick=()=>$('files').click()
+async function choosePhotos(){
+  if(!globalThis.mygo?.call){$('files').click();return}
+  try{const files=await globalThis.mygo.call('Desktop.ChoosePhotos');if(files.length)await importUI(files.map(decodeFile))}catch(error){notice(error.message)}
+}
+$('import').onclick=choosePhotos
 $('files').onchange=async e=>{await importUI(e.target.files);e.target.value=''}
 document.ondragover=e=>e.preventDefault()
 document.ondrop=e=>{e.preventDefault();if(e.dataTransfer.files.length)importUI(e.dataTransfer.files)}
@@ -512,12 +733,23 @@ for(const [id,delta] of [['left',3],['right',1]])$(id).onclick=()=>act('edit',{k
 $('flip').onclick=()=>act('edit',{key:'flip',value:!active().edit.flip})
 $('aspect').onchange=e=>act('edit',{key:'aspect',value:e.target.value})
 $('new-album').onclick=()=>{$('album-name').value='';$('album-dialog').showModal()}
-$('album-dialog').onclose=e=>{if(e.target.returnValue==='ok')act('album',{name:$('album-name').value});e.target.returnValue=''}
-$('export').onclick=()=>$('export-dialog').showModal()
+$('album-dialog').onclose=e=>{if(e.target.returnValue==='ok')act('album',{name:$('album-name').value,smart:$('smart-album').checked});e.target.returnValue=''}
+$('export').onclick=()=>{
+  const video=isVideo(active())
+  for(const item of $('format').options)item.hidden=item.disabled=item.value.startsWith('video/')&&!video
+  if(video)$('format').value='video/mp4'
+  else if($('format').value.startsWith('video/'))$('format').value='image/jpeg'
+  $('format').dispatchEvent(new Event('change'));$('export-dialog').showModal()
+}
+$('play-video').onclick=()=>act(playingMedia?.video.paused?'video-play':'video-pause')
+$('video-position').onchange=e=>act('video-seek',{time:Number(e.target.value)})
+$('trim-apply').onclick=()=>act('video-trim',{start:Number($('trim-start').value),end:Number($('trim-end').value)})
 $('format').replaceChildren(...EXPORT_FORMATS.map(format=>option(format.value,format.label)))
 $('format').onchange=e=>{
   const usesQuality=EXPORT_FORMATS.find(format=>format.value===e.target.value)?.quality
   $('quality').disabled=!usesQuality;$('quality').closest('label').hidden=!usesQuality
+  const renderOptions=!['original','original-settings','application/rdf+xml','image/x-adobe-dng'].includes(e.target.value)
+  for(const id of ['export-size','watermark']){$(id).disabled=!renderOptions;$(id).closest('label').hidden=!renderOptions}
 }
 $('export-dialog').onclose=async e=>{
   const accepted=e.target.returnValue==='ok'
@@ -534,7 +766,7 @@ document.onkeydown=e=>{
   else if(mod&&key==='v')act('paste-edits')
   else if(mod&&key==='z')act(e.shiftKey?'redo':'undo')
   else if(mod&&key==='f')$('search').focus()
-  else if(mod&&e.shiftKey&&key==='i')$('files').click()
+  else if(mod&&e.shiftKey&&key==='i')choosePhotos()
   else if(mod&&key==='e'){
     let previous
     try{previous=JSON.parse(localStorage.getItem('last-export'))}catch{}
@@ -550,7 +782,7 @@ document.onkeydown=e=>{
   else if(!mod&&e.shiftKey&&key==='a')act('auto-tone')
   else if(mod&&key==='[')$('left').click()
   else if(mod&&key===']')$('right').click()
-  else if(!mod&&key==='escape')act('view',{mode:'grid'})
+  else if(!mod&&key==='escape'){stopSlides();act('view',{mode:'grid'})}
   else if(!mod&&/^[0-5]$/.test(key))act('rate',{value:Number(key)})
   else if(!mod&&['z','u','x'].includes(key))act('flag',{value:{z:'pick',u:'',x:'reject'}[key]})
   else if(!mod&&key==='delete')$('delete').click()
@@ -565,7 +797,13 @@ document.onkeydown=e=>{
   }else return
   e.preventDefault()
 }
+mountSync(run,notice)
 local.mount((command,args)=>act(command,args),notice)
+external.mount((command,args)=>run(command,args).catch(error=>{notice(error.message);throw error}),notice)
+camera.mount(run,notice)
 ready.catch(e=>notice(e.message))
 updateOrganization=mountOrganization(act)
+updateStacks=stackMenu(act)
+$('layout').onclick=()=>act('grid-layout',{layout:gridLayout==='square'?'mosaic':'square'})
+$('end-slides').onclick=()=>act('slideshow',{stop:true})
 updateMerge=mountMerge(run,notice)

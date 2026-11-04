@@ -42,3 +42,5 @@ OpenLR adopts the responsibilities and workflow described in [template conventio
 Arion branding, UI assets, voice-input behavior, private evaluation arrangement, dependency pins, and CI workflows are not imported. The unlicensed `agentic-coding` repository is an acknowledged research reference, rather than a vendored source dependency.
 
 Any future copied or adapted file needs an exact upstream path and commit, its applicable license and notices, a description of changes, and a record in [third-party notices](../THIRD_PARTY_NOTICES.md). For material without a clear applicable reuse grant, obtain permission or implement independently. Resolve applicable compatibility and source-distribution requirements before merging additional imports. This review records evidence and project policy; it does not replace a license compatibility review of a concrete import.
+
+The desktop application menu in menu.go adapts the item composition and callback pattern in [Arion's window bootstrap](https://github.com/AstraFoundry/Arion/blob/3b1acc15ce251014ba720ee333c3cd74a75ea49b/apps/desktop/bootstrap/windows.go) for OpenLR's File, Edit and View commands.

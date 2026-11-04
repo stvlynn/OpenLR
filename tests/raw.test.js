@@ -13,7 +13,7 @@ test('real WASM decodes generated sensor DNG, orientation, recovery and bitmap o
   await page.goto(server.url)
   const fixture=Array.from(makeDng()), rotated=Array.from(makeDng({orientation:6}))
   const result=await page.evaluate(async({fixture,rotated})=>{
-    const {decodePhoto}=await import('./decode.js')
+    const {decodePhoto,decodePhotoLinear}=await import('./decode.js')
     const NativeWorker=window.Worker
     let workers=0,terminated=0,live=0,maxLive=0
     window.Worker=class extends NativeWorker{
@@ -40,8 +40,10 @@ test('real WASM decodes generated sensor DNG, orientation, recovery and bitmap o
       try{await decodePhoto(input)}catch(error){limits.push(error.code)}
     }
     const after=await crypto.subtle.digest('SHA-256',await file.arrayBuffer())
+    const linear=await decodePhotoLinear(file)
+    const linearFacts={width:linear.width,height:linear.height,samples:linear.linear.length,rgba:linear.data.length,sub8bit:Array.from(linear.linear).some(value=>value>0&&value<1&&Math.abs(value*255-Math.round(value*255))>0.01)}
     window.Worker=NativeWorker
-    return {dimensions,rotatedDimensions,pixels,invalidCode,recovered,limits,workers,terminated,maxLive,unchanged:String(new Uint8Array(before))===String(new Uint8Array(after)),closedWidth:bitmap.width}
+    return {dimensions,rotatedDimensions,pixels,invalidCode,recovered,limits,workers,terminated,maxLive,linearFacts,unchanged:String(new Uint8Array(before))===String(new Uint8Array(after)),closedWidth:bitmap.width}
   },{fixture,rotated})
   assert.deepEqual(result.dimensions,[128,96])
   assert.deepEqual(result.rotatedDimensions,[96,128])
@@ -50,8 +52,9 @@ test('real WASM decodes generated sensor DNG, orientation, recovery and bitmap o
   assert.equal(result.unchanged,true)
   assert.equal(result.closedWidth,0)
   assert.deepEqual(result.limits,['EMPTY'])
-  assert.equal(result.workers,6)
-  assert.equal(result.terminated,6)
+  assert.equal(result.workers,7)
+  assert.equal(result.terminated,7)
+  assert.deepEqual(result.linearFacts,{width:128,height:96,samples:128*96*3,rgba:128*96*4,sub8bit:true})
   assert.equal(result.maxLive,1)
   const [red,green,blue]=result.pixels
   assert.ok(red[0]>red[2]+40,JSON.stringify(result))

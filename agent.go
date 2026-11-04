@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -25,13 +26,15 @@ type AgentCommand struct {
 }
 
 type agentBroker struct {
-	queue   chan *AgentCommand
-	done    chan struct{}
-	mu      sync.Mutex
-	pending map[string]chan json.RawMessage
-	server  *http.Server
-	file    string
-	token   string
+	revision int64
+	changed  chan struct{}
+	queue    chan *AgentCommand
+	done     chan struct{}
+	mu       sync.Mutex
+	pending  map[string]chan json.RawMessage
+	server   *http.Server
+	file     string
+	token    string
 }
 
 func startAgent() (*agentBroker, error) {
@@ -43,7 +46,7 @@ func startAgent() (*agentBroker, error) {
 	if err != nil {
 		return nil, err
 	}
-	b := &agentBroker{queue: make(chan *AgentCommand, 32), done: make(chan struct{}), pending: make(map[string]chan json.RawMessage), token: hex.EncodeToString(secret[:])}
+	b := &agentBroker{changed: make(chan struct{}), queue: make(chan *AgentCommand, 32), done: make(chan struct{}), pending: make(map[string]chan json.RawMessage), token: hex.EncodeToString(secret[:])}
 	b.file = os.Getenv("OPENLR_AGENT_FILE")
 	if b.file == "" {
 		config, err := os.UserConfigDir()
@@ -75,6 +78,29 @@ func (b *agentBroker) serveHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
 		return
 	}
+	if r.URL.Path == "/changes" && r.Method == http.MethodGet {
+		after, err := strconv.ParseInt(r.URL.Query().Get("after"), 10, 64)
+		if err != nil {
+			http.Error(w, `{"error":"expected a revision"}`, http.StatusBadRequest)
+			return
+		}
+		for {
+			b.mu.Lock()
+			rev, wake := b.revision, b.changed
+			b.mu.Unlock()
+			if rev > after {
+				json.NewEncoder(w).Encode(map[string]int64{"revision": rev})
+				return
+			}
+			select {
+			case <-wake:
+			case <-r.Context().Done():
+				return
+			case <-b.done:
+				return
+			}
+		}
+	}
 	if r.URL.Path == "/health" && r.Method == http.MethodGet {
 		json.NewEncoder(w).Encode(map[string]any{"ok": true, "version": 1})
 		return
@@ -102,12 +128,11 @@ func (b *agentBroker) serveHTTP(w http.ResponseWriter, r *http.Request) {
 	b.pending[command.ID] = reply
 	b.mu.Unlock()
 	defer func() { b.mu.Lock(); delete(b.pending, command.ID); b.mu.Unlock() }()
-	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Minute)
-	defer cancel()
+	ctx := r.Context()
 	select {
 	case b.queue <- &command:
 	case <-ctx.Done():
-		http.Error(w, `{"error":"command queue timed out"}`, http.StatusGatewayTimeout)
+		http.Error(w, `{"error":"command request closed"}`, http.StatusGatewayTimeout)
 		return
 	case <-b.done:
 		http.Error(w, `{"error":"desktop closed"}`, http.StatusServiceUnavailable)
@@ -117,10 +142,25 @@ func (b *agentBroker) serveHTTP(w http.ResponseWriter, r *http.Request) {
 	case result := <-reply:
 		w.Write(result)
 	case <-ctx.Done():
-		http.Error(w, `{"error":"desktop command timed out"}`, http.StatusGatewayTimeout)
+		http.Error(w, `{"error":"command request closed"}`, http.StatusGatewayTimeout)
 	case <-b.done:
 		http.Error(w, `{"error":"desktop closed"}`, http.StatusServiceUnavailable)
 	}
+}
+
+// AgentChanged wakes all waiting observers after a command commits.
+func (d *Desktop) AgentChanged() {
+	if d.agent == nil {
+		return
+	}
+	b := d.agent
+	b.mu.Lock()
+	b.revision++
+	if b.changed != nil {
+		close(b.changed)
+	}
+	b.changed = make(chan struct{})
+	b.mu.Unlock()
 }
 
 // AgentPoll lets the embedded frontend execute CLI commands on its live state.

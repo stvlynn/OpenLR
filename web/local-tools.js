@@ -1,4 +1,5 @@
 // Local recipes always use fractions of the decoded, oriented original image.
+import {validateSoftMask,sampleSoftMask} from './soft-mask.js'
 export const LOCAL_CONTROLS={Exposure:[-5,5,0.05],Contrast:[-100,100,1],Saturation:[-100,100,1]}
 export const LOCAL_COMMANDS=['mask.add','mask.update','mask.remove','repair.add','repair.update','repair.remove']
 const clamp=(v,min=0,max=1)=>Math.min(max,Math.max(min,v))
@@ -17,12 +18,13 @@ function points(value){
 function object(value){if(!value||typeof value!=='object'||Array.isArray(value))throw Error('Expected a tool object');return value}
 export function validateLocalChanges(kind,changes){
   object(changes)
-  const allowed=kind==='mask'?['enabled','opacity','feather','start','end','center','rx','ry','points','radius','invert','adjustments']:['enabled','opacity','feather','source','points','radius']
+  const allowed=kind==='mask'?['enabled','opacity','feather','start','end','center','rx','ry','points','radius','invert','adjustments','raster']:['enabled','opacity','feather','source','points','radius']
   if(Object.keys(changes).some(key=>!allowed.includes(key)))throw Error('Unknown local tool change')
   for(const [key,value]of Object.entries(changes)){
     if(['enabled','invert'].includes(key)){if(typeof value!=='boolean')throw Error(key+' must be boolean')}
     else if(['start','end','center','source'].includes(key))point(value,key)
     else if(key==='points')points(value)
+    else if(key==='raster')validateSoftMask(value)
     else if(key==='adjustments'){
       for(const [name,v]of Object.entries(object(value))){if(!Object.hasOwn(LOCAL_CONTROLS,name))throw Error('Unknown local adjustment: '+name);scalar(v,...LOCAL_CONTROLS[name].slice(0,2),name)}
     }else scalar(value,['radius','rx','ry'].includes(key)?0.00001:0,1,key)
@@ -31,9 +33,9 @@ export function validateLocalChanges(kind,changes){
 }
 export function validateLocalTool(kind,value){
   object(value)
-  const repair=kind==='repair', types=repair?['clone','heal']:['linear','radial','brush']
+  const repair=kind==='repair', types=repair?['clone','heal']:['linear','radial','brush','semantic']
   if(!types.includes(value.type))throw Error('Expected tool type '+types.join(', '))
-  const allowed=['id','type','enabled','opacity','feather',...(repair?['source','points','radius']:['adjustments','invert',...(value.type==='linear'?['start','end']:value.type==='radial'?['center','rx','ry']:['points','radius'])])]
+  const allowed=['id','type','enabled','opacity','feather',...(repair?['source','points','radius']:['adjustments','invert',...(value.type==='semantic'?['raster','provenance']:value.type==='linear'?['start','end']:value.type==='radial'?['center','rx','ry']:['points','radius'])])]
   if(Object.keys(value).some(k=>!allowed.includes(k)))throw Error('Unknown local tool property')
   const result={type:value.type,enabled:value.enabled??true,opacity:scalar(value.opacity??1,0,1,'opacity'),feather:scalar(value.feather??0.5,0,1,'feather')}
   if(typeof result.enabled!=='boolean')throw Error('enabled must be boolean')
@@ -53,6 +55,9 @@ export function validateLocalTool(kind,value){
       if(Math.hypot(result.end.x-result.start.x,result.end.y-result.start.y)<1e-8)throw Error('Gradient endpoints must differ')
     }else if(value.type==='radial'){
       result.center=point(value.center,'center');result.rx=scalar(value.rx,0.00001,1,'rx');result.ry=scalar(value.ry,0.00001,1,'ry')
+    }else if(value.type==='semantic'){
+      result.raster=validateSoftMask(value.raster)
+      if(value.provenance!==undefined)result.provenance=structuredClone(object(value.provenance))
     }
   }
   return result
@@ -93,7 +98,8 @@ function falloff(distance,feather){
 }
 export function localWeight(tool,x,y,width,height){
   let weight
-  if(tool.type==='linear'){
+  if(tool.type==='semantic')weight=sampleSoftMask(tool.raster,x,y)
+  else if(tool.type==='linear'){
     const dx=(tool.end.x-tool.start.x)*width,dy=(tool.end.y-tool.start.y)*height
     weight=clamp(((x-tool.start.x)*width*dx+(y-tool.start.y)*height*dy)/(dx*dx+dy*dy))
   }else if(tool.type==='radial')weight=falloff(Math.hypot((x-tool.center.x)/tool.rx,(y-tool.center.y)/tool.ry),tool.feather)
@@ -106,7 +112,7 @@ export function localWeight(tool,x,y,width,height){
   return (tool.invert?1-weight:weight)*tool.opacity
 }
 function bounds(tool,width,height){
-  if(tool.type==='linear'||tool.invert)return {x0:0,y0:0,x1:width,y1:height}
+  if(tool.type==='linear'||tool.type==='semantic'||tool.invert)return {x0:0,y0:0,x1:width,y1:height}
   let left,right,top,bottom
   if(tool.type==='radial'){
     left=(tool.center.x-tool.rx)*width;right=(tool.center.x+tool.rx)*width

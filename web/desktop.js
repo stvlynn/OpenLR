@@ -6,6 +6,21 @@ export async function saveExport(blob, filename) {
   if (globalThis.mygo?.call) {
     const id = await globalThis.mygo.call('Desktop.BeginExport', filename);
     if (!id) return false;
+    return await writeNativeExport(blob,id);
+  }
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 30_000);
+  return true;
+}
+
+/** Send an existing native transfer in bounded-memory chunks. */
+export async function writeNativeExport(blob,id){
     const encode = chunk => new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = () => resolve(String(reader.result).split(',')[1]);
@@ -24,14 +39,4 @@ export async function saveExport(blob, filename) {
       await globalThis.mygo.call('Desktop.CancelExport', id).catch(() => {});
       throw error;
     }
-  }
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = filename;
-  document.body.append(link);
-  link.click();
-  link.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 30_000);
-  return true;
 }

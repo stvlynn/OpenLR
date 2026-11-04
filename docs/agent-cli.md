@@ -38,12 +38,20 @@ Success prints JSON to standard output. Failures print a JSON error to standard 
 
 See [catalog organization](catalog-organization.md) for multi-selection, batch metadata and pasted edits, album rename/delete, filters, ordering, and named versions. `state.selection` lists selected IDs; `state.selected` identifies the active editor image. Their commands come from the shared schema, so `schema version-save`, `schema filter`, and `schema select-many` work offline without a separate CLI implementation.
 
+[Photo merging](photo-merge.md) adds `merge-hdr`, `merge-panorama`, and `export-hdr`. Merge commands create a new library photo from selected originals and return registration/fusion diagnostics. `export-hdr --output merged.hdr` writes the actual retained scene-linear Radiance file; normal `preview` and `export` use the tone-mapped catalog image.
+
+`export --format image/x-adobe-dng --output camera.dng` preserves an existing DNG or creates a true 16-bit LinearRaw DNG from a decodable camera RAW. See [DNG export](dng-export.md) for the difference, embedded settings, and validation limits. Rendered images are rejected as RAW sources.
+
 ## Shared-session transport
 
 The MyGo host writes a session descriptor to the platform user configuration directory, `OpenLR/agent.json` (`%APPDATA%\OpenLR\agent.json` on Windows). `OPENLR_AGENT_FILE` or `--session` selects another descriptor. It contains a loopback URL, bearer token, PID, and protocol version. Do not commit or print the bearer token.
 
 The CLI sends `POST /command` with `{command,args}` to that authenticated loopback service. `web/agent.js` polls `Desktop.AgentPoll`, calls the same `app.run` used by UI actions, and replies through `Desktop.AgentReply`. The response is `{ok:true,result}` or `{ok:false,error:{code,message}}`. Image results carry `{kind:'file',filename,mimeType,bytes,base64}`. Imported CLI files carry `{name,type,lastModified,base64}` and become browser `File` objects at the boundary.
 
-The native command must reach the actual loaded window to succeed. A listening host alone does not prove the GUI bridge is ready. Requests have finite timeouts and surface disconnected or failed commands. Do not retry state-changing commands blindly after a transport timeout: inspect `state` first, because the original command may already have completed.
+The native command must reach the actual loaded window to succeed. A listening host alone does not prove the GUI bridge is ready. A client may specify a deadline in seconds with --timeout. Do not retry state-changing commands blindly after a transport timeout: inspect `state` first, because the original command may already have completed.
 
 In a browser, `window.openlr.run(command,args)` exposes the same functions and returns native `Blob` results for images; `window.openlr.dispatch(command,args)` returns the serialized envelope. `window.openlr.commands`, `.schema(name)`, and `.search(query)` provide discovery. This browser API is useful for browser testing; the native CLI session belongs to the native window.
+
+Use `openlr screenshot --output window.png` for the actual desktop viewport. On a data-returning command, `--capture path.png` returns its JSON result and a path to the captured window before the next queued edit runs. For example, `openlr edit --key Exposure --value 0.5 --capture edit.png`. File-returning commands already produce a separate image. Use `OPENLR_DAV_PASSWORD` for WebDAV credentials in unattended sync commands.
+
+For a large catalog use `openlr state --summary true` and `openlr photos --offset 0 --limit 50`. To follow changes made by the person in the GUI or by another agent, run `openlr watch`. It writes newline-delimited JSON after committed changes. `--images <directory>` records actual window PNGs with each observed state, and `--count 2` ends after two records. Fast consecutive edits can coalesce into one observation.

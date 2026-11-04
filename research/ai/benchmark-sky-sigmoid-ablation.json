@@ -1,0 +1,444 @@
+{
+  "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/155.0.0.0 Safari/537.36",
+  "hardwareConcurrency": 16,
+  "records": [
+    {
+      "target": "sky",
+      "shortEdge": 320,
+      "normalization": "standard",
+      "metrics": {
+        "loadMs": 827.9000000953674,
+        "preprocessMs": 6,
+        "inferenceMs": 1601.3000001907349,
+        "totalMs": 2437.800000190735
+      },
+      "regions": {
+        "sky": [
+          [
+            0.16,
+            0.08,
+            0.09,
+            0.45
+          ],
+          [
+            0.56,
+            0.07,
+            0.1,
+            0.45
+          ]
+        ],
+        "nonSky": [
+          [
+            0.49,
+            0.4,
+            0.02,
+            0.3
+          ],
+          [
+            0.45,
+            0.965,
+            0.1,
+            0.025
+          ]
+        ]
+      },
+      "scores": {
+        "sky": 0.9410774410774446,
+        "nonSky": 0.5629084967320264
+      },
+      "output": {
+        "inputs": [
+          "pixel_values",
+          "pixel_mask"
+        ],
+        "outputNames": [
+          "logits",
+          "pred_boxes",
+          "pred_masks"
+        ],
+        "logits": [
+          1,
+          100,
+          251
+        ],
+        "masks": [
+          1,
+          100,
+          80,
+          120
+        ],
+        "kept": [
+          {
+            "query": 33,
+            "label": 187,
+            "confidence": 0.9990791764377056
+          }
+        ],
+        "summary": [
+          {
+            "query": 33,
+            "label": 187,
+            "confidence": 0.9990791764377056,
+            "skyProbability": 0.9990791764377056
+          },
+          {
+            "query": 59,
+            "label": 250,
+            "confidence": 0.8321315473195824,
+            "skyProbability": 0.0037145901714921215
+          },
+          {
+            "query": 37,
+            "label": 250,
+            "confidence": 0.9801853544126014,
+            "skyProbability": 0.0007218560645865261
+          },
+          {
+            "query": 11,
+            "label": 197,
+            "confidence": 0.985694868010464,
+            "skyProbability": 0.0006997506024404403
+          },
+          {
+            "query": 36,
+            "label": 250,
+            "confidence": 0.9886472118756316,
+            "skyProbability": 0.00041779115502782395
+          }
+        ]
+      },
+      "coverage": 0.7536229575163399
+    },
+    {
+      "target": "sky",
+      "shortEdge": 320,
+      "normalization": "none",
+      "metrics": {
+        "loadMs": 0,
+        "preprocessMs": 9.5,
+        "inferenceMs": 1689.6000003814697,
+        "totalMs": 1702.3000001907349
+      },
+      "regions": {
+        "sky": [
+          [
+            0.16,
+            0.08,
+            0.09,
+            0.45
+          ],
+          [
+            0.56,
+            0.07,
+            0.1,
+            0.45
+          ]
+        ],
+        "nonSky": [
+          [
+            0.49,
+            0.4,
+            0.02,
+            0.3
+          ],
+          [
+            0.45,
+            0.965,
+            0.1,
+            0.025
+          ]
+        ]
+      },
+      "scores": {
+        "sky": 0.49280055456526,
+        "nonSky": 0.3513480392156858
+      },
+      "output": {
+        "inputs": [
+          "pixel_values",
+          "pixel_mask"
+        ],
+        "outputNames": [
+          "logits",
+          "pred_boxes",
+          "pred_masks"
+        ],
+        "logits": [
+          1,
+          100,
+          251
+        ],
+        "masks": [
+          1,
+          100,
+          80,
+          120
+        ],
+        "kept": [
+          {
+            "query": 17,
+            "label": 187,
+            "confidence": 0.5098260782443833
+          },
+          {
+            "query": 59,
+            "label": 187,
+            "confidence": 0.6887496047330204
+          }
+        ],
+        "summary": [
+          {
+            "query": 59,
+            "label": 187,
+            "confidence": 0.6887496047330204,
+            "skyProbability": 0.6887496047330204
+          },
+          {
+            "query": 17,
+            "label": 187,
+            "confidence": 0.5098260782443833,
+            "skyProbability": 0.5098260782443833
+          },
+          {
+            "query": 64,
+            "label": 250,
+            "confidence": 0.5305337383167628,
+            "skyProbability": 0.45572902286633765
+          },
+          {
+            "query": 36,
+            "label": 250,
+            "confidence": 0.5156731660713363,
+            "skyProbability": 0.38122097086015655
+          },
+          {
+            "query": 62,
+            "label": 250,
+            "confidence": 0.7941875104045943,
+            "skyProbability": 0.17876088063750625
+          }
+        ]
+      },
+      "coverage": 0.4244133986928104
+    },
+    {
+      "target": "sky",
+      "shortEdge": 512,
+      "normalization": "standard",
+      "metrics": {
+        "loadMs": 0,
+        "preprocessMs": 10.600000381469727,
+        "inferenceMs": 5230.099999904633,
+        "totalMs": 5249.10000038147
+      },
+      "regions": {
+        "sky": [
+          [
+            0.16,
+            0.08,
+            0.09,
+            0.45
+          ],
+          [
+            0.56,
+            0.07,
+            0.1,
+            0.45
+          ]
+        ],
+        "nonSky": [
+          [
+            0.49,
+            0.4,
+            0.02,
+            0.3
+          ],
+          [
+            0.45,
+            0.965,
+            0.1,
+            0.025
+          ]
+        ]
+      },
+      "scores": {
+        "sky": 0.6136904592836622,
+        "nonSky": 0.2624011007911935
+      },
+      "output": {
+        "inputs": [
+          "pixel_values",
+          "pixel_mask"
+        ],
+        "outputNames": [
+          "logits",
+          "pred_boxes",
+          "pred_masks"
+        ],
+        "logits": [
+          1,
+          100,
+          251
+        ],
+        "masks": [
+          1,
+          100,
+          128,
+          192
+        ],
+        "kept": [
+          {
+            "query": 33,
+            "label": 187,
+            "confidence": 0.9992267165538169
+          }
+        ],
+        "summary": [
+          {
+            "query": 33,
+            "label": 187,
+            "confidence": 0.9992267165538169,
+            "skyProbability": 0.9992267165538169
+          },
+          {
+            "query": 59,
+            "label": 250,
+            "confidence": 0.986439443900282,
+            "skyProbability": 0.0015977818566947628
+          },
+          {
+            "query": 36,
+            "label": 250,
+            "confidence": 0.9980222717994656,
+            "skyProbability": 0.00006729108199973829
+          },
+          {
+            "query": 11,
+            "label": 197,
+            "confidence": 0.9941467737539357,
+            "skyProbability": 0.000020630573650665165
+          },
+          {
+            "query": 67,
+            "label": 250,
+            "confidence": 0.9720093624812058,
+            "skyProbability": 0.000017216905678686353
+          }
+        ]
+      },
+      "coverage": 0.45812621272467324
+    },
+    {
+      "target": "sky",
+      "shortEdge": 512,
+      "normalization": "none",
+      "metrics": {
+        "loadMs": 0,
+        "preprocessMs": 6.900000095367432,
+        "inferenceMs": 5179.300000190735,
+        "totalMs": 5190.900000095367
+      },
+      "regions": {
+        "sky": [
+          [
+            0.16,
+            0.08,
+            0.09,
+            0.45
+          ],
+          [
+            0.56,
+            0.07,
+            0.1,
+            0.45
+          ]
+        ],
+        "nonSky": [
+          [
+            0.49,
+            0.4,
+            0.02,
+            0.3
+          ],
+          [
+            0.45,
+            0.965,
+            0.1,
+            0.025
+          ]
+        ]
+      },
+      "scores": {
+        "sky": 0.48654718285189275,
+        "nonSky": 0.24439857814470875
+      },
+      "output": {
+        "inputs": [
+          "pixel_values",
+          "pixel_mask"
+        ],
+        "outputNames": [
+          "logits",
+          "pred_boxes",
+          "pred_masks"
+        ],
+        "logits": [
+          1,
+          100,
+          251
+        ],
+        "masks": [
+          1,
+          100,
+          128,
+          192
+        ],
+        "kept": [
+          {
+            "query": 33,
+            "label": 187,
+            "confidence": 0.9551834596810919
+          },
+          {
+            "query": 59,
+            "label": 187,
+            "confidence": 0.6777254042033818
+          }
+        ],
+        "summary": [
+          {
+            "query": 33,
+            "label": 187,
+            "confidence": 0.9551834596810919,
+            "skyProbability": 0.9551834596810919
+          },
+          {
+            "query": 59,
+            "label": 187,
+            "confidence": 0.6777254042033818,
+            "skyProbability": 0.6777254042033818
+          },
+          {
+            "query": 36,
+            "label": 250,
+            "confidence": 0.8933186014545932,
+            "skyProbability": 0.10512477631042093
+          },
+          {
+            "query": 32,
+            "label": 250,
+            "confidence": 0.9779950410573284,
+            "skyProbability": 0.02058713129736144
+          },
+          {
+            "query": 5,
+            "label": 250,
+            "confidence": 0.985305194105283,
+            "skyProbability": 0.008072423250675352
+          }
+        ]
+      },
+      "coverage": 0.4406214894812091
+    }
+  ]
+}

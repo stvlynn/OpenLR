@@ -1,5 +1,8 @@
 import {geometry} from './geometry.js'
-import {LOCAL_CONTROLS} from './local-tools.js'
+import {LOCAL_CONTROLS,localWeight} from './local-tools.js'
+import {compileOptics,renderOpticsSource} from './optics.js'
+import {AI_TARGETS} from './ai-models.js'
+import {decodeSoftMask} from './soft-mask.js'
 
 const clamp=v=>Math.max(0,Math.min(1,v))
 export function viewToOriginal(point,image,edit={}){
@@ -9,11 +12,16 @@ export function viewToOriginal(point,image,edit={}){
   if(turn===2)[x,y]=[1-x,1-y]
   if(turn===3)[x,y]=[1-y,x]
   if(g.flip)x=1-x
-  return {x:clamp((g.x+x*g.w)/image.width),y:clamp((g.y+y*g.h)/image.height)}
+  const corrected={x:(g.x+x*g.w)/image.width,y:(g.y+y*g.h)/image.height}
+  const mapping=compileOptics(image,edit.optics),original=mapping.toOriginal(corrected)
+  if(mapping.active&&(original.x<0||original.y<0||original.x>1||original.y>1))return null
+  return {x:clamp(original.x),y:clamp(original.y)}
 }
 export function originalToView(point,image,edit={}){
   const g=geometry(image,edit),turn=((g.turn%4)+4)%4
-  let x=(point.x*image.width-g.x)/g.w,y=(point.y*image.height-g.y)/g.h
+  const corrected=compileOptics(image,edit.optics).fromOriginal(point)
+  if(!corrected)return {x:NaN,y:NaN}
+  let x=(corrected.x*image.width-g.x)/g.w,y=(corrected.y*image.height-g.y)/g.h
   if(g.flip)x=1-x
   if(turn===1)[x,y]=[1-y,x]
   if(turn===2)[x,y]=[1-x,1-y]
@@ -36,6 +44,17 @@ export function createLocalToolsUI({container,run,getActive,notify}){
   const sliders={}
   const field=(text,node)=>{const label=element('label');label.append(text,node);panel.append(label);return label}
   panel.append(heading);field('Tool ',mode);field('Edit ',list)
+  const aiTarget=element('select',{'aria-label':'AI mask target'}),generate=element('button',{type:'button'},'Generate AI mask')
+  for(const target of AI_TARGETS)aiTarget.append(element('option',{value:target},target[0].toUpperCase()+target.slice(1)))
+  field('AI selection ',aiTarget);panel.append(generate,element('p',{class:'tool-hint'},'Runs locally. Sky downloads a 172 MB model once and caches it; photos stay on this device.'))
+  generate.onclick=async()=>{
+    generate.disabled=true;status.textContent=aiTarget.value==='sky'?'Preparing sky model and selection…':'Generating selection…'
+    try{
+      await run('ai-mask',{target:aiTarget.value,photoId:getActive()?.id,adjustments:Object.fromEntries(Object.keys(LOCAL_CONTROLS).map(key=>[key,Number(sliders[key].value)]))})
+      const item=getActive()?.edit.localTools?.masks?.at(-1)
+      if(item){list.value=item.id;mode.value='off';sync();status.textContent='Generated '+aiTarget.value+' selection. Adjust, invert or disable it below.'}
+    }catch(error){status.textContent=error.message;notify(error.message)}finally{generate.disabled=false}
+  }
   for(const [name,[min,max,step,initial]]of Object.entries({radius:[0.001,0.5,0.001,0.05],feather:[0,1,0.01,0.5],opacity:[0,1,0.01,1],...LOCAL_CONTROLS})){
     const defaultValue=initial??(name==='Exposure'?1:0)
     const slider=element('input',{type:'range',min,max,step,value:defaultValue,'aria-label':'Local '+name}),output=element('output',{},String(defaultValue))
@@ -60,13 +79,13 @@ export function createLocalToolsUI({container,run,getActive,notify}){
     const photo=getActive(),local=photo?.edit.localTools??{},previous=list.value
     if(asset!==photo?.id){asset=photo?.id;source=null;draft=null}
     const items=[...(local.masks??[]),...(local.repairs??[])]
-    list.replaceChildren(element('option',{value:''},'New stroke / gradient'),...items.map((item,index)=>element('option',{value:item.id},(index+1)+'. '+item.type+(item.enabled===false?' (off)':''))))
+    list.replaceChildren(element('option',{value:''},'New stroke / gradient'),...items.map((item,index)=>element('option',{value:item.id},(index+1)+'. '+(item.type==='semantic'?(item.provenance?.target??'semantic')+' (AI)':item.type)+(item.enabled===false?' (off)':''))))
     if(items.some(item=>item.id===previous))list.value=previous
     const item=selectedItem();remove.disabled=!item;invert.disabled=!item||['clone','heal'].includes(item.type);enabled.disabled=!item
     invert.checked=item?.invert??false;enabled.checked=item?.enabled??true
     for(const [name,input]of Object.entries(sliders)){
       const isAdjustment=Object.hasOwn(LOCAL_CONTROLS,name),isRepair=item&&['clone','heal'].includes(item.type)
-      input.disabled=Boolean((isAdjustment&&isRepair)||(name==='radius'&&item&&!['brush','clone','heal'].includes(item.type))||(name==='feather'&&(item?.type??mode.value)==='linear'))
+      input.disabled=Boolean((isAdjustment&&isRepair)||(name==='radius'&&item&&!['brush','clone','heal'].includes(item.type))||(name==='feather'&&['linear','semantic'].includes(item?.type??mode.value)))
       if(item){input.value=isAdjustment?item.adjustments?.[name]??0:item[name]??input.value;input.previousElementSibling.value=input.value}
     }
     choose.hidden=!['clone','heal'].includes(mode.value)
@@ -85,10 +104,24 @@ export function createLocalToolsUI({container,run,getActive,notify}){
     Object.assign(overlay.style,{left:bounds.left+'px',top:bounds.top+'px',width:bounds.width+'px',height:bounds.height+'px'})
     overlay.setAttribute('viewBox','0 0 '+bounds.width+' '+bounds.height);overlay.replaceChildren()
     const project=p=>{const q=originalToView(p,image,edit);return {x:q.x*bounds.width,y:q.y*bounds.height}}
-    const path=points=>points.map((p,index)=>{const q=project(p);return (index?'L':'M')+q.x+' '+q.y}).join(' ')
-    const circle=p=>{const q=project(p);overlay.append(svgNode('circle',{cx:q.x,cy:q.y,r:5,fill:'none',stroke:'#59d9ff','stroke-width':2}))}
+    const path=points=>{let connected=false;return points.map(p=>{const q=project(p);if(!Number.isFinite(q.x)||!Number.isFinite(q.y)){connected=false;return ''}const result=(connected?'L':'M')+q.x+' '+q.y;connected=true;return result}).join(' ')}
+    const circle=p=>{const q=project(p);if(Number.isFinite(q.x)&&Number.isFinite(q.y))overlay.append(svgNode('circle',{cx:q.x,cy:q.y,r:5,fill:'none',stroke:'#59d9ff','stroke-width':2}))}
     const tool=draft||selectedItem()
-    if(tool?.type==='linear')overlay.append(svgNode('path',{d:path([tool.start,tool.end]),stroke:'#ffb15c','stroke-width':2,fill:'none'}))
+    if(tool?.type==='semantic'||(tool?.points&&compileOptics(image,edit.optics).active)){
+      const raster=tool.raster??{width:Math.max(1,Math.round(384*image.width/Math.max(image.width,image.height))),height:Math.max(1,Math.round(384*image.height/Math.max(image.width,image.height)))},mask=tool.type==='semantic'?decodeSoftMask(raster):null,small=document.createElement('canvas');small.width=raster.width;small.height=raster.height
+      const context=small.getContext('2d'),pixels=context.createImageData(raster.width,raster.height)
+      for(let i=0;i<raster.width*raster.height;i++){
+        pixels.data[i*4]=255
+        pixels.data[i*4+3]=mask?(tool.invert?255-mask[i]:mask[i]):255*localWeight(tool,(i%raster.width+0.5)/raster.width,(Math.floor(i/raster.width)+0.5)/raster.height,image.width,image.height)
+      }
+      context.putImageData(pixels,0,0)
+      const view=document.createElement('canvas');view.width=Math.max(1,Math.round(bounds.width));view.height=Math.max(1,Math.round(bounds.height))
+      const g=geometry(image,edit),ctx=view.getContext('2d'),w=g.turn%2?view.height:view.width,h=g.turn%2?view.width:view.height
+      ctx.translate(view.width/2,view.height/2);ctx.rotate(g.turn*Math.PI/2);ctx.scale(g.flip?-1:1,1)
+      const corrected=renderOpticsSource(small,{...edit.optics,profileTCA:false,redScale:0,blueScale:0},image)
+      ctx.drawImage(corrected,g.x/image.width*raster.width,g.y/image.height*raster.height,g.w/image.width*raster.width,g.h/image.height*raster.height,-w/2,-h/2,w,h)
+      overlay.append(svgNode('image',{href:view.toDataURL(),x:0,y:0,width:bounds.width,height:bounds.height,opacity:0.3,preserveAspectRatio:'none'}))
+    }else if(tool?.type==='linear')overlay.append(svgNode('path',{d:path([tool.start,tool.end]),stroke:'#ffb15c','stroke-width':2,fill:'none'}))
     else if(tool?.type==='radial'){
       const points=Array.from({length:65},(_,i)=>({x:tool.center.x+Math.cos(i*Math.PI/32)*tool.rx,y:tool.center.y+Math.sin(i*Math.PI/32)*tool.ry}))
       overlay.append(svgNode('path',{d:path(points),stroke:'#ffb15c','stroke-width':2,fill:'none'}))
@@ -111,6 +144,7 @@ export function createLocalToolsUI({container,run,getActive,notify}){
       if(mode.value==='off'||event.button!==0)return
       event.preventDefault();event.stopPropagation();canvas.setPointerCapture(event.pointerId)
       const p=point(event),repair=['clone','heal'].includes(mode.value)
+      if(!p){status.textContent='Choose a point inside the corrected source image.';return}
       if(repair&&(picking||event.altKey||!source)){source=p;picking=false;status.textContent='Source selected. Drag the target to apply.';drawOverlay();return}
       gesture={id:getActive()?.id,start:p,points:[p],pointerId:event.pointerId,type:mode.value}
       updateDraft(p)
@@ -127,13 +161,16 @@ export function createLocalToolsUI({container,run,getActive,notify}){
       if(!gesture||event.pointerId!==gesture.pointerId)return
       event.preventDefault();event.stopPropagation()
       const p=point(event),previous=gesture.points.at(-1)
+      if(!p)return
       if(Math.hypot(p.x-previous.x,p.y-previous.y)>0.001)gesture.points.push(p)
       updateDraft(p)
     }
     const up=event=>{
       if(!gesture||event.pointerId!==gesture.pointerId)return
       event.preventDefault();event.stopPropagation()
-      updateDraft(point(event));const tool=draft,current=gesture;gesture=draft=null
+      const end=point(event)
+      if(!end){gesture=draft=null;drawOverlay();return}
+      updateDraft(end);const tool=draft,current=gesture;gesture=draft=null
       if(current.id===getActive()?.id){
         const repair=['clone','heal'].includes(tool.type)
         if(tool.type==='linear'&&Math.hypot(tool.end.x-tool.start.x,tool.end.y-tool.start.y)<0.002){drawOverlay();return}

@@ -2,6 +2,7 @@ import {controls} from './render.js'
 import {validCrop} from './geometry.js'
 import {LOCAL_CONTROLS,validateLocalTool,validateLocalChanges} from './local-tools.js'
 import {EXPORT_TYPES} from './formats.js'
+import {AI_TARGETS} from './ai-models.js'
 
 const string = (description, extra={}) => ({type:'string', description, ...extra})
 const number = (description, minimum, maximum, extra={}) => ({type:'number', description, minimum, maximum, ...extra})
@@ -9,19 +10,21 @@ const entry = (summary, properties={}, required=[], extra={}) => ({summary, para
 const edits=Object.assign({},...Object.values(controls))
 const pointRule={type:'object',description:'Normalized original-image point, before crop/rotate/flip',properties:{x:number('Original x fraction',0,1),y:number('Original y fraction',0,1)},required:['x','y'],additionalProperties:false}
 const localProperties={
-  type:string('Tool shape',{enum:['linear','radial','brush','clone','heal']}),
+  type:string('Tool shape',{enum:['linear','radial','brush','semantic','clone','heal']}),
   start:pointRule,end:pointRule,center:pointRule,source:pointRule,
   points:{type:'array',description:'Brush/repair stroke in original coordinates; at least one point',items:pointRule,minItems:1},
   radius:number('Brush radius as a fraction of the original short edge',0.00001,1),
   rx:number('Ellipse x radius as original width fraction',0.00001,1),ry:number('Ellipse y radius as original height fraction',0.00001,1),
   opacity:number('Local effect strength',0,1),feather:number('Soft edge fraction; zero is hard',0,1),
   invert:{type:'boolean',description:'Invert mask coverage'},enabled:{type:'boolean',description:'Enable this local edit'},
+  raster:{type:'object',description:'Normalized full-original soft mask, bilinearly sampled',properties:{width:{type:'integer',minimum:1},height:{type:'integer',minimum:1},encoding:{type:'string',enum:['base64-u8']},data:{type:'string',description:'Base64 grayscale samples in 0..255'}},required:['width','height','encoding','data'],additionalProperties:false},
+  provenance:{type:'object',description:'Model/source metadata for an external semantic raster'},
   adjustments:{type:'object',properties:Object.fromEntries(Object.entries(LOCAL_CONTROLS).map(([key,[min,max]])=>[key,number('Local '+key,min,max)])),additionalProperties:false}
 }
 const localDefinitions={}
 for(const kind of ['mask','repair']){
-  const properties=Object.fromEntries(Object.entries(localProperties).filter(([key])=>kind==='mask'?key!=='source':!['start','end','center','rx','ry','invert','adjustments'].includes(key)))
-  properties.type={...properties.type,enum:kind==='mask'?['linear','radial','brush']:['clone','heal']}
+  const properties=Object.fromEntries(Object.entries(localProperties).filter(([key])=>kind==='mask'?key!=='source':!['start','end','center','rx','ry','invert','adjustments','raster','provenance'].includes(key)))
+  properties.type={...properties.type,enum:kind==='mask'?['linear','radial','brush','semantic']:['clone','heal']}
   localDefinitions[kind+'.add']=entry('Add a non-destructive '+(kind==='mask'?'linear/radial/brush adjustment mask':'clone or mean-color matched texture repair'),{[kind]:{type:'object',properties,required:['type'],additionalProperties:false}},[kind])
   localDefinitions[kind+'.update']=entry('Update local '+kind+' geometry, strength or adjustments',{id:string('Local tool ID from state'),changes:{type:'object',properties:Object.fromEntries(Object.entries(properties).filter(([key])=>key!=='type')),additionalProperties:false}},['id','changes'])
   localDefinitions[kind+'.remove']=entry('Remove a local '+kind,{id:string('Local tool ID from state')},['id'])
@@ -31,7 +34,30 @@ for(const kind of ['mask','repair']){
 // This command catalog is shared by offline CLI discovery and the live GUI agent.
 export const definitions={
   ...localDefinitions,
-  state:entry('Read the current GUI selection, visible photos, edit recipes and albums'),
+  'grid-layout':entry('Set the library grid layout',{layout:string('Layout',{enum:['square','mosaic']})},['layout']),
+  'select-inverse':entry('Invert selection in the current view'),
+  'virtual-copy':entry('Create a separate edit recipe sharing the original library file'),
+  'save-frame':entry('Save the current edited video frame as a library photo'),
+  stack:entry('Group selected library photos into a stack'),
+  'stack-cover':entry('Use the selected photo as the stack cover'),
+  'stack-toggle':entry('Expand or collapse the active stack'),
+  unstack:entry('Ungroup the current stack'),
+  'auto-stack':entry('Group library images by capture interval or visual similarity',{by:string('Grouping method',{enum:['time','similarity']}),threshold:{type:'number',minimum:0,description:'Seconds, or normalized RGB difference for similarity'}}),
+  slideshow:entry('Start or stop a slideshow through the current view',{seconds:number('Seconds per photo',.2,3600),stop:{type:'boolean'}}),
+  'video-play':entry('Play the selected clip in detail view'),
+  'video-pause':entry('Pause video playback'),
+  'video-seek':entry('Seek to a frame in seconds',{time:{type:'number',minimum:0}},['time']),
+  'video-trim':entry('Set nondestructive in and out points in seconds',{start:{type:'number',minimum:0},end:{type:'number',minimum:0}},['start','end']),
+  'ai-mask':entry('Run real local semantic segmentation and add a soft adjustment mask; sky downloads a fixed 172 MB model once',{
+    target:string('Semantic selection',{enum:AI_TARGETS}),photoId:string('Optional selected-photo guard'),adjustments:localProperties.adjustments
+  },['target']),
+  'apply-xmp':entry('Apply an XMP sidecar to the active photo',{xml:string('XMP RDF/XML document')},['xml']),
+  sync:entry('Synchronize the imported library with an explicitly selected WebDAV folder',{
+    endpoint:string('HTTPS WebDAV folder URL'),username:string('Optional username'),password:string('Optional password'),
+    prefer:string('Resolve conflicting records in favor of one side',{enum:['','local','remote']})
+  },['endpoint']),
+  state:entry('Read the current GUI selection, visible photos, edit recipes and albums',{summary:{type:'boolean',description:'Return selection, count and current photo metadata only'}}),
+  photos:entry('Page through compact visible photo metadata',{offset:{type:'integer',minimum:0},limit:{type:'integer',minimum:1}}),
   import:entry('Import image files into the live catalog', {files:{type:'array',description:'CLI paths become File objects in the GUI',items:{type:'string'}}}, ['files']),
   'local-folders':entry('List previously authorized photo folders without importing originals'),
   'local-open':entry('Choose a folder in the desktop dialog or reopen an authorized folder ID',{
@@ -40,6 +66,12 @@ export const definitions={
   }),
   'local-browse':entry('Browse a subfolder of the current authorized local root',{relative:string('Relative subfolder, or . for the root')},['relative']),
   library:entry('Return to the imported photo library'),
+  'external-editor':entry('Choose an installed image editor, or use detected Photoshop',{photoshop:{type:'boolean',description:'Detect Photoshop instead of opening the editor picker'}}),
+  'external-edit':entry('Send an edited TIFF copy to the configured external editor; originals stay unchanged'),
+  'external-check':entry('Import stable saved external copies as new derived library photos'),
+  tether:entry('Open the tethered capture panel and discover connected still cameras'),
+  'camera-list':entry('Discover actual WIA or gphoto2 still cameras and report backend availability'),
+  'camera-capture':entry('Trigger the selected supported camera, keep camera originals, and import downloaded photos',{id:string('Camera ID from camera-list')},['id']),
   select:entry('Select a photo in the current view',{id:string('Photo ID from state'),toggle:{type:'boolean',description:'Toggle membership in the selection'},range:{type:'boolean',description:'Select the visible range from the selection anchor'}},['id']),
   'select-many':entry('Select an explicit list of visible photo IDs; an empty array clears selection',{ids:{type:'array',items:{type:'string'},description:'Visible photo IDs'}},['ids']),
   'select-all':entry('Select every photo in the current filtered view'),
@@ -59,7 +91,7 @@ export const definitions={
   filter:entry('Filter the current scope by minimum rating, flag, and edit status',{
     rating:number('Minimum star rating',0,5,{type:'integer'}),flag:string('Flag filter',{enum:['any','pick','reject','unflagged']}),edited:string('Edit status filter',{enum:['any','yes','no']})
   }),
-  album:entry('Create an album',{name:string('Nonempty album name')},['name']),
+  album:entry('Create an album',{name:string('Nonempty album name'),smart:{type:'boolean',description:'Use current search and filters as a live album rule'}},['name']),
   'album-rename':entry('Rename an album',{id:string('Album ID'),name:string('New nonempty name')},['id','name']),
   'album-delete':entry('Delete an album while retaining its photos and other memberships',{id:string('Album ID')},['id']),
   membership:entry('Toggle selected photo membership in an album',{album:string('Album ID from state')},['album']),
@@ -145,5 +177,6 @@ export function validateArgs(command,args){
   }
   if(command==='mask.add'||command==='repair.add')validateLocalTool(command.split('.')[0],args[command.split('.')[0]])
   if(command==='mask.update'||command==='repair.update')validateLocalChanges(command.split('.')[0],args.changes)
+  if(command==='ai-mask'&&args.adjustments!==undefined)validateLocalChanges('mask',{adjustments:args.adjustments})
   return args
 }

@@ -21,7 +21,7 @@ test('Worker construction and module-load failures use the same real kernels wit
   const page=await browser.newPage()
   await page.goto('http://127.0.0.1:'+server.address().port)
   const result=await page.evaluate(async fixture=>{
-    const {decodePhoto}=await import('./decode.js'),{encodePhoto}=await import('./encode.js'),{getImageWorkerDiagnostics}=await import('./image-worker.js')
+    const {decodePhoto,decodePhotoLinear}=await import('./decode.js'),{encodePhoto}=await import('./encode.js'),{getImageWorkerDiagnostics}=await import('./image-worker.js')
     const file=new File([new Uint8Array(fixture)],'sensor.dng',{type:'image/x-adobe-dng'})
     // A processed corrupt input is an ordinary decode error, never a startup retry.
     try{await decodePhoto(new File(['bad'],'bad.dng'))}catch{}
@@ -30,6 +30,8 @@ test('Worker construction and module-load failures use the same real kernels wit
     for(const scenario of ['constructor','module-load']){
       window.Worker=scenario==='constructor'?class{constructor(){throw new DOMException('Workers unavailable in this host','SecurityError')}}:class extends NativeWorker{constructor(){super(new URL('./missing-worker.js',location.href),{type:'module'})}}
       const raw=await decodePhoto(file)
+      const linear=await decodePhotoLinear(file)
+      if(linear.width!==raw.width||linear.linear.length!==raw.width*raw.height*3)throw Error('Linear RAW fallback failed')
       records.push({scenario,raw:[raw.width,raw.height]});raw.close()
       const canvas=document.createElement('canvas');canvas.width=16;canvas.height=12
       const ctx=canvas.getContext('2d');ctx.fillStyle='rgb(50,100,150)';ctx.fillRect(0,0,16,12)
@@ -47,6 +49,6 @@ test('Worker construction and module-load failures use the same real kernels wit
     if(record.raw)assert.deepEqual(record.raw,[128,96])
     else{assert.ok(record.size>0);assert.deepEqual(record.pixel,[50,100,150,255])}
   }
-  assert.equal(result.diagnostics.length,14)
+  assert.equal(result.diagnostics.length,16)
   assert.ok(result.diagnostics.every(item=>item.phase==='startup'&&item.fallback==='main-thread'))
 })

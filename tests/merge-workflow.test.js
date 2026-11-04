@@ -6,13 +6,14 @@ import {tmpdir} from 'node:os'
 import {join} from 'node:path'
 import {chromium} from 'playwright-core'
 import {frame,png} from './fixtures/merge-scene.js'
+import {makeDng} from './fixtures/dng.mjs'
 
 test('multi-selected originals merge through the real WASM worker into persistent HDR and panorama photos',async t=>{
   const server=createServer(async(req,res)=>{
     try{
       const name=new URL(req.url,'http://localhost').pathname.slice(1)||'index.html'
       if(!/^[\w./-]+$/.test(name)||name.includes('..'))throw Error()
-      res.setHeader('Content-Type',({html:'text/html',js:'text/javascript',css:'text/css',wasm:'application/wasm'})[name.split('.').pop()]||'application/octet-stream')
+      res.setHeader('Content-Type',({html:'text/html',js:'text/javascript',mjs:'text/javascript',css:'text/css',wasm:'application/wasm'})[name.split('.').pop()]||'application/octet-stream')
       res.end(await readFile(new URL('../web/'+name,import.meta.url)))
     }catch{res.writeHead(404).end()}
   })
@@ -80,6 +81,22 @@ test('multi-selected originals merge through the real WASM worker into persisten
   assert.equal(failure.ok,false)
   assert.match(failure.error.message,/no reliable/)
   assert.equal((await run('state')).photos.length,10)
+  await page.locator('#files').setInputFiles([-2,0].map(ev=>({name:'raw-'+ev+'.dng',mimeType:'image/x-adobe-dng',buffer:Buffer.from(makeDng({exposure:2**ev}))})))
+  await page.waitForFunction(()=>document.querySelectorAll('#gallery .tile').length===12)
+  state=await run('state')
+  const raw=state.photos.filter(photo=>photo.name.startsWith('raw-')).sort((a,b)=>a.name.localeCompare(b.name))
+  const rawMerged=await run('merge-hdr',{ids:raw.map(photo=>photo.id),evs:raw.map(photo=>photo.name==='raw--2.dng'?-2:0),align:false})
+  assert.deepEqual(rawMerged.merge.inputTransfer,['linear16-RAW','linear16-RAW'])
+  assert.ok((await page.evaluate(()=>window.openlr.dispatch('export-hdr'))).result.bytes>1000)
+  // Force the same startup failure seen on restricted native webview schemes.
+  // The shared kernel must execute the real merge on the retained input buffers.
+  await page.addInitScript(()=>{window.Worker=class{constructor(){throw Error('Forced Worker startup failure for merge verification')}}})
+  await page.reload();await page.waitForFunction(()=>window.openlr)
+  state=await run('state')
+  const fallback=await run('merge-hdr',{ids:sources,evs:sources.map(id=>evByName[state.photos.find(photo=>photo.id===id).name])})
+  assert.ok(fallback.merge.dynamicRangeStops>8)
+  const workerDiagnostics=await page.evaluate(async()=>(await import('./image-worker.js')).getImageWorkerDiagnostics())
+  assert.ok(workerDiagnostics.some(item=>item.worker==='merge-worker.js'&&item.fallback==='main-thread'))
   assert.deepEqual(errors,[])
   if(process.env.OPENLR_MERGE_ARTIFACTS){
     await mkdir(process.env.OPENLR_MERGE_ARTIFACTS,{recursive:true})

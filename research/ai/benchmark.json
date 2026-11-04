@@ -1,0 +1,532 @@
+{
+  "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/155.0.0.0 Safari/537.36",
+  "hardwareConcurrency": 16,
+  "records": [
+    {
+      "target": "subject",
+      "normalization": "standard",
+      "pass": 0,
+      "metrics": {
+        "loadMs": 871.6999998092651,
+        "preprocessMs": 12.200000286102295,
+        "inferenceMs": 2264.8999996185303,
+        "totalMs": 3168.9000000953674
+      },
+      "scores": {
+        "person": 0.9997270380617376,
+        "background": 0.000026444788441692454
+      },
+      "output": {
+        "dims": [
+          1,
+          1,
+          320,
+          320
+        ],
+        "minimum": 0.0000012516975402832031,
+        "maximum": 0.004394203424453735
+      },
+      "coverage": 0.5501737898284313
+    },
+    {
+      "target": "subject",
+      "normalization": "standard",
+      "pass": 1,
+      "metrics": {
+        "loadMs": 0,
+        "preprocessMs": 35.60000038146973,
+        "inferenceMs": 2252.7999997138977,
+        "totalMs": 2300.1000003814697
+      },
+      "scores": {
+        "person": 0.9997270380617376,
+        "background": 0.000026444788441692454
+      },
+      "output": {
+        "dims": [
+          1,
+          1,
+          320,
+          320
+        ],
+        "minimum": 0.0000012516975402832031,
+        "maximum": 0.004394203424453735
+      },
+      "coverage": 0.5501737898284313
+    },
+    {
+      "target": "subject",
+      "normalization": "none",
+      "pass": 0,
+      "metrics": {
+        "loadMs": 0,
+        "preprocessMs": 4.199999809265137,
+        "inferenceMs": 1931.3000001907349,
+        "totalMs": 1947.5
+      },
+      "scores": {
+        "person": 0.9825072643096505,
+        "background": 0
+      },
+      "output": {
+        "dims": [
+          1,
+          1,
+          320,
+          320
+        ],
+        "minimum": 3.8743019104003906e-7,
+        "maximum": 0.000553816556930542
+      },
+      "coverage": 0.5207815180759804
+    },
+    {
+      "target": "subject",
+      "normalization": "none",
+      "pass": 1,
+      "metrics": {
+        "loadMs": 0,
+        "preprocessMs": 1.6000003814697266,
+        "inferenceMs": 1934.3999996185303,
+        "totalMs": 1948.1000003814697
+      },
+      "scores": {
+        "person": 0.9825072643096505,
+        "background": 0
+      },
+      "output": {
+        "dims": [
+          1,
+          1,
+          320,
+          320
+        ],
+        "minimum": 3.8743019104003906e-7,
+        "maximum": 0.000553816556930542
+      },
+      "coverage": 0.5207815180759804
+    },
+    {
+      "target": "person",
+      "normalization": "standard",
+      "pass": 0,
+      "metrics": {
+        "loadMs": 126.5,
+        "preprocessMs": 0.5,
+        "inferenceMs": 60.59999990463257,
+        "totalMs": 192.5
+      },
+      "scores": {
+        "person": 0.9811127277766332,
+        "background": 0.00013311264657716565
+      },
+      "output": {
+        "dims": [
+          1,
+          2,
+          192,
+          192
+        ],
+        "minimum": 0.000033234216971322894,
+        "maximum": 0.9999948740005493
+      },
+      "coverage": 0.3932889518654684
+    },
+    {
+      "target": "person",
+      "normalization": "standard",
+      "pass": 1,
+      "metrics": {
+        "loadMs": 0,
+        "preprocessMs": 5.400000095367432,
+        "inferenceMs": 53.700000286102295,
+        "totalMs": 62.10000038146973
+      },
+      "scores": {
+        "person": 0.9811127277766332,
+        "background": 0.00013311264657716565
+      },
+      "output": {
+        "dims": [
+          1,
+          2,
+          192,
+          192
+        ],
+        "minimum": 0.000033234216971322894,
+        "maximum": 0.9999948740005493
+      },
+      "coverage": 0.3932889518654684
+    },
+    {
+      "target": "person",
+      "normalization": "none",
+      "pass": 0,
+      "metrics": {
+        "loadMs": 0,
+        "preprocessMs": 0.5999999046325684,
+        "inferenceMs": 58.19999980926514,
+        "totalMs": 62.19999980926514
+      },
+      "scores": {
+        "person": 0.9766091595648978,
+        "background": 0.00004203557260331555
+      },
+      "output": {
+        "dims": [
+          1,
+          2,
+          192,
+          192
+        ],
+        "minimum": 0.00004944404645357281,
+        "maximum": 0.9999898672103882
+      },
+      "coverage": 0.3883675236587691
+    },
+    {
+      "target": "person",
+      "normalization": "none",
+      "pass": 1,
+      "metrics": {
+        "loadMs": 0.09999990463256836,
+        "preprocessMs": 0.19999980926513672,
+        "inferenceMs": 63.40000009536743,
+        "totalMs": 66.09999990463257
+      },
+      "scores": {
+        "person": 0.9766091595648978,
+        "background": 0.00004203557260331555
+      },
+      "output": {
+        "dims": [
+          1,
+          2,
+          192,
+          192
+        ],
+        "minimum": 0.00004944404645357281,
+        "maximum": 0.9999898672103882
+      },
+      "coverage": 0.3883675236587691
+    },
+    {
+      "target": "sky",
+      "shortEdge": 320,
+      "normalization": "standard",
+      "metrics": {
+        "loadMs": 880.4000000953674,
+        "preprocessMs": 5.800000190734863,
+        "inferenceMs": 2594.699999809265,
+        "totalMs": 3484
+      },
+      "scores": {
+        "sky": 0.8421980739198426,
+        "nonSky": 0.281364097363083
+      },
+      "output": {
+        "inputs": [
+          "pixel_values",
+          "pixel_mask"
+        ],
+        "outputNames": [
+          "logits",
+          "pred_boxes",
+          "pred_masks"
+        ],
+        "logits": [
+          1,
+          100,
+          251
+        ],
+        "masks": [
+          1,
+          100,
+          80,
+          120
+        ],
+        "kept": [
+          {
+            "query": 33,
+            "label": 187,
+            "confidence": 0.9990791764377056
+          }
+        ],
+        "summary": [
+          {
+            "query": 33,
+            "label": 187,
+            "confidence": 0.9990791764377056,
+            "skyProbability": 0.9990791764377056
+          },
+          {
+            "query": 59,
+            "label": 250,
+            "confidence": 0.8321315473195824,
+            "skyProbability": 0.0037145901714921215
+          },
+          {
+            "query": 37,
+            "label": 250,
+            "confidence": 0.9801853544126014,
+            "skyProbability": 0.0007218560645865261
+          },
+          {
+            "query": 11,
+            "label": 197,
+            "confidence": 0.985694868010464,
+            "skyProbability": 0.0006997506024404403
+          },
+          {
+            "query": 36,
+            "label": 250,
+            "confidence": 0.9886472118756316,
+            "skyProbability": 0.00041779115502782395
+          }
+        ]
+      },
+      "coverage": 0.7536229575163399
+    },
+    {
+      "target": "sky",
+      "shortEdge": 320,
+      "normalization": "none",
+      "metrics": {
+        "loadMs": 0,
+        "preprocessMs": 14.599999904632568,
+        "inferenceMs": 2196.199999809265,
+        "totalMs": 2214.2999997138977
+      },
+      "scores": {
+        "sky": 0.3841792469200064,
+        "nonSky": 0.2847870182555788
+      },
+      "output": {
+        "inputs": [
+          "pixel_values",
+          "pixel_mask"
+        ],
+        "outputNames": [
+          "logits",
+          "pred_boxes",
+          "pred_masks"
+        ],
+        "logits": [
+          1,
+          100,
+          251
+        ],
+        "masks": [
+          1,
+          100,
+          80,
+          120
+        ],
+        "kept": [
+          {
+            "query": 17,
+            "label": 187,
+            "confidence": 0.5098260782443833
+          },
+          {
+            "query": 59,
+            "label": 187,
+            "confidence": 0.6887496047330204
+          }
+        ],
+        "summary": [
+          {
+            "query": 59,
+            "label": 187,
+            "confidence": 0.6887496047330204,
+            "skyProbability": 0.6887496047330204
+          },
+          {
+            "query": 17,
+            "label": 187,
+            "confidence": 0.5098260782443833,
+            "skyProbability": 0.5098260782443833
+          },
+          {
+            "query": 64,
+            "label": 250,
+            "confidence": 0.5305337383167628,
+            "skyProbability": 0.45572902286633765
+          },
+          {
+            "query": 36,
+            "label": 250,
+            "confidence": 0.5156731660713363,
+            "skyProbability": 0.38122097086015655
+          },
+          {
+            "query": 62,
+            "label": 250,
+            "confidence": 0.7941875104045943,
+            "skyProbability": 0.17876088063750625
+          }
+        ]
+      },
+      "coverage": 0.4244133986928104
+    },
+    {
+      "target": "sky",
+      "shortEdge": 512,
+      "normalization": "standard",
+      "metrics": {
+        "loadMs": 0,
+        "preprocessMs": 56.90000009536743,
+        "inferenceMs": 6386.300000190735,
+        "totalMs": 6447.200000286102
+      },
+      "scores": {
+        "sky": 0.4513624410008639,
+        "nonSky": 0.3187028657616894
+      },
+      "output": {
+        "inputs": [
+          "pixel_values",
+          "pixel_mask"
+        ],
+        "outputNames": [
+          "logits",
+          "pred_boxes",
+          "pred_masks"
+        ],
+        "logits": [
+          1,
+          100,
+          251
+        ],
+        "masks": [
+          1,
+          100,
+          128,
+          192
+        ],
+        "kept": [
+          {
+            "query": 33,
+            "label": 187,
+            "confidence": 0.9992267165538169
+          }
+        ],
+        "summary": [
+          {
+            "query": 33,
+            "label": 187,
+            "confidence": 0.9992267165538169,
+            "skyProbability": 0.9992267165538169
+          },
+          {
+            "query": 59,
+            "label": 250,
+            "confidence": 0.986439443900282,
+            "skyProbability": 0.0015977818566947628
+          },
+          {
+            "query": 36,
+            "label": 250,
+            "confidence": 0.9980222717994656,
+            "skyProbability": 0.00006729108199973829
+          },
+          {
+            "query": 11,
+            "label": 197,
+            "confidence": 0.9941467737539357,
+            "skyProbability": 0.000020630573650665165
+          },
+          {
+            "query": 67,
+            "label": 250,
+            "confidence": 0.9720093624812058,
+            "skyProbability": 0.000017216905678686353
+          }
+        ]
+      },
+      "coverage": 0.45812621272467324
+    },
+    {
+      "target": "sky",
+      "shortEdge": 512,
+      "normalization": "none",
+      "metrics": {
+        "loadMs": 0,
+        "preprocessMs": 8.300000190734863,
+        "inferenceMs": 6236.900000095367,
+        "totalMs": 6248.400000095367
+      },
+      "scores": {
+        "sky": 0.3803844473569206,
+        "nonSky": 0.13911731916847045
+      },
+      "output": {
+        "inputs": [
+          "pixel_values",
+          "pixel_mask"
+        ],
+        "outputNames": [
+          "logits",
+          "pred_boxes",
+          "pred_masks"
+        ],
+        "logits": [
+          1,
+          100,
+          251
+        ],
+        "masks": [
+          1,
+          100,
+          128,
+          192
+        ],
+        "kept": [
+          {
+            "query": 33,
+            "label": 187,
+            "confidence": 0.9551834596810919
+          },
+          {
+            "query": 59,
+            "label": 187,
+            "confidence": 0.6777254042033818
+          }
+        ],
+        "summary": [
+          {
+            "query": 33,
+            "label": 187,
+            "confidence": 0.9551834596810919,
+            "skyProbability": 0.9551834596810919
+          },
+          {
+            "query": 59,
+            "label": 187,
+            "confidence": 0.6777254042033818,
+            "skyProbability": 0.6777254042033818
+          },
+          {
+            "query": 36,
+            "label": 250,
+            "confidence": 0.8933186014545932,
+            "skyProbability": 0.10512477631042093
+          },
+          {
+            "query": 32,
+            "label": 250,
+            "confidence": 0.9779950410573284,
+            "skyProbability": 0.02058713129736144
+          },
+          {
+            "query": 5,
+            "label": 250,
+            "confidence": 0.985305194105283,
+            "skyProbability": 0.008072423250675352
+          }
+        ]
+      },
+      "coverage": 0.4406214894812091
+    }
+  ]
+}
