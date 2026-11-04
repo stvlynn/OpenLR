@@ -591,9 +591,13 @@ export function createLocalToolsUI({ container, run, getActive, notify }) {
     }
     if (source) circle(source)
   }
-  function mount(canvas, { image, edit, enabled: available = true }) {
+  function unmount() {
     cleanup()
+    cleanup = () => {}
     mounted = null
+  }
+  function mount(canvas, { image, edit, enabled: available = true }) {
+    unmount()
     if (!available) return
     const overlay = svgNode('svg', { 'aria-hidden': 'true', class: 'local-overlay' })
     Object.assign(overlay.style, { position: 'fixed', pointerEvents: 'none', zIndex: 5, overflow: 'hidden' })
@@ -779,6 +783,7 @@ export function createLocalToolsUI({ container, run, getActive, notify }) {
     sync,
     mount,
     setMode,
+    unmount,
     selectMask,
     setOverlay,
     selectedMaskId: () => list.value,

@@ -166,6 +166,8 @@ async function source(id) {
       photo.height = next.height
       photo.metadata ??= await metadata(data.file)
     }
+    localToolsUI?.unmount()
+    opticsUI?.unmount()
     bitmap?.close?.()
     bitmap = next
     bitmapId = id
@@ -181,6 +183,8 @@ function original(id) {
       : db.original(photo?.originalId ?? id)
 }
 function clearSources() {
+  localToolsUI?.unmount()
+  opticsUI?.unmount()
   stopPlayback()
   playingMedia?.close()
   playingMedia = null
@@ -303,6 +307,10 @@ async function draw() {
   if (!selected) mode = 'grid'
   const p = active(),
     detail = mode === 'detail'
+  if (!detail || bitmapId !== selected) {
+    localToolsUI?.unmount()
+    opticsUI?.unmount()
+  }
   $('count').textContent = list.length
   $('heading').textContent =
     local.state() && scope === 'all'

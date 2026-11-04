@@ -167,7 +167,7 @@ export function mountOptics({ run, getActive, notify }) {
           (!profile.tca
             ? 'No TCA calibration at this focal length.'
             : 'Distortion / TCA samples are calibrated.')
-        : 'Manual correction. Match EXIF offers candidates; it does not calibrate the image.'
+        : ''
     for (const node of [apply, match, guide, reset]) node.disabled = !photo
   }
   function mount(canvas, { image, edit, available = true }) {
@@ -226,6 +226,10 @@ export function mountOptics({ run, getActive, notify }) {
     mount,
     setMode,
     consumeClick,
+    unmount: () => {
+      cleanup()
+      cleanup = () => {}
+    },
     active: () => Boolean(mode),
     deactivate: () => setMode(''),
     panel
