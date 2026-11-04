@@ -12,7 +12,7 @@ jobs:
       matrix:
         os: [windows-latest, ubuntu-24.04, macos-15-intel]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -30,13 +30,23 @@ jobs:
       - run: go vet ./...
       - if: runner.os == 'Windows'
         run: npm test
-      - run: go build -o build/smoke${{ runner.os == 'Windows' && '.exe' || '' }} .
+      - name: Build the native distribution
+        run: node scripts/desktop.mjs build -o build/release -platform ${{ runner.os == 'Windows' && 'windows/amd64' || runner.os == 'macOS' && 'darwin/universal' || 'linux/amd64' }}
       - if: runner.os == 'Linux'
-        run: xvfb-run -a dbus-run-session -- node scripts/native-suite.mjs build/smoke
+        run: xvfb-run -a dbus-run-session -- node scripts/native-suite.mjs build/release/linux-amd64/openlr
       - if: runner.os == 'macOS'
-        run: node scripts/native-suite.mjs build/smoke
+        run: node scripts/native-suite.mjs build/release/darwin-universal/OpenLR.app/Contents/MacOS/OpenLR
       - if: runner.os == 'Windows'
-        run: node scripts/native-suite.mjs build/smoke.exe
+        run: node scripts/native-suite.mjs build/release/windows-amd64/OpenLR.exe
+      - uses: actions/upload-artifact@v4
+        with:
+          name: OpenLR-${{ runner.os }}
+          path: |
+            build/release/*/*.deb
+            build/release/*/*.tar.gz
+            build/release/*/*.dmg
+            build/release/*/openlr-setup-*.exe
+          if-no-files-found: error
       - uses: actions/upload-artifact@v4
         with:
           name: verification-${{ runner.os }}
