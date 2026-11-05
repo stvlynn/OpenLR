@@ -56,6 +56,15 @@ function dehazedSource(image, edit, prepare) {
 }
 function correctedFrame(image, edit) {
   const owned = { ...image, data: image.data.slice() }
+  // Empty correction stages are identities, but each validates every sample.
+  // Keep one validation and the owned copy required for worker transfer.
+  if (
+    !edit.fills?.length &&
+    !edit.redEyes?.length &&
+    edit.localTools === undefined &&
+    edit.optics === undefined
+  )
+    return assertLinearFrame(owned)
   return sourceStages(owned, edit, {
     fill: (input) => filledFrame(input, edit.fills),
     eyes: (input) => correctEyesFrame(input, edit.redEyes),

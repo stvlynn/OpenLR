@@ -25,7 +25,11 @@ JPEG XL retains source bit depth and exponent bits separately from its Float32 o
 
 The detail Info text reports actual decoded precision or **8-bit compatibility decode**. Full and summary `state` expose `processing:{version,input}`; `input` is the current asset/version's decoder provenance, including precision, source/output depth and color transform or compatibility reason when available. It is `null` while no matching decoded source is cached. A Float32 frame, a filename extension or a TIFF16 export alone does not establish retained source precision. The [input decoding decision](decisions/009-high-depth-input.md) records this boundary and alternatives.
 
-`renderFrame(frame, edit, maxSize)` copies source samples before edits. Stage order is fill, red-eye, repairs, depth blur, local masks, optics/TCA, dehaze, crop/turn/flip/resize, global tone, curve, HSL/point color, color grading, then spatial effects. Originals are never mutated. Stage modules own the same rules used by the legacy adapter:
+`renderFrame(frame, edit, maxSize)` copies source samples before edits. Stage order is fill, red-eye, repairs, depth blur, local masks, optics/TCA, dehaze, crop/turn/flip/resize, global tone, curve, HSL/point color, color grading, then spatial effects. Originals are never mutated.
+
+When fill/red-eye lists are absent or empty and local tools/optics are undefined, source preparation validates the owned copy once instead of traversing four identity stages. Present recipes keep the existing stage validation and order. This preserves the original buffer for worker transfer and rejects invalid samples; [measurements](dehaze-performance.md#empty-linear-source-corrections-2026-11-06) distinguish synchronous preparation cost from total preview latency.
+
+Stage modules own the same rules used by the legacy adapter:
 
 - Local and global exposure/contrast/saturation and repair blending operate in linear light. Healing adds an unclipped mean residual; each repair samples an immutable pre-stroke state. Range masks share a pre-blur/pre-mask reference.
 - Color selection uses continuous signed encoded sRGB against existing hex swatches. Luminance selection uses linear RGB directly. Global tonal influence is bounded to [0,1], while RGB remains unbounded.

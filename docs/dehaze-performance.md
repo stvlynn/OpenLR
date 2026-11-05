@@ -17,6 +17,21 @@ The 6000×4000 haze scene defined below was generated as a Float32 frame. `frame
 
 Original cached completion improved in this observation. Linear total latency did not show a clear improvement, and both first-operation maximum gaps worsened. This is neither a latency distribution nor a claim of smooth large-image dragging; first source preparation, copying, canvas work and memory costs remain. Process peak memory was not measured here. Each table is 520,194 bytes per initialized realm, not a measured process-memory delta. Ignored evidence: `.workspace/srgb-production-integrated.mjs/.json/.log`. Earlier observations below retain their original implementation and fixture boundaries.
 
+## Empty Linear source corrections (2026-11-06)
+
+`correctedFrame` still copies the original and validates the owned Float32 frame. When fill/red-eye lists are absent or empty and both local tools and optics are undefined, it now returns that validated copy directly. Previously the four identity stages each scanned every sample. Present local/optics recipes, including neutral recipes, retain their stage-owned behavior and validation; this does not duplicate their activity rules or alter active correction order.
+
+The isolated Chrome 156 experiment used a 6000×4000 signed/HDR Float32 frame with fractional alpha. Three repetitions alternated four-stage and single-validation order (reversed in the middle). Copy plus four empty stages took 550.8, 589.6 and 966.5 ms; copy plus one validation took 165.6, 183.1 and 228.0 ms. All samples were compared exactly, and each result retained its owned buffer. This measures the absent-correction case, not active edits.
+
+An actual `renderPrepared` comparison used the same 24MP haze scene and bitmap/Linear binding described above. Fresh Chrome 156 instances routed `render.js` from `daf0a11` and the changed working copy under identical routing conditions, baseline first. Both retained the production byte encoder. At strengths 40/70/20, all 4,367,360 final RGBA samples per output matched and worker diagnostics were empty.
+
+| Implementation | First 40 elapsed / max gap ms | Cached 70 elapsed / max gap ms | Cached 20 elapsed / max gap ms |
+| --- | --- | --- | --- |
+| Four identity stages | 5474.2 / 494.4 | 312.4 / 71.5 | 324.1 / 73.2 |
+| One validation | 6089.9 / 281.1 | 357.7 / 71.0 | 357.7 / 81.3 |
+
+The measured first main-thread gap fell, but total completion worsened in this single observation. This supports removing redundant synchronous scans, not a claim of lower total latency or smooth interaction. Background activity was uncontrolled; no process-memory measurement or other-engine performance measurement was made. Copying, one full validation, active source corrections and canvas work remain. Ignored evidence is `.workspace/empty-source-stages.mjs/.json/.log` and `.workspace/source-preparation-integrated.mjs/.json/.log`. The tracked `tests/source-preparation.test.js` checks actual prepared and rendered samples against explicit stage composition, source isolation and malformed frame rejection.
+
 ## Original measurement environment
 
 Measured on 2026-11-05, Windows x64, AMD Ryzen 7 7840U (16 logical processors), 30.84 GB installed RAM, Node v24.9.0 and headless Chrome 156.0.8078.80. This is a bounded local measurement, not a cross-platform performance guarantee. [Dehaze](dehaze.md) owns the behavior; [research](../research/dehaze.md) owns the algorithm and prior limitations.
