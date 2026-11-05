@@ -15,6 +15,7 @@ import { png as fixturePng } from '../tests/fixtures/merge-scene.js'
 import UTIF from '../web/vendor/codecs/utif.js'
 import { encodeColorTiff } from '../web/color-containers.js'
 import { makeColorProfile, encodeSrgb } from '../web/color-spaces.js'
+import { readPng } from '../web/png.js'
 import { defaultOptions as avifOptions } from '../web/vendor/codecs/avif/meta.js'
 import { readExifTool } from '../tests/exiftool.mjs'
 
@@ -415,6 +416,118 @@ async function verifyNativeExportMetadata() {
   }
 }
 
+async function verifyPhotosPanel() {
+  const schema = await execute(parse(['schema', 'panel']))
+  assert.equal(schema.parameters.properties.open.type, 'boolean')
+  assert.deepEqual(schema.parameters.required, ['name'])
+  for (const open of [true, false]) {
+    const dryRun = await call('panel', '--name', 'photos', '--open', String(open), '--dry-run')
+    assert.deepEqual(dryRun.request, { command: 'panel', args: { name: 'photos', open } })
+  }
+
+  const initial = await call('state')
+  assert.equal(initial.mode, 'grid')
+  assert.deepEqual(initial.photos, [])
+  assert.equal(initial.panels.photos, true)
+  assert.deepEqual((await call('state', '--summary', 'true')).panels, initial.panels)
+  assert.deepEqual((await call('panel', '--name', 'photos', '--open', 'true')).panels, initial.panels)
+
+  const closed = await call(
+    'panel',
+    '--name',
+    'photos',
+    '--open',
+    'false',
+    '--capture',
+    path.join(root, 'photos-closed.png')
+  )
+  assert.deepEqual(closed.result.panels, { ...initial.panels, photos: false })
+  assert.deepEqual((await call('panel', '--name', 'photos', '--open', 'false')).panels, closed.result.panels)
+  assert.deepEqual((await call('state', '--summary', 'true')).panels, closed.result.panels)
+
+  let opened
+  await Promise.race([
+    watch({ session, count: 2 }, async (update) => {
+      assert.ok(Number.isSafeInteger(update.revision))
+      if (opened) {
+        assert.deepEqual(update.panels, initial.panels)
+      } else {
+        assert.deepEqual(update.panels, closed.result.panels)
+        opened = await call(
+          'panel',
+          '--name',
+          'photos',
+          '--open',
+          'true',
+          '--capture',
+          path.join(root, 'photos-open.png')
+        )
+        assert.deepEqual(opened.result.panels, initial.panels)
+      }
+    }),
+    delay(15000, undefined, { ref: false }).then(() => {
+      throw Error('Native watch did not observe the Photos panel opening')
+    })
+  ])
+  assert.equal((await call('panel', '--name', 'photos')).panels.photos, false)
+  assert.equal((await call('panel', '--name', 'photos')).panels.photos, true)
+  assert.deepEqual((await call('state')).panels, initial.panels)
+
+  const openImage = readPng(await readFile(opened.frame.path)),
+    closedImage = readPng(await readFile(closed.frame.path)),
+    { width, height } = openImage
+  assert.deepEqual([closedImage.width, closedImage.height], [width, height])
+  // Sample the navigation labels below the toolbar on the left of the empty Grid.
+  // The same area shows the blank article when Photos is closed.
+  const navigationInk = ({ data }) => {
+    let bright = 0
+    for (let y = Math.floor(height * 0.145); y < Math.floor(height * 0.33); y++) {
+      for (let x = Math.floor(width * 0.015); x < Math.floor(width * 0.085); x++) {
+        const offset = (y * width + x) * 4
+        if (data[offset] > 0.5 && data[offset + 1] > 0.5 && data[offset + 2] > 0.5) bright++
+      }
+    }
+    return bright
+  }
+  const openInk = navigationInk(openImage),
+    closedInk = navigationInk(closedImage)
+  assert.ok(openInk > closedInk + 50, `Photos navigation label pixels: open ${openInk}, closed ${closedInk}`)
+  console.log(
+    `Native Photos captures: ${width}×${height}, navigation label pixels open ${openInk}, closed ${closedInk}.`
+  )
+}
+
+async function verifyWorkspaceDisclosures() {
+  const before = await call('state')
+  await call('view', '--mode', 'grid')
+  const filtered = await call('filter', '--edited', 'yes')
+  assert.equal(filtered.filters.edited, 'yes')
+  for (const [name, mode] of [
+    ['Filters', 'grid'],
+    ['Photo', 'grid'],
+    ['Migrate photo catalogs', 'grid'],
+    ['Presets', 'detail'],
+    ['Point curve', 'detail']
+  ]) {
+    assert.equal(before.panels[name], false, name)
+    for (const open of [true, false]) {
+      const result = await call('panel', '--name', name, '--open', String(open))
+      assert.equal(result.panels[name], open, name)
+      assert.equal(result.mode, mode, name)
+      assert.deepEqual((await call('state', '--summary', 'true')).panels, result.panels, name)
+    }
+  }
+  const after = await call('state')
+  assert.deepEqual(after.panels, before.panels)
+  assert.deepEqual(after.filters, filtered.filters)
+  assert.equal(after.selected, before.selected)
+  assert.deepEqual(after.photos, before.photos)
+  await call('filter', '--edited', before.filters.edited)
+  console.log(
+    'Native panels: CLI schema, idempotent Photos visibility, watch, stable Filters, catalog/sidebar/inspector disclosures and unchanged edit recipes passed.'
+  )
+}
+
 try {
   const end = Date.now() + 45000
   for (;;) {
@@ -427,6 +540,7 @@ try {
     await delay(120)
   }
   await call('state', '--summary', 'true', '--timeout', '30')
+  await verifyPhotosPanel()
   const file = path.join(root, 'sensor.dng'),
     data = Buffer.from(makeDng())
   await writeFile(file, data)
@@ -478,6 +592,7 @@ try {
   )
   await call('edit', '--key', 'Exposure', '--value', '.5')
   await call('edit', '--key', 'turn', '--value', '1')
+  await verifyWorkspaceDisclosures()
   const { result: state, frame } = await call(
     'rate',
     '--value',

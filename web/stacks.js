@@ -69,7 +69,8 @@ export function stackMenu(run) {
     summary = document.createElement('summary'),
     menu = document.createElement('div')
   details.id = 'photo-menu'
-  summary.textContent = 'Photo'
+  const name = 'Photo'
+  summary.textContent = name
   details.append(summary, menu)
   const actions = [
     ['Stack selected', 'stack'],
@@ -89,9 +90,10 @@ export function stackMenu(run) {
     const b = document.createElement('button')
     b.textContent = label
     b.dataset.action = action
-    b.onclick = () => {
-      details.open = false
+    b.onclick = async () => {
+      const closing = run('panel', { name, open: false })
       if (action.startsWith('auto-stack-')) {
+        await closing
         const t = action.endsWith('time'),
           dialog = document.getElementById('stack-dialog')
         const input = dialog.querySelector('input')

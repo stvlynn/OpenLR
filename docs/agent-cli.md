@@ -24,6 +24,20 @@ The shared queue validates command arguments before executing an action or recor
 
 Full and summary `state` expose `clipping`, the current workspace highlight/shadow warning toggle. The `clipping` command, Histogram button and J shortcut share this state. Warnings affect the displayed canvas, not exported image pixels or edit recipes. Starting a color sampler clears them.
 
+Full and summary `state` expose `panels`, a map from stable panel names to booleans. Use its keys to discover the available names. `photos` controls the Photos sidebar. The other keys use the original disclosure titles, including `Filters` when its displayed title includes a count.
+
+```powershell
+node cli/openlr.mjs state --summary true
+node cli/openlr.mjs panel --name photos --open false --capture photos-hidden.png
+node cli/openlr.mjs panel --name photos --open true
+node cli/openlr.mjs panel --name 'Point curve' --open true
+node cli/openlr.mjs panel --name Filters
+```
+
+`panel` returns the full workspace state. Pass `--open true` or `--open false` to set the disclosure, or omit `--open` to toggle the state when the command executes. Named inspector commands can reveal Detail and scroll an open section into view. Photos and catalog disclosures leave the current view mode in place. The booleans describe logical state for the current session. A section can stay open while its parent surface is hidden. Panel changes use no edit or catalog history.
+
+Mouse, Enter and Space on a disclosure use the same queue as `panel` and publish changes to `watch`. P toggles Photos, Shift+P toggles Presets, and I toggles Info. Run `node --test tests/panel-state.test.js tests/local-gesture.test.js` to verify browser state, control visibility, keyboard routing and local stroke cancellation. The native main smoke checks CLI state, watch updates and Photos visibility in workspace captures.
+
 Entering Grid ends an active slideshow and restores navigation, including `view --mode grid`, layout/scope changes, and a filter with no matching photos. GUI Grid and Escape use the same transition. `slideshow --stop true` ends playback while retaining the detail view. The full state reports whether the slideshow is active.
 
 ## Arguments and output

@@ -474,8 +474,11 @@ export const definitions = {
     },
     ['endpoint']
   ),
-  state: entry('Read the current GUI selection, visible photos, edit recipes and albums', {
-    summary: { type: 'boolean', description: 'Return selection, count and current photo metadata only' }
+  state: entry('Read the current GUI workspace, including panel states, selection, photos and albums', {
+    summary: {
+      type: 'boolean',
+      description: 'Return compact workspace state, including panels and selection'
+    }
   }),
   photos: entry('Page through compact visible photo metadata', {
     offset: { type: 'integer', minimum: 0 },
@@ -811,10 +814,10 @@ export const definitions = {
   ),
   fullscreen: entry('Toggle the desktop window fullscreen state'),
   panel: entry(
-    'Open or close a workspace panel',
+    'Set or toggle a workspace panel and return full workspace state',
     {
-      name: string('Panel title or photos for navigation'),
-      open: { type: 'boolean', description: 'Requested open state for editing panels' }
+      name: string('Panel key from state.panels, including photos for the navigation sidebar'),
+      open: { type: 'boolean', description: 'Requested open state. Omit to toggle the current state' }
     },
     ['name']
   ),

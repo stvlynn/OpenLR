@@ -654,6 +654,14 @@ function processingState(photo = active()) {
     bitmapId === photo.id && bitmapVersion === version ? workingFrame(bitmap)?.provenance : null
   return { version, input: provenance ? { ...provenance } : null }
 }
+function panelSnapshot() {
+  return Object.fromEntries(
+    [...panels].map(([name, panel]) => [
+      name,
+      panel instanceof HTMLDetailsElement ? panel.open : !panel.hidden
+    ])
+  )
+}
 function snapshot() {
   const items = visible().map(({ thumbnail, ...p }) => p)
   return {
@@ -674,6 +682,7 @@ function snapshot() {
     scope,
     mode,
     inspector,
+    panels: panelSnapshot(),
     search,
     order,
     compare,
@@ -894,6 +903,7 @@ async function execute(command, args, context = {}) {
         selected,
         scope,
         mode,
+        panels: panelSnapshot(),
         visibleCount: visible().length,
         clipping,
         viewport: mode === 'detail' && photo ? readViewport($('stage')) : null,
@@ -1374,20 +1384,28 @@ async function execute(command, args, context = {}) {
       break
     }
     case 'panel': {
-      if (args.name === 'photos') {
-        const nav = document.querySelector('nav')
-        nav.hidden = !nav.hidden
-        break
-      }
-      const panel = [...document.querySelectorAll('aside details')].find(
-        (el) => el.querySelector('summary')?.textContent === args.name
-      )
+      const panel = panels.get(args.name)
       if (!panel) throw Error('Unknown panel')
-      mode = 'detail'
-      inspector = true
-      panel.open = args.open ?? !panel.open
-      if (panel.open) requestAnimationFrame(() => panel.scrollIntoView({ block: 'nearest' }))
-      break
+      if (!(panel instanceof HTMLDetailsElement)) {
+        const hidden = args.open === undefined ? !panel.hidden : !args.open
+        if (panel.hidden !== hidden) {
+          panel.hidden = hidden
+          if (mode === 'detail' && p) await paintStage(await source(p.id), p.edit)
+        }
+        return snapshot()
+      }
+      const open = args.open ?? !panel.open
+      if (panel.open && !open && panel.parentElement === localToolContainer) localToolsUI.cancelGesture()
+      panel.open = open
+      if (!context.panelSummary && panel.closest('aside')) {
+        if (mode !== 'detail' || !inspector) {
+          mode = 'detail'
+          inspector = true
+          await draw()
+        }
+        if (open) panel.scrollIntoView({ block: 'nearest' })
+      }
+      return snapshot()
     }
     case 'fullscreen': {
       if (globalThis.mygo?.call) await globalThis.mygo.call('Desktop.ToggleFullscreen')
@@ -2607,6 +2625,7 @@ document.onkeydown = (e) => {
   if (document.querySelector('dialog[open]') || e.target.matches('input,select,textarea')) return
   const key = e.key.toLowerCase(),
     mod = e.ctrlKey || e.metaKey
+  if ((key === 'enter' || key === ' ') && panelSummaries.has(e.target)) return
   if (!mod && !preferences.shortcuts && key !== 'escape') return
   if (cropping && key === 'escape') act('crop-cancel')
   else if (cropping && key === 'enter') act('crop-tool')
@@ -2726,3 +2745,18 @@ updateMerge = mountMerge(run, notice)
 updateEnhance = mountEnhance(run, notice)
 opticsUI = mountOptics({ run, getActive: active, notify: notice, onChange: notifyWorkspaceChange })
 migrationUI = mountMigration({ run, notify: notice })
+
+// Capture base titles once, before draw can add live text such as a filter count.
+const panels = new Map([['photos', document.querySelector('main > nav')]])
+const panelSummaries = new Set()
+for (const panel of document.querySelectorAll('main details')) {
+  const summary = panel.querySelector(':scope > summary')
+  if (!summary) continue
+  const name = summary.textContent.trim()
+  panels.set(name, panel)
+  panelSummaries.add(summary)
+  summary.addEventListener('click', (event) => {
+    event.preventDefault()
+    act('panel', { name }, { panelSummary: true })
+  })
+}
