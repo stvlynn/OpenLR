@@ -12,6 +12,7 @@ import { OPTICS_CONTROLS, validateOptics } from './optics.js'
 import { validateDepthChanges } from './depth-effects.js'
 import { CATALOG_FLAG_VALUES, CATALOG_EDIT_VALUES } from './organization.js'
 import { validateSmartRule } from './smart-album-rule.js'
+import { CURVE_CHANNELS, validateCurvePoints } from './tone-curves.js'
 
 const string = (description, extra = {}) => ({ type: 'string', description, ...extra })
 const number = (description, minimum, maximum, extra = {}) => ({
@@ -846,6 +847,42 @@ export const definitions = {
     },
     ['version']
   ),
+  'curve-channel': entry(
+    'Select the point-curve channel without changing edits',
+    {
+      channel: string('Curve channel', { enum: CURVE_CHANNELS })
+    },
+    ['channel']
+  ),
+  'curve-select': entry(
+    'Select a point in the current curve channel without changing edits',
+    {
+      index: { type: 'integer', minimum: 0, description: 'Zero-based point index' },
+      photoId: string('Optional selected-photo guard')
+    },
+    ['index']
+  ),
+  'curve-set': entry(
+    'Replace one point-curve channel; identity endpoints reset that channel',
+    {
+      channel: string('Curve channel', { enum: CURVE_CHANNELS }),
+      points: {
+        type: 'array',
+        minItems: 2,
+        items: {
+          type: 'object',
+          properties: { x: number('Input', 0, 1), y: number('Output', 0, 1) },
+          required: ['x', 'y'],
+          additionalProperties: false
+        },
+        description: 'Ordered normalized points, including x=0 and x=1 endpoints'
+      },
+      photoId: string('Optional selected-photo guard'),
+      expectedPoints: { type: 'array', description: 'Optional previous channel points; reject if changed' },
+      index: { type: 'integer', minimum: 0, description: 'Point to select after replacement' }
+    },
+    ['channel', 'points']
+  ),
   reset: entry('Reset all selected-photo edits, retaining its processing version'),
   undo: entry('Undo an edit on the selected photo in the current GUI session'),
   redo: entry('Redo an edit on the selected photo in the current GUI session'),
@@ -1005,6 +1042,10 @@ export function validateArgs(command, args) {
   if (command === 'purge' && args.expectedIds?.some((id) => typeof id !== 'string'))
     throw Error('expectedIds must contain photo IDs')
   if (command === 'album-rule') validateSmartRule(args.rule)
+  if (command === 'curve-set') {
+    validateCurvePoints(args.points)
+    if (args.expectedPoints !== undefined) validateCurvePoints(args.expectedPoints)
+  }
   if (command === 'export' && args.format !== undefined) {
     validateExportColorSpace(args.format, args.colorSpace)
     validateExportMetadataPolicy(args.format, args.metadata)

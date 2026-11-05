@@ -1081,6 +1081,101 @@ try {
   console.log(
     'Native selective copy: guarded source and actual capture, selected-key paste and absent-value reset, retained crop/process version, undo and unchanged original bytes passed.'
   )
+  const curveData = new Uint8Array(16 * 12 * 3)
+  for (let offset = 0; offset < curveData.length; offset += 3) curveData.set([64, 96, 128], offset)
+  const curveBytes = Buffer.from(
+    makePng({ width: 16, height: 12, bits: 8, colorType: 2, srgb: 0, data: curveData })
+  )
+  const curveFile = path.join(root, 'curve-source.png')
+  await writeFile(curveFile, curveBytes)
+  const curveAsset = (await call('import', curveFile)).added[0]
+  const curvePoints = [
+    { x: 0, y: 0.1 },
+    { x: 1, y: 0.9 }
+  ]
+  for (const version of [1, 2]) {
+    await call('processing', '--version', String(version))
+    await call(
+      'curve-set',
+      '--channel',
+      'red',
+      '--points',
+      JSON.stringify(curvePoints),
+      '--photoId',
+      curveAsset
+    )
+    const output = await call(
+      'export',
+      '--format',
+      'image/tiff',
+      '--output',
+      path.join(root, `curve-${version}.tif`)
+    )
+    const bytes = await readFile(output.path)
+    const buffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)
+    const ifd = UTIF.decode(buffer)[0]
+    UTIF.decodeImage(buffer, ifd)
+    const rgba = UTIF.toRGBA8(ifd)
+    assert.ok(Math.abs(rgba[0] - 77) <= 1)
+    for (const [index, expected] of [
+      [1, 96],
+      [2, 128],
+      [3, 255]
+    ])
+      assert.ok(Math.abs(rgba[index] - expected) <= 1)
+  }
+  await call('curve-channel', '--channel', 'red')
+  const curveCapture = await call(
+    'curve-select',
+    '--index',
+    '1',
+    '--capture',
+    path.join(root, 'point-curve.png')
+  )
+  assert.equal((await readFile(curveCapture.frame.path)).subarray(1, 4).toString(), 'PNG')
+  assert.deepEqual((await call('state')).toneCurve, { channel: 'red', index: 1 })
+  const curveBefore = (await call('state')).photos.find((photo) => photo.id === curveAsset).edit
+  await assert.rejects(
+    () =>
+      call(
+        'curve-set',
+        '--channel',
+        'red',
+        '--points',
+        JSON.stringify(curvePoints),
+        '--photoId',
+        'stale-source'
+      ),
+    /changed|selected/i
+  )
+  await assert.rejects(
+    () =>
+      call(
+        'curve-set',
+        '--channel',
+        'red',
+        '--points',
+        JSON.stringify(curvePoints),
+        '--expectedPoints',
+        '[{"x":0,"y":0},{"x":1,"y":1}]'
+      ),
+    /changed/i
+  )
+  assert.deepEqual((await call('state')).photos.find((photo) => photo.id === curveAsset).edit, curveBefore)
+  await call('curve-set', '--channel', 'red', '--points', '[{"x":0,"y":0},{"x":1,"y":1}]')
+  await call('undo')
+  assert.deepEqual((await call('state')).photos.find((photo) => photo.id === curveAsset).edit, curveBefore)
+  const curveOriginal = await call(
+    'export',
+    '--format',
+    'original',
+    '--output',
+    path.join(root, 'curve-original.png')
+  )
+  assert.deepEqual(await readFile(curveOriginal.path), curveBytes)
+  console.log(
+    'Native point curves: channel selection and capture, both process TIFF pixels, stale source/channel refusal, undo and unchanged original bytes passed.'
+  )
   const colors = [
     [180, 60, 40],
     [45, 160, 70],

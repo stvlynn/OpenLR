@@ -14,6 +14,8 @@ Copy edits takes an independent snapshot of the active recipe, including its pro
 
 Categories cover Light, Color, Curve, Color mixer, Effects, Detail, Point color, Crop and rotation, Optics and geometry, Masks/repairs/lens blur, Content-aware removal, Red-eye correction, Video trim and Processing version. Optics and local tools each copy their complete stored owner, including perspective and depth respectively. Selecting all categories copies these supported keys; complete Copy edits additionally preserves any other stored recipe fields. Ratings, flags, keywords, albums and saved versions are not edit keys.
 
+Curve includes the original three sliders and the complete `toneCurves` owner for RGB and channel point curves. Neutral identity knots remain editable but do not alone mark a photo Edited; named versions, presets and full copied recipes preserve them. See [point curves](tone-curves.md).
+
 CLI `copy-edits` optionally accepts `photoId` for the same active-photo guard; omitting it retains execution-time selection behavior. It is not an alternate copy source. Selection choices do not alter the source photo, and Paste retains the existing per-photo undo and original-preservation rules. Supported category boundaries and the full-versus-selective browser experiment are recorded in [selective-copy research](../research/selective-copy.md).
 
 ## Undo and redo

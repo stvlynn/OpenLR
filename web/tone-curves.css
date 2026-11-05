@@ -1,0 +1,70 @@
+#tone-curves select {
+  width: 100%;
+  margin-top: 10px;
+}
+#curve-graph {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1;
+  margin-top: 10px;
+  background: #202225;
+  border: 1px solid #454b50;
+  border-radius: 4px;
+  touch-action: none;
+  color: #e5e9ec;
+  cursor: crosshair;
+}
+#curve-graph:focus-visible {
+  outline: 2px solid #9cc3d8;
+  outline-offset: 2px;
+}
+#curve-graph[data-channel='red'] {
+  color: #f29b96;
+}
+#curve-graph[data-channel='green'] {
+  color: #8bcf9d;
+}
+#curve-graph[data-channel='blue'] {
+  color: #91b9ee;
+}
+.curve-grid {
+  stroke: #3c4145;
+  stroke-width: 1;
+}
+.curve-diagonal {
+  stroke: #697078;
+  stroke-dasharray: 3 4;
+}
+.curve-line {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+}
+.curve-knots circle {
+  fill: #202225;
+  stroke: currentColor;
+  stroke-width: 2;
+  cursor: grab;
+}
+.curve-knots circle.selected {
+  fill: currentColor;
+}
+.curve-coordinates {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.curve-coordinates input {
+  display: block;
+  width: 100%;
+  margin-top: 4px;
+}
+.curve-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.curve-actions button {
+  font-size: 11px;
+  padding: 5px 7px;
+}

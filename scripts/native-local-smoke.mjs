@@ -105,12 +105,20 @@ try {
   await call('edit', '--key', 'Exposure', '--value', '.5')
   await call('edit', '--key', 'turn', '--value', '1')
   await call('rate', '--value', '4')
+  const localCurve = [
+    { x: 0, y: 0 },
+    { x: 0.5, y: 0.6 },
+    { x: 1, y: 1 }
+  ]
+  await call('curve-set', '--channel', 'red', '--points', JSON.stringify(localCurve))
   const linearVersion = await call('version-save', '--name', 'Linear local edit')
   assert.equal((await sidecar()).version, 2)
   assert.equal((await sidecar()).recipe.edit.processVersion, 2)
   assert.equal((await sidecar()).recipe.edit.Exposure, 0.5)
   assert.equal((await sidecar()).recipe.rating, 4)
   assert.equal((await sidecar()).recipe.versions[0].edit.processVersion, 2)
+  assert.deepEqual((await sidecar()).recipe.edit.toneCurves, { red: localCurve })
+  assert.deepEqual((await sidecar()).recipe.versions[0].edit.toneCurves, { red: localCurve })
   // A legacy current edit must still protect a saved linear recipe from clients
   // that recognize only envelope 1.
   await call('processing', '--version', '1')
@@ -169,6 +177,8 @@ try {
   assert.equal(reopened.photos[0].edit.turn, 1)
   assert.equal(reopened.photos[0].edit.processVersion, 2)
   assert.equal(reopened.photos[0].versions[0].edit.processVersion, 2)
+  assert.deepEqual(reopened.photos[0].edit.toneCurves, { red: localCurve })
+  assert.deepEqual(reopened.photos[0].versions[0].edit.toneCurves, { red: localCurve })
   assert.equal(reopened.photos[0].local.sidecarPresent, true)
   assert.equal(reopened.local.root.id, 'fixture-root')
   await call('library')
@@ -176,7 +186,7 @@ try {
   assert.equal(library.local, null)
   assert.equal(library.photos.length, 0)
   console.log(
-    'Native Local passed fixture folder browsing, DNG read, process-2 sidecar edits and named versions, version-preserving reset, actual TIFF16 samples, unsupported-sidecar rejection, original preservation, preview/export, restart/reopen, historical-empty-sidecar presence, and zero catalog imports. Folder permission was seeded by the test harness; the system chooser was not automated.'
+    'Native Local passed fixture folder browsing, DNG read, process-2 sidecar edits and named versions including point curves, version-preserving reset, actual TIFF16 samples, unsupported-sidecar rejection, original preservation, preview/export, restart/reopen of curve recipes and versions, historical-empty-sidecar presence, and zero catalog imports. Folder permission was seeded by the test harness; the system chooser was not automated.'
   )
 } finally {
   await stop()

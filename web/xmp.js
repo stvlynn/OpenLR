@@ -10,6 +10,7 @@ import { processingVersion, validateProcessVersion } from './process-version.js'
 import { validateSoftMask } from './soft-mask.js'
 import { validateDepthSettings } from './depth-effects.js'
 import { escapeXml } from './xml.js'
+import { validateToneCurves } from './tone-curves.js'
 
 export const XMP_MESSAGES = {
   changedPhoto: 'The selected photo changed; choose the sidecar again',
@@ -84,7 +85,8 @@ function safeRecipe(recipe) {
     else if (key === 'redEyes') {
       if (!Array.isArray(value) || !value.every(validEye)) throw Error('Invalid red-eye regions')
       result.redEyes = value
-    } else if (key === 'pointColors') result.pointColors = value.map(validatePoint)
+    } else if (key === 'toneCurves') result.toneCurves = validateToneCurves(value)
+    else if (key === 'pointColors') result.pointColors = value.map(validatePoint)
     else if (key === 'fills') result.fills = value.map(validateFill)
     else if (key === 'trim') {
       if (

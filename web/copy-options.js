@@ -14,7 +14,7 @@ export const COPY_GROUPS = [
   ...Object.entries(controls).map(([label, values]) => ({
     id: label.toLowerCase().replaceAll(' ', '-'),
     label,
-    keys: Object.keys(values)
+    keys: [...Object.keys(values), ...(label === 'Curve' ? ['toneCurves'] : [])]
   })),
   { id: 'point-colors', label: 'Point color', keys: ['pointColors'] },
   { id: 'crop', label: 'Crop and rotation', keys: ['crop', 'aspect', 'turn', 'flip'] },

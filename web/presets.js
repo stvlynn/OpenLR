@@ -1,6 +1,7 @@
 import { all, save, transaction } from './catalog.js'
 import { controls } from './adjustments.js'
 import { processingVersion } from './process-version.js'
+import { validateToneCurves } from './tone-curves.js'
 const adjustments = Object.assign({}, ...Object.values(controls))
 const builtIn = [
   { id: 'mono', name: 'Monochrome', edit: { Saturation: -100, Contrast: 9 } },
@@ -17,6 +18,7 @@ export class Presets {
     processingVersion(recipe)
     const edit = Object.fromEntries(Object.entries(recipe).filter(([key]) => Object.hasOwn(adjustments, key)))
     if (Object.hasOwn(recipe, 'processVersion')) edit.processVersion = recipe.processVersion
+    if (Object.hasOwn(recipe, 'toneCurves')) edit.toneCurves = validateToneCurves(recipe.toneCurves)
     const preset = { id: crypto.randomUUID(), name: name.trim(), edit }
     await save('presets', preset)
     this.items.push(preset)
@@ -26,6 +28,7 @@ export class Presets {
     const preset = this.items.find((p) => p.id === id)
     if (!preset) throw Error('Preset not found')
     processingVersion(preset.edit)
+    if (preset.edit.toneCurves !== undefined) validateToneCurves(preset.edit.toneCurves)
     return preset
   }
   async remove(id) {

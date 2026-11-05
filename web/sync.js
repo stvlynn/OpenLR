@@ -3,6 +3,7 @@ import * as db from './catalog.js'
 import { decodeEditSource } from './edit-source.js'
 import { render, toBlob } from './render.js'
 import { processingVersion } from './process-version.js'
+import { validateToneCurveRecipe } from './tone-curves.js'
 const stores = ['photos', 'albums', 'presets']
 const stringify = (value) =>
   JSON.stringify(value, (_, v) =>
@@ -18,7 +19,11 @@ function requiredManifestVersion(manifest) {
   for (const store of ['photos', 'presets'])
     for (const row of Object.values(manifest[store])) {
       version = Math.max(version, processingVersion(row.edit))
-      for (const snapshot of row.versions ?? []) version = Math.max(version, processingVersion(snapshot.edit))
+      validateToneCurveRecipe(row.edit)
+      for (const snapshot of row.versions ?? []) {
+        version = Math.max(version, processingVersion(snapshot.edit))
+        validateToneCurveRecipe(snapshot.edit)
+      }
     }
   return version
 }

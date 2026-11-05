@@ -48,6 +48,8 @@ See [catalog organization](catalog-organization.md) for multi-selection, batch m
 
 `copy-edits --keys '["Exposure","Contrast"]'` copies those recipe keys; selected keys absent from the source are reset on paste, while unselected target keys remain unchanged. Omitting `keys` copies the complete recipe. Optional `--photoId` rejects a changed active photo before replacing the clipboard; it does not select another source. The GUI's Choose edits dialog uses this same guarded command.
 
+`curve-channel`, `curve-select` and `curve-set` expose the [point/channel curve editor](tone-curves.md). `curve-set` accepts an explicit channel and ordered normalized points; optional `photoId` and `expectedPoints` reject stale targets. Full and summary state expose `toneCurve:{channel,index}` alongside the persisted `edit.toneCurves`. Preview and export consume the same curve rules as the graph.
+
 [Photo merging](photo-merge.md) adds `merge-hdr`, `merge-panorama`, and `export-hdr`. Merge commands create a new library photo from selected originals and return registration/fusion diagnostics. `export-hdr --output merged.hdr` writes the actual retained scene-linear Radiance file; normal `preview` and `export` use the tone-mapped catalog image.
 
 `export --format image/x-adobe-dng --output camera.dng` preserves an existing DNG or creates a true 16-bit LinearRaw DNG from a decodable camera RAW. See [DNG export](dng-export.md) for the difference, embedded settings, and validation limits. Rendered images are rejected as RAW sources.

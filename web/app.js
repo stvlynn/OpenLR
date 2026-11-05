@@ -51,6 +51,8 @@ import { Organization, namedVersion, findVersion, PURGE_MESSAGES } from './organ
 import { validateSmartRule, sameSmartRule, SMART_ALBUM_MESSAGES } from './smart-album-rule.js'
 import { mountOrganization } from './organization-ui.js'
 import { COPY_MESSAGES } from './copy-options.js'
+import { curvePoints, setToneCurve, validateToneCurveRecipe, CURVE_MESSAGES } from './tone-curves.js'
+import { mountToneCurves } from './tone-curves-ui.js'
 import { mergePhotos } from './merge.js'
 import { mountMerge } from './merge-ui.js'
 import {
@@ -144,6 +146,10 @@ let sampling = false,
   selectedPoint = '',
   pointPhoto = ''
 let updatePoints = () => {}
+let curveChannel = 'rgb',
+  curveIndex = 0,
+  curvePhoto = ''
+let updateToneCurves = () => {}
 let playingMedia = null,
   frameTicket = 0,
   sliderFrame = 0
@@ -413,11 +419,16 @@ async function draw() {
   if (!selected) mode = 'grid'
   const p = active(),
     detail = mode === 'detail'
+  const curveSource = p?.local?.sidecarError ? null : p
   const points = p?.edit.pointColors ?? []
   if (pointPhoto !== (p?.id ?? '') || !points.some((point) => point.id === selectedPoint))
     selectedPoint = points[0]?.id ?? ''
   pointPhoto = p?.id ?? ''
   updatePoints(points, selectedPoint, pointPhoto)
+  if (curvePhoto !== (p?.id ?? '')) curveIndex = 0
+  curvePhoto = p?.id ?? ''
+  curveIndex = Math.min(curveIndex, curvePoints(curveSource?.edit ?? {}, curveChannel).length - 1)
+  updateToneCurves(curveSource, { channel: curveChannel, index: curveIndex })
   if (!detail || bitmapId !== selected) {
     localToolsUI?.unmount()
     opticsUI?.unmount()
@@ -582,6 +593,7 @@ function snapshot() {
     localTool: localToolsUI?.getMode() ?? 'off',
     rangeColor: localToolsUI?.rangeColor() ?? '#808080',
     selectedPoint,
+    toneCurve: { channel: curveChannel, index: curveIndex },
     film,
     zoom,
     albums,
@@ -636,6 +648,7 @@ async function preparePhoto(p, changes) {
   return next
 }
 async function replace(p, changes) {
+  if (changes.edit) validateToneCurveRecipe(changes.edit)
   const next = await preparePhoto(p, changes)
   if (local.isLocal(next)) await local.save(next)
   else await db.save('photos', next)
@@ -783,6 +796,7 @@ async function execute(command, args, context = {}) {
         localTool: localToolsUI?.getMode() ?? 'off',
         rangeColor: localToolsUI?.rangeColor() ?? '#808080',
         selectedPoint,
+        toneCurve: { channel: curveChannel, index: curveIndex },
         photo: photo
           ? {
               id: photo.id,
@@ -1368,6 +1382,7 @@ async function execute(command, args, context = {}) {
     }
     default: {
       if (!p) throw Error('Select a photo first')
+      if (command.startsWith('curve-') && p.local?.sidecarError) throw Error(p.local.sidecarError)
       if (LOCAL_COMMANDS.includes(command)) {
         if (args.photoId !== undefined && args.photoId !== p.id)
           throw Error('The selected photo changed; local edit was canceled')
@@ -1807,6 +1822,44 @@ async function execute(command, args, context = {}) {
           }
           localToolsUI.setRangeColor(color)
           return { color }
+        }
+        case 'curve-channel':
+          curveChannel = args.channel
+          curveIndex = 0
+          curvePhoto = p.id
+          updateToneCurves(p, { channel: curveChannel, index: curveIndex })
+          return { channel: curveChannel, index: curveIndex }
+        case 'curve-select':
+          if (args.photoId !== undefined && args.photoId !== p.id) throw Error(CURVE_MESSAGES.changedPhoto)
+          if (args.index >= curvePoints(p.edit, curveChannel).length)
+            throw Error(CURVE_MESSAGES.invalidPoints)
+          curveIndex = args.index
+          curvePhoto = p.id
+          updateToneCurves(p, { channel: curveChannel, index: curveIndex })
+          return { channel: curveChannel, index: curveIndex }
+        case 'curve-set': {
+          if (args.photoId !== undefined && args.photoId !== p.id) throw Error(CURVE_MESSAGES.changedPhoto)
+          const previous = curvePoints(p.edit, args.channel)
+          if (
+            args.expectedPoints !== undefined &&
+            (args.expectedPoints.length !== previous.length ||
+              args.expectedPoints.some((point, i) => point.x !== previous[i].x || point.y !== previous[i].y))
+          )
+            throw Error(CURVE_MESSAGES.changedEdit)
+          const edit = setToneCurve(p.edit, args.channel, args.points)
+          if (args.index !== undefined && args.index >= curvePoints(edit, args.channel).length)
+            throw Error(CURVE_MESSAGES.invalidPoints)
+          if (JSON.stringify(edit.toneCurves) !== JSON.stringify(p.edit.toneCurves)) {
+            await replace(p, { edit })
+            rememberEdit(p)
+            redo.length = 0
+          }
+          curveChannel = args.channel
+          curveIndex = args.index ?? Math.min(curveIndex, curvePoints(edit, args.channel).length - 1)
+          curvePhoto = p.id
+          compare = false
+          result = { channel: curveChannel, index: curveIndex, points: curvePoints(edit, curveChannel) }
+          break
         }
         case 'point-select':
           if (args.photoId !== undefined && args.photoId !== p.id) throw Error('The selected photo changed')
@@ -2418,6 +2471,43 @@ document.onkeydown = (e) => {
   e.preventDefault()
 }
 updatePoints = pointPanel(act)
+let curvePreview = null,
+  curvePreviewFrame = 0
+updateToneCurves = mountToneCurves(act, (source, points) => {
+  cancelAnimationFrame(curvePreviewFrame)
+  if (!source) {
+    curvePreview = null
+    const photo = active()
+    if (
+      photo &&
+      !photo.local?.sidecarError &&
+      bitmap &&
+      mode === 'detail' &&
+      bitmapId === photo.id &&
+      bitmapVersion === processingVersion(photo.edit)
+    )
+      paintStage(bitmap, photo.edit)
+    return
+  }
+  const photo = active()
+  if (photo?.id !== source.photoId) return
+  if (curvePreview?.source !== source) curvePreview = { source, edit: photo.edit }
+  const preview = curvePreview
+  curvePreviewFrame = requestAnimationFrame(() => {
+    if (
+      curvePreview !== preview ||
+      selected !== source.photoId ||
+      active()?.edit !== preview.edit ||
+      mode !== 'detail' ||
+      !bitmap ||
+      bitmapId !== source.photoId ||
+      bitmapVersion !== processingVersion(preview.edit)
+    )
+      return
+    compare = false
+    paintStage(bitmap, setToneCurve(preview.edit, source.channel, points))
+  })
+})
 $('clip-indicator').onclick = () => act('clipping')
 mountPreferences(act)
 mountSync(run, notice)

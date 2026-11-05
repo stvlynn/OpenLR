@@ -2,6 +2,7 @@ import { decodeEditSource } from './edit-source.js'
 import { render, toBlob } from './render.js'
 import { whenVisible } from './thumbnail-visibility.js'
 import { processingVersion } from './process-version.js'
+import { validateToneCurveRecipe } from './tone-curves.js'
 
 const messages = {
   desktop: 'Local folders require the desktop app.',
@@ -28,7 +29,11 @@ const call = (name, ...args) => {
 }
 function validateVersions(recipe) {
   processingVersion(recipe.edit || {})
-  for (const version of recipe.versions || []) processingVersion(version.edit || {})
+  validateToneCurveRecipe(recipe.edit || {})
+  for (const version of recipe.versions || []) {
+    processingVersion(version.edit || {})
+    validateToneCurveRecipe(version.edit || {})
+  }
 }
 export const state = () =>
   folder

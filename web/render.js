@@ -18,6 +18,7 @@ import { transformFrame } from './frame-geometry.js'
 import { workingFrame } from './working-frames.js'
 import { processingVersion, PROCESS_MESSAGES } from './process-version.js'
 import { controls } from './adjustments.js'
+import { createPointCurves, createPointCurveTables } from './tone-curves.js'
 export { controls } from './adjustments.js'
 const linear = Float64Array.from({ length: 256 }, (_, i) => {
   const v = i / 255
@@ -45,10 +46,12 @@ export function renderFrame(image, edit = {}, maxSize = Infinity) {
   const frame = transformFrame(source, edit, maxSize, image)
   const tone = createGlobalTone(edit),
     curve = createFloatToneCurve(edit),
+    points = createPointCurves(edit),
     mixer = createFloatMixer(edit)
   for (let i = 0; i < frame.data.length; i += 4) {
     tone?.(frame.data, i)
     if (curve) for (let c = 0; c < 3; c++) frame.data[i + c] = curve(frame.data[i + c])
+    if (points) for (let c = 0; c < 3; c++) frame.data[i + c] = points(frame.data[i + c], c)
     mixer?.(frame.data, i)
   }
   spatialEffectsFloat(frame.data, frame.width, frame.height, edit)
@@ -99,7 +102,9 @@ export function render(image, edit = {}, maxSize = Infinity) {
     width,
     height
   )
+  const pointTables = createPointCurveTables(edit)
   if (
+    !pointTables &&
     !edit.pointColors?.length &&
     !Object.values(controls).some((group) => Object.keys(group).some((key) => edit[key]))
   )
@@ -130,6 +135,9 @@ export function render(image, edit = {}, maxSize = Infinity) {
   }
   if (curve)
     for (let i = 0; i < data.length; i += 4) for (let k = 0; k < 3; k++) data[i + k] = curve[data[i + k]]
+  if (pointTables)
+    for (let i = 0; i < data.length; i += 4)
+      for (let k = 0; k < 3; k++) data[i + k] = pointTables[k][data[i + k]]
   if (mixer) for (let i = 0; i < data.length; i += 4) mixer(data, i)
   spatialEffects(data, canvas.width, canvas.height, edit)
   ctx.putImageData(pixels, 0, 0)

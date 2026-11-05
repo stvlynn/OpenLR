@@ -1,5 +1,6 @@
 // Catalog rules shared by the GUI dispatcher; no DOM or persistence dependencies.
 import { processingVersion } from './process-version.js'
+import { hasToneCurveEffect, validateToneCurveRecipe } from './tone-curves.js'
 
 export const PURGE_MESSAGES = {
   changedSelection: 'The selection changed; choose Delete permanently again'
@@ -28,7 +29,10 @@ export function matchesCatalogFilters(photo, { rating, flag, edited }) {
     (edited === 'any' ||
       Object.entries(photo.edit).some(
         ([key, value]) =>
-          key !== 'processVersion' && value !== 0 && value !== false && value !== '' && value !== null
+          key !== 'processVersion' &&
+          (key === 'toneCurves'
+            ? Boolean(photo.local?.sidecarError) || hasToneCurveEffect(value)
+            : value !== 0 && value !== false && value !== '' && value !== null)
       ) ===
         (edited === 'yes'))
   )
@@ -106,6 +110,7 @@ export class Organization {
     if (keys !== undefined && (!Array.isArray(keys) || keys.some((key) => typeof key !== 'string')))
       throw new Error('Edit keys must be an array of names')
     processingVersion(photo.edit)
+    validateToneCurveRecipe(photo.edit)
     this.clipboard = { source: photo.id, edit: structuredClone(photo.edit), keys: keys ?? null }
     return { source: photo.id, keys: this.clipboard.keys, copied: true }
   }
@@ -113,6 +118,7 @@ export class Organization {
     if (!this.clipboard) throw new Error('Copy edits from a photo first')
     const { edit, keys } = this.clipboard
     processingVersion(edit)
+    validateToneCurveRecipe(edit)
     if (keys === null) return structuredClone(edit)
     const result = structuredClone(photo.edit)
     for (const key of keys) {
@@ -120,6 +126,7 @@ export class Organization {
       else delete result[key]
     }
     processingVersion(result)
+    validateToneCurveRecipe(result)
     return result
   }
 }
@@ -128,6 +135,7 @@ export function namedVersion(photo, name) {
   name = String(name ?? '').trim()
   if (!name) throw new Error('Enter a version name')
   processingVersion(photo.edit)
+  validateToneCurveRecipe(photo.edit)
   return { id: crypto.randomUUID(), name, created: Date.now(), edit: structuredClone(photo.edit) }
 }
 
@@ -135,5 +143,6 @@ export function findVersion(photo, id) {
   const version = photo.versions?.find((v) => v.id === id)
   if (!version) throw new Error('Version not found on the selected photo')
   processingVersion(version.edit)
+  validateToneCurveRecipe(version.edit)
   return version
 }
