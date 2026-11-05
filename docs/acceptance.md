@@ -60,3 +60,11 @@ Windows、Ubuntu 24.04、macOS 15 Intel 对提交 ee08007 的原生 GUI/CLI 验�
 2026-11-05 渲染元数据补充：JPEG／PNG／TIFF／AVIF／JPEG XL 共用 None、Copyright only、Copyright & photo info 三策略，默认保持 none；GUI、CLI 和完成后记忆的导出设置一致。版权与十项明确字段按策略重建 EXIF/XMP，Unicode 使用 XMP，尺寸／方向／目标 ICC 由成片确定，GPS、关键词、旧编辑与未知私有信息不照搬。现有 TIFF writer 同时生成 EXIF payload 和 8/16-bit TIFF 元数据目录，AVIF/JXL 五套编码变体使用原库 API，未增加运行时依赖。本地 Windows / Node 24.9 / Chrome 155 的 OPENLR_TEST_CMS=1 OPENLR_TEST_METADATA=1 npm test 通过 226/226、零跳过，Go test/vet 和桌面构建通过。七组 Windows 原生套件通过；新矩阵实际执行两处理版本×五格式×三策略的 30 次导出、沿用上次设置字节对照与重导入，独立 ExifTool 13.60 校验全部输出，包含 Unicode、时间偏移／子秒、方向尺寸及隐私字段排除。Linear TIFF16 样本、当前照片原件与既有色彩验收均通过。1024px 导出对话框已截图检查。浏览器 oracle 初次错误假设 ExifTool 会暴露 JXL 码流 ICC；核对工具范围后改由 libjxl 读取实际 original ICC，元数据盒仍由 ExifTool 独立校验，完整重跑通过。来源、字段及未测边界见[元数据合同](export-metadata.md)和[实验](../research/export-metadata.md)。本轮三端远程验收受 GitHub 账户计费限制影响，不能将 Windows 本地结果当成新提交的 macOS／Linux 原生通过。
 
 随后补充多作者署名：按 XMP 有序数组保留完整创建者列表，单作者仍兼容原字符串；实际 PNG／TIFF 回读与独立数组断言通过。最终代码全量测试为 227/227、零跳过，重新打包后的 Windows 原生 smoke（含 30 个元数据文件独立校验）再次通过。
+
+2026-11-05 本机 Linux 验收与 PNG 方向补充：Ubuntu 24.04／WSL2（6.6.87.2）／WebKitGTK 2.52.6 的真实 MyGo 窗口发现旧 PNG 显示解码忽略 EXIF 方向，而 Chrome 已应用方向。现由共享显示适配器保留原生色彩管理、临时移除 eXIf 后应用既有方向映射，与 Linear 和兼容路径一致。八种方向×两种处理版本的实际 TIFF 像素及原件字节检查通过；五格式×三策略×两版本的 30 个元数据文件通过独立 ExifTool 校验。旧 PNG 图库沿用现有 RAW 懒刷新队列，原子持久化缩略图、正确尺寸和预览版本，保持原件及编辑参数，过期记录不覆盖新行。
+
+完整回归曾在无 IntersectionObserver 的旧缓存刷新场景发现实际存储竞态：旧记录与媒体分片分两个事务读取，替换可在中间回收旧分片。修复为同一只读事务后，确定性测试检查完整旧／新快照、真正回收和真实缺块报错；同一测试注入旧模块稳定失败，新模块通过。没有添加缺块重试或放宽错误检查。最终 Windows／Node 24.9／Chrome 155 的 `OPENLR_TEST_CMS=1 OPENLR_TEST_METADATA=1 npm test` 通过 **234/234、零跳过**。Linux Go test、race、vet 和正式 deb／tar.gz 打包通过，最终源码与隔离 Linux 工作副本逐文件一致；七组原生 GUI/CLI 套件全部通过，共享审阅访客使用 Linux Chrome 157.0.8103.38，实际工作区截图已检查。
+
+同一最终代码的 Windows 安装包构建及七组 WebView2 原生 GUI/CLI 套件也全部通过，包括八方向 PNG、30 文件元数据、外部编辑、相机模拟器、共享审阅和合成／真实 CRW／模型集成流程。
+
+该 Linux 结果来自 Xvfb／D-Bus 下的真实 GTK/WebKit 与 IPC，不等同于物理显示器、GPU 或原生文件选择器操作验收。前置环境曾因临时目录消失与缺少访客 Chrome 中止，补齐持久目录和浏览器后完整重跑，未将中止运行计为通过。GitHub 远程三端任务此前因账户计费未启动，本轮 macOS 结论仍须对应实际运行；不由 Windows／WSL 结果推断。复现步骤见[桌面宿主](desktop.md#local-linux-acceptance)，方向与存储依据见 [PNG 研究](../research/high-depth-png.md#native-png-orientation-correction)和[目录存储](catalog-storage.md)。

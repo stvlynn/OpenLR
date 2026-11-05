@@ -2,6 +2,7 @@ import * as db from './catalog.js'
 import * as local from './local.js'
 import { decodeFile } from './transfer.js'
 import { decodeEditSource } from './edit-source.js'
+import { photoPreviewVersions } from './decode.js'
 import { processingVersion, PROCESS_MESSAGES } from './process-version.js'
 import { isVideo, poster } from './video.js'
 import { metadata } from './metadata.js'
@@ -286,7 +287,8 @@ export async function commit(id) {
           captureTime: source.captureTime,
           warnings
         },
-        thumbnail: await toBlob(render(image, edit, 240))
+        thumbnail: await toBlob(render(image, edit, 240)),
+        ...photoPreviewVersions(file)
       }
       await db.save('photos', photo)
       existing.set(photo.id, photo)

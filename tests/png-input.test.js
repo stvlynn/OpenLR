@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { chromium } from 'playwright-core'
 import { serveWorkspace } from './browser-server.mjs'
-import { makePng, makePngFixture } from './fixtures/png.mjs'
+import { makePng, makePngFixture, exifOrientation } from './fixtures/png.mjs'
 import { deflateSync } from 'node:zlib'
 import { makeColorProfile } from '../web/color-spaces.js'
 import { makeGrayProfile, iccCurve } from './fixtures/icc-input.mjs'
@@ -20,18 +20,6 @@ async function workspace(t) {
   const page = await browser.newPage()
   await page.goto(server.url)
   return page
-}
-
-function exifOrientation(value) {
-  const bytes = new Uint8Array(26),
-    view = new DataView(bytes.buffer)
-  bytes.set([73, 73, 42, 0, 8, 0, 0, 0])
-  view.setUint16(8, 1, true)
-  view.setUint16(10, 274, true)
-  view.setUint16(12, 3, true)
-  view.setUint32(14, 1, true)
-  view.setUint16(18, value, true)
-  return bytes
 }
 
 test('PNG working input matches the native first APNG animation frame rather than its excluded default image', async (t) => {
@@ -368,7 +356,7 @@ test('PNG working input retains 16-bit color/alpha and follows ICC,CICP,gamma/ch
   assert.ok(result.unchanged.every(Boolean))
 })
 
-test('PNG working orientation matches actual native eXIf behavior in all 8 directions without reducing sample precision', async (t) => {
+test('PNG display and working orientation agree in all 8 directions without reducing sample precision', async (t) => {
   const page = await workspace(t),
     values = [10001, 20002, 30003, 40004, 50005, 60006],
     fixtures = Array.from({ length: 8 }, (_, i) =>
@@ -395,12 +383,12 @@ test('PNG working orientation matches actual native eXIf behavior in all 8 direc
       [1, 3, 5, 0, 2, 4]
     ]
   const result = await page.evaluate(async (fixtures) => {
-    const { decodePhotoFrame } = await import('./decode.js'),
+    const { decodePhotoFrame, decodePhoto } = await import('./decode.js'),
       rows = []
     for (const bytes of fixtures) {
       const file = new File([new Uint8Array(bytes)], 'orientation.png', { type: 'image/png' }),
         frame = await decodePhotoFrame(file),
-        native = await createImageBitmap(file),
+        native = await decodePhoto(file),
         canvas = new OffscreenCanvas(native.width, native.height),
         ctx = canvas.getContext('2d')
       ctx.drawImage(native, 0, 0)
@@ -428,4 +416,93 @@ test('PNG working orientation matches actual native eXIf behavior in all 8 direc
       assert.ok(Math.abs(row.nativeRed[p] - Math.round(values[source] / 257)) <= 1)
     })
   }
+})
+
+test('PNG display and compatibility decoding preserve CMS pixels while applying each EXIF orientation once', async (t) => {
+  const page = await workspace(t),
+    orders = [
+      [0, 1, 2, 3, 4, 5],
+      [1, 0, 3, 2, 5, 4],
+      [5, 4, 3, 2, 1, 0],
+      [4, 5, 2, 3, 0, 1],
+      [0, 2, 4, 1, 3, 5],
+      [4, 2, 0, 5, 3, 1],
+      [5, 3, 1, 4, 2, 0],
+      [1, 3, 5, 0, 2, 4]
+    ],
+    variants = [{ srgb: 0 }, { profile: makeColorProfile('display-p3') }, { cicp: [9, 16, 0, 1] }].map(
+      (color) => {
+        const options = {
+          width: 2,
+          height: 3,
+          bits: 8,
+          colorType: 6,
+          data: [
+            41, 68, 93, 255, 82, 110, 139, 255, 123, 154, 178, 255, 166, 193, 218, 255, 207, 162, 125, 255,
+            242, 211, 182, 255
+          ],
+          ...color
+        }
+        return {
+          plain: Array.from(makePng(options)),
+          oriented: orders.map((_, i) => Array.from(makePng({ ...options, exif: exifOrientation(i + 1) })))
+        }
+      }
+    )
+  const results = await page.evaluate(async (variants) => {
+    const { decodePhoto, decodePhotoFrame } = await import('./decode.js'),
+      { processCodec } = await import('./codec-kernel.js'),
+      capture = (bitmap) => {
+        const canvas = new OffscreenCanvas(bitmap.width, bitmap.height),
+          ctx = canvas.getContext('2d')
+        ctx.drawImage(bitmap, 0, 0)
+        const result = {
+          width: bitmap.width,
+          height: bitmap.height,
+          data: Array.from(ctx.getImageData(0, 0, bitmap.width, bitmap.height).data)
+        }
+        bitmap.close()
+        return result
+      },
+      output = []
+    for (const [index, variant] of variants.entries()) {
+      const base = capture(
+          await createImageBitmap(new Blob([new Uint8Array(variant.plain)], { type: 'image/png' }))
+        ),
+        rows = []
+      for (const bytes of variant.oriented) {
+        const file = new File([new Uint8Array(bytes)], 'orientation.png', { type: 'image/png' }),
+          display = capture(await decodePhoto(file)),
+          direct = capture((await processCodec({ operation: 'decode', format: 'image/png', file })).bitmap),
+          frame = index === 2 ? await decodePhotoFrame(file) : null
+        rows.push({
+          display,
+          direct,
+          frame: frame && {
+            width: frame.width,
+            height: frame.height,
+            data: Array.from(frame.data),
+            provenance: frame.provenance
+          }
+        })
+        const after = Array.from(new Uint8Array(await file.arrayBuffer()))
+        rows.at(-1).unchanged = after.length === bytes.length && after.every((v, i) => v === bytes[i])
+      }
+      output.push({ base, rows })
+    }
+    return output
+  }, variants)
+  for (const { base, rows } of results)
+    for (const [index, row] of rows.entries()) {
+      const expected = orders[index].flatMap((source) => base.data.slice(source * 4, source * 4 + 4))
+      assert.deepEqual([row.display.width, row.display.height], index >= 4 ? [3, 2] : [2, 3])
+      assert.deepEqual(row.display.data, expected)
+      assert.deepEqual(row.direct, row.display)
+      assert.equal(row.unchanged, true)
+      if (row.frame) {
+        assert.deepEqual([row.frame.width, row.frame.height], [row.display.width, row.display.height])
+        assert.equal(row.frame.provenance.compatibilityReason, 'png-cicp')
+        expected.forEach((v, i) => near(row.frame.data[i], i % 4 === 3 ? v / 255 : srgb(v / 255)))
+      }
+    }
 })

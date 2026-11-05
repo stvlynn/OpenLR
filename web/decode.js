@@ -53,8 +53,17 @@ export const RAW_EXTENSIONS = [
 export const PHOTO_ACCEPT =
   'image/*,.tif,.tiff,.avif,.jxl,' + RAW_EXTENSIONS.map((ext) => '.' + ext).join(',')
 export const RAW_PREVIEW_VERSION = 1
+export const PNG_PREVIEW_VERSION = 1
 export const isRawPhoto = (photo) =>
   RAW_EXTENSIONS.includes((photo.sourceName || photo.name || '').split('.').pop().toLowerCase())
+export function photoPreviewVersions(photo) {
+  if (isRawPhoto(photo)) return { rawPreviewVersion: RAW_PREVIEW_VERSION }
+  if (
+    photoFormat({ name: photo.sourceName || photo.name, type: photo.mediaType || photo.type }) === 'image/png'
+  )
+    return { pngPreviewVersion: PNG_PREVIEW_VERSION }
+  return {}
+}
 const MESSAGES = {
   EMPTY: 'The photo is empty.',
   RAW_DECODE: 'This RAW format or compression could not be decoded.',
@@ -136,6 +145,7 @@ export async function decodePhoto(file) {
       return bitmap
     }
     try {
+      if (format === 'image/png') return await (await import('./png-display.js')).decodePngDisplay(file)
       return await createImageBitmap(file)
     } catch (error) {
       throw new PhotoDecodeError('IMAGE_DECODE', error)

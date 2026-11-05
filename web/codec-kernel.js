@@ -95,7 +95,7 @@ export async function processCodec({
             compatibilityReason: converted.reason
           }
         }
-        const bitmap = await createImageBitmap(file)
+        const bitmap = await (await import('./png-display.js')).decodePngDisplay(file, bytes)
         return working ? { frame: await displayFrame(bitmap, provenance) } : { bitmap }
       } else if (format === 'image/tiff') {
         const image = readTiff(bytes),

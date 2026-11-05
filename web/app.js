@@ -11,7 +11,7 @@ import {
 import { workingFrame } from './working-frames.js'
 import { inputPrecisionDescription } from './input-color.js'
 import { isVideo, openVideo, clipRange, exportVideo } from './video.js'
-import { PHOTO_ACCEPT, RAW_PREVIEW_VERSION, isRawPhoto } from './decode.js'
+import { PHOTO_ACCEPT, photoPreviewVersions } from './decode.js'
 import { whenVisible } from './thumbnail-visibility.js'
 import { Presets } from './presets.js'
 import { LibraryHistory } from './library-history.js'
@@ -218,8 +218,8 @@ function original(id) {
       : db.original(photo?.originalId ?? id)
 }
 function clearSources() {
-  for (const observer of rawThumbnailObservers) observer.disconnect()
-  rawThumbnailObservers.clear()
+  for (const observer of thumbnailObservers) observer.disconnect()
+  thumbnailObservers.clear()
   localToolsUI?.unmount()
   opticsUI?.unmount()
   stopPlayback()
@@ -264,20 +264,21 @@ function invalidate(id) {
   if (urls.has(id)) URL.revokeObjectURL(urls.get(id))
   urls.delete(id)
 }
-const rawThumbnailJobs = new WeakMap(),
-  rawThumbnailTargets = new WeakMap(),
-  rawThumbnailObservers = new Set()
-function refreshRawThumbnail(photo, img) {
-  if (photo.local || !isRawPhoto(photo) || photo.rawPreviewVersion === RAW_PREVIEW_VERSION) return
-  const previous = rawThumbnailTargets.get(img)
+const thumbnailJobs = new WeakMap(),
+  thumbnailTargets = new WeakMap(),
+  thumbnailObservers = new Set()
+function refreshThumbnail(photo, img) {
+  const versions = photoPreviewVersions(photo)
+  if (photo.local || Object.entries(versions).every(([key, version]) => photo[key] === version)) return
+  const previous = thumbnailTargets.get(img)
   if (previous?.photo === photo) return
   previous?.observer?.disconnect()
-  rawThumbnailObservers.delete(previous?.observer)
+  thumbnailObservers.delete(previous?.observer)
   const observer = whenVisible(
     img,
     async () => {
       if (!img.isConnected || !photos.includes(photo)) return
-      if (!rawThumbnailJobs.has(photo)) {
+      if (!thumbnailJobs.has(photo)) {
         // Cache writes share the command queue, but do not create edit history.
         const job = queue
           .then(() => ready)
@@ -286,32 +287,39 @@ function refreshRawThumbnail(photo, img) {
             let image
             try {
               image = await decodeEditSource((await original(photo.id)).file, photo.edit)
-              const thumbnail = await toBlob(render(image, photo.edit, 240))
+              const cache = {
+                thumbnail: await toBlob(render(image, photo.edit, 240)),
+                width: image.width,
+                height: image.height,
+                ...versions
+              }
               // Replaced rows represent newer edits or another library; never overwrite them.
               if (!photos.includes(photo)) return
-              await db.save('photos', { ...photo, thumbnail, rawPreviewVersion: RAW_PREVIEW_VERSION })
-              photo.thumbnail = thumbnail
-              photo.rawPreviewVersion = RAW_PREVIEW_VERSION
+              await db.save('photos', { ...photo, ...cache })
+              Object.assign(photo, cache)
               invalidate(photo.id)
             } finally {
               image?.close()
             }
           })
-        rawThumbnailJobs.set(photo, job)
+        thumbnailJobs.set(photo, job)
         queue = job.catch(() => {})
       }
       try {
-        await rawThumbnailJobs.get(photo)
-        if (img.isConnected && photos.includes(photo)) img.src = thumb(photo)
+        await thumbnailJobs.get(photo)
+        if (img.isConnected && photos.includes(photo)) {
+          img.src = thumb(photo)
+          img.parentElement.style.setProperty('--aspect', photo.width / photo.height)
+        }
       } catch (error) {
         img.title = error.message
         notice(photo.name + ': ' + error.message)
       }
     },
-    (finished) => rawThumbnailObservers.delete(finished)
+    (finished) => thumbnailObservers.delete(finished)
   )
-  if (observer) rawThumbnailObservers.add(observer)
-  rawThumbnailTargets.set(img, { photo, observer })
+  if (observer) thumbnailObservers.add(observer)
+  thumbnailTargets.set(img, { photo, observer })
 }
 function tile(photo) {
   const button = document.createElement('button'),
@@ -337,7 +345,7 @@ function tile(photo) {
     invalidate(photo.id)
     img.src = thumb(photo)
   })
-  refreshRawThumbnail(photo, img)
+  refreshThumbnail(photo, img)
   return button
 }
 function syncTiles(container, items) {
@@ -353,9 +361,10 @@ function syncTiles(container, items) {
       node.lastElementChild.textContent = displayName(p)
       node.lastElementChild.hidden = !preferences.filenames
       node.dataset.label = p.label || ''
+      node.style.setProperty('--aspect', p.width && p.height ? p.width / p.height : 1)
       node.setAttribute('aria-pressed', organization.selection.has(p.id))
       if (node.firstChild.src !== url) node.firstChild.src = url
-      refreshRawThumbnail(p, node.firstChild)
+      refreshThumbnail(p, node.firstChild)
     })
   }
 }
@@ -606,8 +615,11 @@ export { commands } from './agent-protocol.js'
 async function preparePhoto(p, changes) {
   const next = { ...p, ...changes }
   if (changes.edit) {
-    next.thumbnail = await toBlob(render(await source(p.id, changes.edit), changes.edit, 240))
-    next.rawPreviewVersion = RAW_PREVIEW_VERSION
+    const image = await source(p.id, changes.edit)
+    next.thumbnail = await toBlob(render(image, changes.edit, 240))
+    next.width = image.width
+    next.height = image.height
+    Object.assign(next, photoPreviewVersions(p))
   }
   return next
 }
@@ -1099,6 +1111,7 @@ async function execute(command, args) {
         edit: {},
         metadata: {},
         thumbnail: enhanced.thumbnail,
+        ...photoPreviewVersions(file),
         enhance: {
           ...enhanced.provenance,
           metrics: enhanced.metrics,
@@ -1147,6 +1160,7 @@ async function execute(command, args) {
         edit: {},
         metadata: {},
         thumbnail: merged.thumbnail,
+        ...photoPreviewVersions(merged.file),
         merge: merged.diagnostics
       }
       await db.addPhoto(photo, merged.file, merged.radiance ? { radiance: merged.radiance } : {})

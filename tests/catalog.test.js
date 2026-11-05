@@ -3,6 +3,121 @@ import assert from 'node:assert/strict'
 import { chromium } from 'playwright-core'
 import { serveWorkspace } from './browser-server.mjs'
 
+test('catalog readers retain one complete media snapshot while a queued writer replaces and reclaims it', async (t) => {
+  const server = await serveWorkspace()
+  t.after(server.close)
+  const browser = await chromium.launch({ channel: process.env.CHROME_CHANNEL || 'chrome', headless: true })
+  t.after(() => browser.close())
+  const page = await browser.newPage()
+  await page.goto(server.url)
+  const results = await page.evaluate(async () => {
+    const db = await import('./catalog.js'),
+      results = []
+    for (const [store, field, method] of [
+      ['photos', 'thumbnail', 'getAll'],
+      ['originals', 'file', 'get']
+    ]) {
+      const id = store + '-snapshot',
+        preparedId = store + '-prepared'
+      const oldBytes = new Uint8Array(db.MEDIA_CHUNK_BYTES + 17).fill(19)
+      oldBytes[oldBytes.length - 1] = 71
+      const nextBytes = new Uint8Array(db.MEDIA_CHUNK_BYTES + 31).fill(83)
+      nextBytes[nextBytes.length - 1] = 139
+      await db.save(store, {
+        id,
+        [field]: new File([oldBytes], 'old.png', { type: 'image/png', lastModified: 17 })
+      })
+      const nextBlob = new File([nextBytes], 'next.png', { type: 'image/png', lastModified: 31 })
+      // Saving first prepares reusable media, so the writer can be queued from
+      // the descriptor success event without waiting for Blob byte conversion.
+      await db.save(store, { id: preparedId, [field]: nextBlob })
+      const oldRow = await db.transaction(store, 'readonly', (tx) => tx.objectStore(store).get(id))
+      const events = [],
+        nativeRead = IDBObjectStore.prototype[method],
+        nativeTransaction = IDBDatabase.prototype.transaction
+      let armed = true,
+        replacement
+      IDBDatabase.prototype.transaction = function (names, mode, ...options) {
+        const tx = nativeTransaction.call(this, names, mode, ...options)
+        if (mode === 'readwrite') events.push('writer queued')
+        else if (armed && tx.objectStoreNames.contains(store))
+          tx.addEventListener('complete', () => events.push('reader complete'), { once: true })
+        return tx
+      }
+      IDBObjectStore.prototype[method] = function (...args) {
+        const request = nativeRead.apply(this, args)
+        if (this.name === store && armed) {
+          armed = false
+          request.addEventListener(
+            'success',
+            () => {
+              replacement = db.save(store, { id, [field]: nextBlob })
+            },
+            { once: true }
+          )
+        }
+        return request
+      }
+      let snapshot
+      try {
+        snapshot =
+          store === 'photos' ? (await db.all(store)).find((row) => row.id === id) : await db.original(id)
+        await replacement
+      } finally {
+        IDBObjectStore.prototype[method] = nativeRead
+        IDBDatabase.prototype.transaction = nativeTransaction
+      }
+      const next =
+        store === 'photos' ? (await db.all(store)).find((row) => row.id === id) : await db.original(id)
+      const before = new Uint8Array(await snapshot[field].arrayBuffer()),
+        after = new Uint8Array(await next[field].arrayBuffer())
+      const reclaimed = await db.transaction('media', 'readonly', (tx) =>
+        tx
+          .objectStore('media')
+          .count(IDBKeyRange.bound([oldRow[field].key, 0], [oldRow[field].key, Number.MAX_SAFE_INTEGER]))
+      )
+      const current = await db.transaction(store, 'readonly', (tx) => tx.objectStore(store).get(id))
+      await db.transaction('media', 'readwrite', (tx) =>
+        tx.objectStore('media').delete([current[field].key, 1])
+      )
+      let corruption
+      try {
+        if (store === 'photos') await db.all(store)
+        else await db.original(id)
+      } catch (error) {
+        corruption = error.message
+      }
+      results.push({
+        store,
+        events,
+        reclaimed,
+        corruption,
+        oldExact:
+          before.length === oldBytes.length && before.every((value, index) => value === oldBytes[index]),
+        newExact:
+          after.length === nextBytes.length && after.every((value, index) => value === nextBytes[index]),
+        oldName: snapshot[field].name,
+        newName: next[field].name
+      })
+      // The intentionally damaged fixture must not affect the next reader case.
+      await db.transaction(store, 'readwrite', (tx) => {
+        db.deleteRecord(tx, store, id)
+        db.deleteRecord(tx, store, preparedId)
+      })
+    }
+    return results
+  })
+  for (const result of results) {
+    assert.equal(result.oldExact, true, result.store + ': complete old snapshot')
+    assert.equal(result.newExact, true, result.store + ': later read sees replacement')
+    assert.equal(result.oldName, 'old.png')
+    assert.equal(result.newName, 'next.png')
+    assert.equal(result.reclaimed, 0, 'Old media is genuinely reclaimed')
+    assert.deepEqual(result.events, ['writer queued', 'reader complete'])
+    assert.match(result.corruption, /catalog is missing part of an original image/)
+  }
+})
+
 test('140 MiB media survives Blob rejection, bounded chunk records, reopen, metadata reuse and atomic abort', async (t) => {
   const server = await serveWorkspace()
   t.after(server.close)

@@ -28,6 +28,10 @@ export async function transaction(stores, mode, work, mediaPlan) {
       cause ??= e.target.error
     }
     tx.onabort = () => reject(cause ?? tx.error ?? new Error('Catalog transaction aborted'))
+    const abort = (error) => {
+      cause = error
+      tx.abort()
+    }
     try {
       if (mediaPlan) {
         for (const { reference } of mediaPlan.reused.values()) {
@@ -46,7 +50,7 @@ export async function transaction(stores, mode, work, mediaPlan) {
           tx.objectStore('mediaRecords').put(row)
         }
       }
-      result = work(tx)
+      result = work(tx, abort)
     } catch (error) {
       cause = error
       tx.abort()
@@ -83,7 +87,7 @@ function releaseReplaced(tx, id, nextKeys) {
     }
   }
 }
-async function hydrate(record) {
+function hydrate(record, tx, abort) {
   if (!record) return record
   for (const key of mediaFields) {
     const v = record[key]
@@ -95,26 +99,31 @@ async function hydrate(record) {
     if (v?.storage === 'chunks-v2') {
       if (!Number.isSafeInteger(v.count) || v.count < 1 || !Number.isSafeInteger(v.size) || v.size < 0)
         throw Error('Invalid catalog media descriptor')
-      const chunks = await transaction('media', 'readonly', (tx) => {
-        const parts = [],
-          request = tx.objectStore('media').openCursor(IDBKeyRange.bound([v.key, 0], [v.key, v.count - 1]))
-        request.onsuccess = () => {
+      const chunks = [],
+        request = tx.objectStore('media').openCursor(IDBKeyRange.bound([v.key, 0], [v.key, v.count - 1]))
+      request.onsuccess = () => {
+        try {
           const cursor = request.result
           if (cursor) {
-            parts.push(cursor.value.bytes)
+            chunks.push(cursor.value.bytes)
             cursor.continue()
+            return
           }
+          if (
+            chunks.length !== v.count ||
+            chunks.reduce((size, part) => size + part.byteLength, 0) !== v.size
+          )
+            throw Error('The catalog is missing part of an original image')
+          const blob =
+            v.name !== undefined
+              ? new File(chunks, v.name, { type: v.type, lastModified: v.modified })
+              : new Blob(chunks, { type: v.type })
+          mediaReferences.set(blob, v)
+          record[key] = blob
+        } catch (error) {
+          abort(error)
         }
-        return { result: parts }
-      })
-      if (chunks.length !== v.count || chunks.reduce((size, part) => size + part.byteLength, 0) !== v.size)
-        throw Error('The catalog is missing part of an original image')
-      const blob =
-        v.name !== undefined
-          ? new File(chunks, v.name, { type: v.type, lastModified: v.modified })
-          : new Blob(chunks, { type: v.type })
-      mediaReferences.set(blob, v)
-      record[key] = blob
+      }
     }
   }
   return record
@@ -177,10 +186,23 @@ export async function withMedia(rows, write) {
     }
   }
 }
-export const all = async (name) =>
-  Promise.all((await transaction(name, 'readonly', (tx) => tx.objectStore(name).getAll())).map(hydrate))
-export const original = async (id) =>
-  hydrate(await transaction('originals', 'readonly', (tx) => tx.objectStore('originals').get(id)))
+function readRecords(name, id, many) {
+  // Queue media reads while the descriptor request is active. A replacement
+  // cannot reclaim this snapshot's chunks until the whole read completes.
+  return transaction([name, 'media'], 'readonly', (tx, abort) => {
+    const request = many ? tx.objectStore(name).getAll() : tx.objectStore(name).get(id)
+    request.onsuccess = () => {
+      try {
+        for (const record of many ? request.result : [request.result]) hydrate(record, tx, abort)
+      } catch (error) {
+        abort(error)
+      }
+    }
+    return request
+  })
+}
+export const all = (name) => readRecords(name, undefined, true)
+export const original = (id) => readRecords('originals', id, false)
 export const save = (name, record) =>
   withMedia([record], ([row], commit) => commit(name, 'readwrite', (tx) => tx.objectStore(name).put(row)))
 export function deleteRecord(tx, store, id) {

@@ -1,5 +1,5 @@
 import { addPhoto } from './catalog.js'
-import { RAW_PREVIEW_VERSION } from './decode.js'
+import { photoPreviewVersions } from './decode.js'
 import { decodeEditSource } from './edit-source.js'
 import { processingVersion, PROCESS_MESSAGES } from './process-version.js'
 import { isVideo, poster } from './video.js'
@@ -75,7 +75,7 @@ export async function importBatch(files, { photos, album, readOriginal, update, 
           metadata: media ? {} : await metadata(file),
           ...settings,
           thumbnail: await toBlob(render(image, settings.edit || {}, 240)),
-          rawPreviewVersion: RAW_PREVIEW_VERSION
+          ...photoPreviewVersions(file)
         }
         await addPhoto(p, file)
         photos.push(p)

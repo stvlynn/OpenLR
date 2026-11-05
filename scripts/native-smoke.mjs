@@ -8,7 +8,7 @@ import { setTimeout as delay } from 'node:timers/promises'
 import { execute, parse, watch } from '../cli/openlr.mjs'
 import { makeDng } from '../tests/fixtures/dng.mjs'
 import { makeTiff } from '../tests/fixtures/tiff.mjs'
-import { makePng, makePngFixture } from '../tests/fixtures/png.mjs'
+import { makePng, makePngFixture, exifOrientation } from '../tests/fixtures/png.mjs'
 import { jxlInputCases } from '../tests/fixtures/jxl-input.mjs'
 import { deflateSync } from 'node:zlib'
 import { png as fixturePng } from '../tests/fixtures/merge-scene.js'
@@ -965,6 +965,68 @@ try {
   // Run last so the extra imported records and remembered settings cannot
   // affect any pre-existing native smoke baseline.
   await verifyNativeExportMetadata()
+  const orientationOrders = [
+      [0, 1, 2, 3, 4, 5],
+      [1, 0, 3, 2, 5, 4],
+      [5, 4, 3, 2, 1, 0],
+      [4, 5, 2, 3, 0, 1],
+      [0, 2, 4, 1, 3, 5],
+      [4, 2, 0, 5, 3, 1],
+      [5, 3, 1, 4, 2, 0],
+      [1, 3, 5, 0, 2, 4]
+    ],
+    orientationValues = [32, 64, 96, 128, 160, 192]
+  for (const [index, order] of orientationOrders.entries()) {
+    const bytes = makePng({
+        width: 2,
+        height: 3,
+        bits: 8,
+        colorType: 2,
+        srgb: 0,
+        data: orientationValues.flatMap((v) => [v, v, v]),
+        exif: exifOrientation(index + 1)
+      }),
+      source = path.join(root, `orientation-${index + 1}.png`)
+    await writeFile(source, bytes)
+    const imported = await call('import', source)
+    assert.deepEqual(imported.failed, [])
+    const state = await call('state'),
+      photo = state.photos.find((p) => p.id === imported.added[0]),
+      dimensions = index >= 4 ? [3, 2] : [2, 3]
+    assert.deepEqual([photo.width, photo.height], dimensions)
+    for (const version of [1, 2]) {
+      await call('processing', '--version', String(version))
+      const exported = await call(
+          'export',
+          '--format',
+          'image/tiff',
+          '--output',
+          path.join(root, `orientation-${index + 1}-${version}.tif`)
+        ),
+        encoded = await readFile(exported.path),
+        buffer = encoded.buffer.slice(encoded.byteOffset, encoded.byteOffset + encoded.byteLength),
+        ifd = UTIF.decode(buffer)[0]
+      UTIF.decodeImage(buffer, ifd)
+      assert.deepEqual([ifd.width, ifd.height], dimensions)
+      const rgba = UTIF.toRGBA8(ifd)
+      order.forEach((source, pixel) => {
+        for (let channel = 0; channel < 3; channel++)
+          assert.ok(Math.abs(rgba[pixel * 4 + channel] - orientationValues[source]) <= 1)
+        assert.equal(rgba[pixel * 4 + 3], 255)
+      })
+    }
+    const original = await call(
+      'export',
+      '--format',
+      'original',
+      '--output',
+      path.join(root, `orientation-original-${index + 1}.png`)
+    )
+    assert.deepEqual(await readFile(original.path), Buffer.from(bytes))
+  }
+  console.log(
+    'Native PNG orientation: all eight directions, both processing versions, TIFF pixels and original bytes passed.'
+  )
   console.log(
     'Native GUI/CLI passed RAW, editing, PNG preview, original bytes, live observation, workspace capture, person segmentation, TIFF export and WebDAV sync.'
   )

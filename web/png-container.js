@@ -22,7 +22,7 @@ export function pngChunk(type, payload) {
   return result
 }
 
-export function* pngChunks(input) {
+export function* pngChunks(input, { verifyCrc = true } = {}) {
   const bytes = input instanceof ArrayBuffer ? new Uint8Array(input) : input
   if (!(bytes instanceof Uint8Array) || !PNG_SIGNATURE.every((byte, i) => bytes[i] === byte))
     throw Error('Invalid PNG signature')
@@ -34,7 +34,7 @@ export function* pngChunks(input) {
     if (length > 0x7fffffff || end > bytes.length) throw Error('Invalid PNG chunk extent')
     const type = String.fromCharCode(...bytes.subarray(offset + 4, offset + 8))
     if (!/^[A-Za-z]{4}$/.test(type)) throw Error('Invalid PNG chunk type')
-    if (pngCrc(bytes, offset + 4, end - 4) !== view.getUint32(end - 4))
+    if (verifyCrc && pngCrc(bytes, offset + 4, end - 4) !== view.getUint32(end - 4))
       throw Error('Invalid PNG ' + type + ' CRC')
     yield { type, data: bytes.subarray(offset + 8, end - 4) }
     offset = end

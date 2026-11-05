@@ -1,6 +1,18 @@
 // Original generated fixtures; independent bitwise CRC and Node zlib encoder.
 import { deflateSync } from 'node:zlib'
 
+export function exifOrientation(value) {
+  const bytes = new Uint8Array(26),
+    view = new DataView(bytes.buffer)
+  bytes.set([73, 73, 42, 0, 8, 0, 0, 0])
+  view.setUint16(8, 1, true)
+  view.setUint16(10, 274, true)
+  view.setUint16(12, 3, true)
+  view.setUint32(14, 1, true)
+  view.setUint16(18, value, true)
+  return bytes
+}
+
 export function pngChunk(type, payload = new Uint8Array()) {
   const result = new Uint8Array(payload.length + 12),
     view = new DataView(result.buffer)

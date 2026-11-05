@@ -28,3 +28,21 @@ Go tests cover a real 65 MiB streamed export, replacement only after completion,
 On 2026-11-05, the Windows/amd64 package launched on WebView2 156.0.4314.58, and the agent CLI read its live catalog through HTTP → MyGo IPC → frontend. Native import, edit, preview and export commands were also exercised against that running window. `go test ./...` and `go vet ./...` passed. The filesystem tests needed execution outside the restricted Windows sandbox because it denied replacement of a temporary destination; they passed against the normal Windows filesystem. `mygo doctor` passed Go and WebView2 checks. Later [three-platform verification](https://github.com/stvlynn/OpenLR/actions/runs/41951556522) built the official distributions and ran all seven native GUI/CLI suites on Windows, Ubuntu 24.04 and macOS 15 Intel. The universal macOS artifact does not establish execution on Apple Silicon. Signing, notarization and native save-dialog interaction remain separate validation steps.
 
 Official packages include the single-file Node CLI under cli/openlr.mjs in the native resource directory. Run it with Node 24. The build command bundles the shared schema and CLI implementation from this checkout.
+
+## Local Linux acceptance
+
+Use a Linux checkout with Linux-installed `node_modules`, Go 1.27.3+ and Node 24. When running under WSL, keep the checkout and Go caches in a persistent Linux directory; do not reuse Windows native npm binaries or assume `/tmp` survives separate WSL invocations. The complete suite also needs Chrome for the shared-album visitor browser, in addition to the application's WebKitGTK runtime.
+
+```sh
+sudo apt-get update
+sudo apt-get install -y libwebkit2gtk-4.1-0 xvfb
+npm ci
+google-chrome --version
+go test ./...
+go test -race ./...
+go vet ./...
+node scripts/desktop.mjs build -o build/release -platform linux/amd64
+xvfb-run -a dbus-run-session -- node scripts/native-suite.mjs build/release/linux-amd64/openlr
+```
+
+Install Chrome from its official Linux distribution before the version check if absent. Set `OPENLR_TEST_METADATA=1` when the independent [ExifTool oracle](export-metadata.md) has been provisioned, so missing validation tools fail visibly. Xvfb runs the real GTK/WebKit application and IPC bridge; it does not establish physical display, GPU, native chooser, signing or macOS behavior. Application test sessions use isolated temporary catalogs.
