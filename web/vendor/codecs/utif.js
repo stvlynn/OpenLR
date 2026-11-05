@@ -179,7 +179,7 @@ UTIF.decode._decompress = function(img,ifds, data, off, len, cmpr, tgt, toff, fo
 	else if(cmpr==32809) UTIF.decode._decodeThunder (data, off, len, tgt, toff);
 	else if(cmpr==34713) //for(var j=0; j<len; j++) tgt[toff+j] = data[off+j];
 		UTIF.decode._decodeNikon   (img,ifds, data, off, len, tgt, toff);
-	else log("Unknown compression", cmpr);
+	else throw Error("Unsupported TIFF compression: " + cmpr);
 	
 	//console.log(Date.now()-time);
 	

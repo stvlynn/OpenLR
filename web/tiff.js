@@ -14,7 +14,10 @@ export function readTiff(bytes) {
   if (!image) throw Error('No TIFF image was found')
   if (image.t50706 || image.t262?.[0] === 32803) throw Error('A sensor DNG must use the RAW decoder')
   const interpretation = image.t262?.[0] ?? 2,
-    bits = image.t258?.[0] ?? 1
+    bits = image.t258?.[0] ?? 1,
+    fillOrder = image.t266?.[0] ?? 1,
+    compression = image.t259?.[0] ?? 1,
+    predictor = image.t317?.[0] ?? 1
   if (
     ![0, 1, 2, 3, 5].includes(interpretation) ||
     (image.t339?.[0] ?? 1) !== 1 ||
@@ -23,7 +26,27 @@ export function readTiff(bytes) {
     (interpretation === 3 && bits !== 8)
   )
     throw Error('Unsupported TIFF pixel layout')
+  if (![1, 2].includes(predictor) || (predictor === 2 && bits < 8)) throw Error('Unsupported TIFF predictor')
+  // TIFF 6 p32 confines unambiguous FillOrder=2 to bilevel uncompressed/CCITT.
+  // UTIF's G3/G4 bit readers already consume that ordering and write MSB-first
+  // pixels; reverse only ordinary uncompressed bytes after the shared decode.
+  if (
+    ![1, 2].includes(fillOrder) ||
+    (fillOrder === 2 &&
+      (bits !== 1 ||
+        (image.t277?.[0] ?? 1) !== 1 ||
+        ![0, 1].includes(interpretation) ||
+        ![1, 3, 4].includes(compression)))
+  )
+    throw Error('Unsupported TIFF fill order')
   UTIF.decodeImage(bytes, image)
+  if (fillOrder === 2 && compression === 1)
+    for (let i = 0; i < image.data.length; i++) {
+      let value = image.data[i]
+      value = ((value & 0x55) << 1) | ((value >>> 1) & 0x55)
+      value = ((value & 0x33) << 2) | ((value >>> 2) & 0x33)
+      image.data[i] = (value << 4) | (value >>> 4)
+    }
   return image
 }
 

@@ -6,6 +6,7 @@ import { deflateSync } from 'node:zlib'
 import UTIF from '../web/vendor/codecs/utif.js'
 import { makeTiffFixture } from './fixtures/tiff.mjs'
 import { patchUtif } from '../scripts/patch-utif.mjs'
+import { processCodec } from '../web/codec-kernel.js'
 
 function check(options) {
   const { bytes, samples } = makeTiffFixture(options),
@@ -165,6 +166,34 @@ test('a valid compressed block whose byte count equals its decoded size is decom
   }
   assert.equal(deflateSync(data).length, data.length)
   check({ bits: 8, photo: 1, channels: 1, width: 16, height: 1, rowsPerStrip: 1, compression: 8, data })
+})
+
+test('unknown TIFF compression fails in the shared decoder and both codec operations', async () => {
+  for (const littleEndian of [true, false])
+    for (const tileSize of [0, 16]) {
+      const { bytes } = makeTiffFixture({ littleEndian, tileSize }),
+        view = new DataView(bytes.buffer)
+      // Change the actual Compression SHORT in a complete, otherwise valid file.
+      for (let i = 0; i < view.getUint16(8, littleEndian); i++) {
+        const at = 10 + i * 12
+        if (view.getUint16(at, littleEndian) === 259) view.setUint16(at + 8, 65000, littleEndian)
+      }
+      const original = bytes.slice(),
+        image = UTIF.decode(bytes.buffer)[0]
+      assert.equal(image.t259[0], 65000)
+      assert.throws(() => UTIF.decodeImage(bytes.buffer, image), /Unsupported TIFF compression: 65000/)
+      for (const operation of ['decode', 'decode-frame']) {
+        await assert.rejects(
+          processCodec({
+            operation,
+            format: 'image/tiff',
+            file: new File([bytes], 'unknown.tif', { type: 'image/tiff' })
+          }),
+          (error) => error.code === 'CODEC_ERROR' && /Unsupported TIFF compression: 65000/.test(error.message)
+        )
+      }
+      assert.deepEqual(bytes, original)
+    }
 })
 
 test('UTIF regeneration applies only to the pinned source and marks local changes', async () => {

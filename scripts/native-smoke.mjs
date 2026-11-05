@@ -7,6 +7,7 @@ import path from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import { execute, parse, watch } from '../cli/openlr.mjs'
 import { makeDng } from '../tests/fixtures/dng.mjs'
+import { makeTiff } from '../tests/fixtures/tiff.mjs'
 import { png as fixturePng } from '../tests/fixtures/merge-scene.js'
 import UTIF from '../web/vendor/codecs/utif.js'
 import { encodeColorTiff } from '../web/color-containers.js'
@@ -89,6 +90,30 @@ async function highDepthInputs() {
     encoderUrl = new URL('../web/vendor/codecs/avif/codec/enc/avif_enc.js', import.meta.url),
     { default: createEncoder } = await import(encoderUrl),
     encoder = await createEncoder({ wasmBinary: await readFile(new URL('avif_enc.wasm', encoderUrl)) })
+  const colorMap = new Uint16Array(256 * 3),
+    indices = Uint8Array.from({ length: width * height }, (_, i) => i % width),
+    palettePixels = new Uint16Array(width * height * 4)
+  for (let i = 0; i < 256; i++) for (let c = 0; c < 3; c++) colorMap[c * 256 + i] = 16384 + i
+  for (let i = 0; i < indices.length; i++) {
+    const value = colorMap[indices[i]]
+    palettePixels.set([value, value, value, 65535], i * 4)
+  }
+  sources.push({
+    name: 'profiled-palette16.tif',
+    bits: 16,
+    precision: 'uint16-source',
+    pixels: { width, height, data: palettePixels },
+    bytes: makeTiff({
+      width,
+      height,
+      photo: 3,
+      bits: 8,
+      channels: 1,
+      data: indices,
+      colorMap,
+      profile: makeColorProfile('srgb')
+    })
+  })
   for (const bits of [10, 12]) {
     const frame = pixels(bits),
       bytes = encoder.encode(new Uint8Array(frame.data.buffer), width, height, {
@@ -453,6 +478,7 @@ try {
     assert.deepEqual(await readFile(inputPath), originalBytes)
     assert.deepEqual(source.pixels.data, originalSamples)
     inputResults.push({
+      source: source.name,
       format: source.name.split('.').at(-1),
       sourceBits: source.bits,
       decodedPrecision: active.processing.input.precision,

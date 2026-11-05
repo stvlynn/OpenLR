@@ -13,6 +13,136 @@ const close = (actual, expected, tolerance = 1e-7) =>
     assert.ok(Math.abs(value - expected[i]) <= tolerance, `${actual} != ${expected}`)
   )
 
+// Original TIFF fixture writer supplies the container; this helper repacks its
+// rows into actual bilevel data and inserts FillOrder instead of SampleFormat.
+function bilevelFixture({
+  littleEndian = true,
+  fillOrder = 2,
+  photo = 1,
+  compression = 1,
+  compressed,
+  bits = 1
+} = {}) {
+  const width = compressed ? 8 : 17,
+    height = 2,
+    rows = compressed ? 2 : 1,
+    bytes = makeTiff({
+      width,
+      height,
+      bits: 8,
+      channels: 1,
+      photo,
+      littleEndian,
+      rowsPerStrip: rows,
+      data: Array(width * height).fill(0)
+    }),
+    view = new DataView(bytes.buffer),
+    entries = [],
+    values = Array.from({ length: width * height }, (_, i) =>
+      [0, 9, 16, width + 2, width + 8].includes(i) ? 1 : 0
+    )
+  let offsets, counts
+  for (let i = 0; i < view.getUint16(8, littleEndian); i++) {
+    const at = 10 + i * 12,
+      id = view.getUint16(at, littleEndian)
+    if (id === 258) view.setUint16(at + 8, bits, littleEndian)
+    if (id === 259) view.setUint16(at + 8, compression, littleEndian)
+    if (id === 339) {
+      view.setUint16(at, 266, littleEndian)
+      view.setUint16(at + 8, fillOrder, littleEndian)
+    }
+    if (id === 273 || id === 279) {
+      const count = view.getUint32(at + 4, littleEndian),
+        location = count === 1 ? at + 8 : view.getUint32(at + 8, littleEndian),
+        locations = Array.from({ length: count }, (_, n) => location + n * 4)
+      if (id === 273) offsets = locations.map((a) => view.getUint32(a, littleEndian))
+      else counts = locations
+    }
+    entries.push(bytes.slice(at, at + 12))
+  }
+  const rowBytes = Math.ceil(width / 8)
+  if (compressed) {
+    bytes.set(compressed, offsets[0])
+    view.setUint32(counts[0], compressed.length, littleEndian)
+  } else
+    for (let y = 0; y < height; y++) {
+      view.setUint32(counts[y], rowBytes, littleEndian)
+      for (let x = 0; x < width; x++)
+        if (values[y * width + x])
+          bytes[offsets[y] + (x >> 3)] |= 1 << (fillOrder === 2 ? x % 8 : 7 - (x % 8))
+    }
+  // Preserve the TIFF requirement that directory entries are sorted by tag.
+  entries.sort(
+    (a, b) =>
+      new DataView(a.buffer).getUint16(0, littleEndian) - new DataView(b.buffer).getUint16(0, littleEndian)
+  )
+  // Strip count fields are inline for CCITT but in external arrays for two rows.
+  for (const entry of entries)
+    if (new DataView(entry.buffer).getUint16(0, littleEndian) === 279 && compressed)
+      new DataView(entry.buffer).setUint32(8, compressed.length, littleEndian)
+  entries.forEach((entry, i) => bytes.set(entry, 10 + i * 12))
+  return { bytes, values }
+}
+
+test('full TIFF decoding normalizes uncompressed bilevel FillOrder2 in both byte orders without changing originals', () => {
+  for (const littleEndian of [true, false])
+    for (const photo of [0, 1])
+      for (const fillOrder of [1, 2]) {
+        const { bytes, values } = bilevelFixture({ littleEndian, photo, fillOrder }),
+          original = bytes.slice(),
+          image = readTiff(bytes.buffer),
+          pixels = tiffEncodedPixels(image)
+        assert.deepEqual(Array.from(image.data), [128, 64, 128, 32, 128, 0])
+        assert.deepEqual(
+          Array.from(pixels.data.filter((_, i) => i % 4 === 0)),
+          values.map((value) => (photo === 0 ? 1 - value : value))
+        )
+        assert.deepEqual(bytes, original)
+      }
+})
+
+test('CCITT3/4 FillOrder2 remains normalized once and ambiguous or invalid orderings reject', () => {
+  // Pillow 12/libtiff generated these seven-byte streams from an original 8x2
+  // mode-1 image with input bytes [0x80,0x20], with tags 266=1/2. No photo asset.
+  const streams = [
+    [3, 1, '001355e002eb00'],
+    [3, 2, '00c8aa0740d700'],
+    [4, 1, '26aa2475001001'],
+    [4, 2, '645524ae000880']
+  ]
+  for (const [compression, fillOrder, hex] of streams) {
+    const { bytes } = bilevelFixture({
+        compression,
+        fillOrder,
+        compressed: Uint8Array.from(Buffer.from(hex, 'hex'))
+      }),
+      image = readTiff(bytes.buffer)
+    assert.deepEqual(
+      Array.from(image.data),
+      [128, 32],
+      `${compression}/${fillOrder} must not be reversed twice`
+    )
+  }
+  for (const fillOrder of [0, 3])
+    assert.throws(() => readTiff(bilevelFixture({ fillOrder }).bytes.buffer), /fill order/)
+  for (const compression of [5, 8, 32773])
+    assert.throws(() => readTiff(bilevelFixture({ compression }).bytes.buffer), /fill order/)
+  for (const bits of [2, 4, 8, 16])
+    assert.throws(() => readTiff(bilevelFixture({ bits }).bytes.buffer), /fill order/)
+})
+
+test('unsupported predictors fail before ignored or byte-wise reconstruction can corrupt samples', () => {
+  for (const predictor of [0, 3, 999])
+    assert.throws(() => readTiff(makeTiff({ predictor }).buffer), /Unsupported TIFF predictor/)
+  const { bytes } = bilevelFixture({ fillOrder: 1 }),
+    view = new DataView(bytes.buffer)
+  for (let i = 0; i < view.getUint16(8, true); i++) {
+    const at = 10 + i * 12
+    if (view.getUint16(at, true) === 317) view.setUint16(at + 8, 2, true)
+  }
+  assert.throws(() => readTiff(bytes.buffer), /Unsupported TIFF predictor/)
+})
+
 test('TIFF normalized samples retain actual source words across endian, strip/tile and RGB/gray layouts', () => {
   for (const bits of [8, 16])
     for (const littleEndian of [true, false])

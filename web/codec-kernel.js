@@ -97,7 +97,7 @@ export async function processCodec({ operation, format, file, pixels, quality, c
               rgba[i + c] = rgba[i + 3] ? Math.min(255, Math.round((rgba[i + c] * 255) / rgba[i + 3])) : 0
         const profile = image.t34675
         if (profile?.length) {
-          if (interpretation !== 2) throw Error('Unsupported TIFF color profile layout')
+          if (![2, 3].includes(interpretation)) throw Error('Unsupported TIFF color profile layout')
           rgba.set(
             (
               await managedRgb(

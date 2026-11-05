@@ -7,6 +7,10 @@ export function patchUtif(source) {
   }
   replace('if(cmpr==1 && soff.length==1) bcnt', 'if(cmpr==1 && soff.length==1 && img["t322"]==null) bcnt')
   replace(
+    'else log("Unknown compression", cmpr);',
+    'else throw Error("Unsupported TIFF compression: " + cmpr);'
+  )
+  replace(
     'else if(cmpr==1 || (len==tgt.length && cmpr!=32767)) for(var j=0; j<len; j++) tgt[toff+j] = data[off+j];',
     'else if(cmpr==1) { if(len!==expected && len!==padded) throw Error("Incomplete TIFF uncompressed block"); for(var j=0; j<expected; j++) tgt[toff+j] = data[off+j]; }'
   )

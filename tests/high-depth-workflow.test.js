@@ -4,6 +4,7 @@ import { chromium } from 'playwright-core'
 import UTIF from '../web/vendor/codecs/utif.js'
 import { serveWorkspace } from './browser-server.mjs'
 import { makeTiff } from './fixtures/tiff.mjs'
+import { makeColorProfile } from '../web/color-spaces.js'
 
 async function exported(page, format, options = {}) {
   return Uint8Array.from(
@@ -41,6 +42,55 @@ async function preview(page) {
     return Array.from(canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data)
   })
 }
+
+test('profiled palette TIFF imports through Original and retains color-map low bits after Linear opt-in', async (t) => {
+  const server = await serveWorkspace()
+  t.after(server.close)
+  const browser = await chromium.launch({ channel: process.env.CHROME_CHANNEL || 'chrome', headless: true })
+  t.after(() => browser.close())
+  const page = await browser.newPage(),
+    colorMap = Array(768).fill(0),
+    colors = [
+      [65535, 0, 0],
+      [12345, 23456, 34567]
+    ]
+  for (let i = 0; i < colors.length; i++) for (let c = 0; c < 3; c++) colorMap[c * 256 + i] = colors[i][c]
+  const original = makeTiff({
+    width: 2,
+    height: 1,
+    bits: 8,
+    photo: 3,
+    channels: 1,
+    data: [0, 1],
+    colorMap,
+    profile: makeColorProfile('display-p3')
+  })
+  await page.goto(server.url)
+  await page.waitForFunction(() => window.openlr)
+  await page.locator('#files').setInputFiles({
+    name: 'profiled-palette.tif',
+    mimeType: 'image/tiff',
+    buffer: Buffer.from(original)
+  })
+  await page.locator('#gallery .tile').waitFor()
+  await page.evaluate(() => window.openlr.run('view', { mode: 'detail' }))
+  assert.deepEqual((await preview(page)).slice(0, 4), [255, 0, 0, 255])
+  await page.evaluate(() => window.openlr.run('processing', { version: 2 }))
+  const state = await page.evaluate(() => window.openlr.run('state', { summary: true }))
+  assert.equal(state.processing.input.sourceBits, 16)
+  assert.equal(state.processing.input.colorTransform, 'icc-matrix-trc')
+  const output = words(await exported(page, 'image/tiff', { colorSpace: 'display-p3' })).data
+  // Serialized ICC colorants are s15Fixed16. Near zero, the sRGB toe magnifies
+  // their small linear rounding error into several output codes.
+  t.diagnostic(`Palette TIFF16 output: ${Array.from(output)}`)
+  for (let i = 0; i < colors.length; i++)
+    for (let c = 0; c < 3; c++)
+      assert.ok(
+        Math.abs(output[i * 4 + c] - colors[i][c]) <= (i === 0 ? 16 : 4),
+        `${output[i * 4 + c]} vs ${colors[i][c]}`
+      )
+  assert.deepEqual(await exported(page, 'original'), original)
+})
 
 test('GUI TIFF16 opt-in, edits, export/reimport, XMP and reload preserve source precision and original bytes', async (t) => {
   const server = await serveWorkspace()
