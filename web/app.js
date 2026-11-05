@@ -480,6 +480,7 @@ async function draw() {
   const list = visible()
   selected = organization.reconcile(list, selected)
   if (!selected) mode = 'grid'
+  if (mode === 'grid') stopSlides()
   const p = active(),
     detail = mode === 'detail'
   paintRevision++
@@ -1321,7 +1322,6 @@ async function execute(command, args, context = {}) {
       break
     case 'view':
       mode = enumValue(args.mode, ['grid', 'detail'])
-      if (mode === 'grid') stopSlides()
       inspector = args.inspector ?? true
       cropping = pair = sampling = false
       break
@@ -2039,7 +2039,7 @@ async function execute(command, args, context = {}) {
         }
         case 'compare':
           compare = !compare
-          pair = sampling = false
+          pair = sampling = cropping = false
           mode = 'detail'
           break
         case 'zoom':

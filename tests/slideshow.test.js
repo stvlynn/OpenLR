@@ -72,4 +72,20 @@ test('Grid navigation and Escape stop the same slideshow session', async (t) => 
   const finished = await dispatch('state')
   assert.equal(finished.selected, escaped.selected)
   assert.deepEqual(recipes(finished), recipes(original))
+
+  for (const [command, args] of [
+    ['grid-layout', { layout: 'mosaic' }],
+    ['scope', { id: 'all' }],
+    ['search', { text: 'no matching photograph' }]
+  ]) {
+    await dispatch('slideshow', { seconds: 60 })
+    const grid = await dispatch(command, args)
+    await assertGrid(grid)
+    await page.clock.fastForward(60_000)
+    const after = await dispatch('state')
+    assert.equal(after.selected, grid.selected)
+    assert.equal(after.slideshow, false)
+  }
+  await dispatch('search', { text: '' })
+  assert.deepEqual(recipes(await dispatch('state')), recipes(original))
 })

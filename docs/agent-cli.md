@@ -24,7 +24,7 @@ The shared queue validates command arguments before executing an action or recor
 
 Full and summary `state` expose `clipping`, the current workspace highlight/shadow warning toggle. The `clipping` command, Histogram button and J shortcut share this state. Warnings affect the displayed canvas, not exported image pixels or edit recipes. Starting a color sampler clears them.
 
-`view --mode grid` ends an active slideshow and restores navigation, matching the GUI Grid and Escape actions. `slideshow --stop true` ends playback while retaining the detail view. The full state reports whether the slideshow is active.
+Entering Grid ends an active slideshow and restores navigation, including `view --mode grid`, layout/scope changes, and a filter with no matching photos. GUI Grid and Escape use the same transition. `slideshow --stop true` ends playback while retaining the detail view. The full state reports whether the slideshow is active.
 
 ## Arguments and output
 
@@ -111,6 +111,8 @@ An observer can sample a color, inspect lens profiles or migration reports, and 
 `local-tool --tool brush` uses the same activation as the GUI selector, opening Detail and leaving crop/compare/sampling. Both state shapes return `localTool` for the selected mode independently of `localSelection`; it can remain selected in Grid, so inspect `mode` as well. Use `off`, `brush`, `linear`, `radial`, `clone` or `heal`. Activation itself does not modify the recipe, and live observers receive the committed presentation change.
 
 With the crop tool open, `state --summary true` exposes the uncommitted rectangle as normalized `cropDraft` coordinates. A completed pointer drag wakes observers. `crop-nudge --dx 1 --dy 0` moves the draft by one preview pixel, like the Right arrow. Use `crop-tool` to commit or `crop-cancel` to discard it.
+
+`compare` (Show original) exits the crop tool and discards its uncommitted rectangle, matching the existing side-by-side comparison transition. It displays the neutral original for the selected processing version. Saved crop and other edits remain intact; turning comparison off restores their rendered result. Switching comparison does not create an undo entry.
 
 `crop-drag --grip new --x1 0.25 --y1 0.25 --x2 0.75 --y2 0.75` draws a draft covering the center half of the corrected canvas in each dimension when the aspect ratio is unlocked. Use `move` or a compass handle such as `se` to reposition or resize it. Aspect constraints and boundary handling are shared with pointer dragging. Add `--capture crop.png` to inspect the draft before committing.
 

@@ -17,6 +17,8 @@
 
 ## 补充验证
 
+- **裁剪对比与统一 Grid 放映退出（2026-11-06）**。`tests/compare-crop.test.js` 在旧代码上分别复现 Original／Linear 显示原图时仍出现编辑后的白色像素，修正后两项通过；核对实际 canvas 原始颜色／比例、草稿清除、已保存 crop、处理版本、原件字节、撤销／重做和重启。扩展放映测试先复现布局入口未停止，再验证布局、scope、空搜索及退出后定时器不再切图。完整 Chrome **341/341 通过、无跳过**，保留被动视频诊断 preload；新 Windows 构建及主原生 smoke 通过，包含实际 CLI 裁剪对比和布局退出放映。视频未复现不代表其间歇失败已修复。日志 `.workspace/display-transition-*`、`.workspace/display-transitions-*`；当前提交尚无新的远程三平台结果。
+
 - **颜色分级连续数值输入（2026-11-06）**。原先两个受控保存时序及无关更新测试均复现丢失输入；修复后定向 13/13 通过，最终中性更新清理后再核对 10/10。消融八例确认草稿保护和字段更新缺一不可，见[控制审计](../research/cli-control-audit.md#sequential-grading-input-follow-up)。完整实际 Chrome 运行 **339/339 通过、无跳过**，约 375.5 秒；本次通过忽略目录的被动视频诊断 preload 执行，保持原 bitmap 调用与返回 promise，不能作为未加诊断的性能结果。新 Windows MyGo 构建和主原生 smoke 通过，新增实际 CLI `grading-set --patch`、同字段冲突拒绝和两步撤销检查。日志 `.workspace/grading-input-*`、`.workspace/grading-full-instrumented.log`。其余六组本地原生套件未重跑；该修复的新提交尚无远程三平台结果。
 
 - **`535d0f5` 三平台验收终态**。[Actions 42093258967](https://github.com/stvlynn/OpenLR/actions/runs/42093258967) 首次执行全部成功，Windows 浏览器 325 通过、8 项可选资源跳过、0 失败，共 333 项；Windows、Linux、macOS Intel 完成原生套件和打包。本项代码包含 clipping 状态与放映退出修正，尚不包含后续颜色分级输入竞争修复。它不能推翻 `a70cb9b` 的分级失败或上一轮本地视频导入失败；两者的证据仍保留。
