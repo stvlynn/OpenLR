@@ -226,6 +226,12 @@ export const definitions = {
   ),
   'library-undo': entry('Undo the last library organization or import action'),
   'library-redo': entry('Reapply an undone library organization action'),
+  'history-undo': entry(
+    'Undo the most recent library or active-photo change in Grid; undo the active photo edit in Detail or Local'
+  ),
+  'history-redo': entry(
+    'Redo the most recently undone library or active-photo change in Grid; redo the active photo edit in Detail or Local'
+  ),
   clipping: entry('Toggle highlight and shadow clipping indicators in the workspace'),
   'point-tool': entry('Activate the point color eyedropper'),
   'sample-color': entry(

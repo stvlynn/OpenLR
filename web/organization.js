@@ -1,6 +1,19 @@
 // Catalog rules shared by the GUI dispatcher; no DOM or persistence dependencies.
 import { processingVersion } from './process-version.js'
 
+export function matchesCatalogFilters(photo, { rating, flag, edited }) {
+  return (
+    photo.rating >= rating &&
+    (flag === 'any' || photo.flag === (flag === 'unflagged' ? '' : flag)) &&
+    (edited === 'any' ||
+      Object.entries(photo.edit).some(
+        ([key, value]) =>
+          key !== 'processVersion' && value !== 0 && value !== false && value !== '' && value !== null
+      ) ===
+        (edited === 'yes'))
+  )
+}
+
 export class Organization {
   selection = new Set()
   explicit = false
@@ -10,17 +23,7 @@ export class Organization {
   clipboard = null
 
   matches(photo) {
-    const { rating, flag, edited } = this.filters
-    return (
-      photo.rating >= rating &&
-      (flag === 'any' || photo.flag === (flag === 'unflagged' ? '' : flag)) &&
-      (edited === 'any' ||
-        Object.entries(photo.edit).some(
-          ([key, value]) =>
-            key !== 'processVersion' && value !== 0 && value !== false && value !== '' && value !== null
-        ) ===
-          (edited === 'yes'))
-    )
+    return matchesCatalogFilters(photo, this.filters)
   }
   compare(a, b, order) {
     let result

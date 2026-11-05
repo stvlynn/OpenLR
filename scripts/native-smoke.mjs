@@ -293,6 +293,94 @@ try {
   assert.deepEqual([png.readUInt32BE(16), png.readUInt32BE(20)], [96, 128])
   const exported = await call('export', '--format', 'original', '--output', path.join(root, 'original.dng'))
   assert.deepEqual(await readFile(exported.path), data)
+  await call('copy-edits')
+  const historyBytes = makePng({
+      width: 8,
+      height: 6,
+      bits: 8,
+      colorType: 6,
+      data: Uint8Array.from({ length: 8 * 6 * 4 }, (_, i) => [83, 123, 145, 255][i % 4])
+    }),
+    historyFile = path.join(root, 'history-target.png'),
+    neutralFile = path.join(root, 'history-neutral.png')
+  await writeFile(historyFile, historyBytes)
+  await writeFile(neutralFile, historyBytes)
+  const historyTarget = (await call('import', historyFile)).added[0],
+    neutralTarget = (await call('import', neutralFile)).added[0],
+    historyPhoto = async (id = historyTarget) => (await call('state')).photos.find((photo) => photo.id === id)
+  await call('select', '--id', historyTarget)
+  await call('view', '--mode', 'grid')
+  await call('rate', '--value', '3', '--advance', 'false')
+  await call('paste-edits')
+  await call('history-undo')
+  assert.equal((await historyPhoto()).edit.Exposure, undefined)
+  assert.equal((await historyPhoto()).rating, 3)
+  await call('history-redo')
+  assert.equal((await historyPhoto()).edit.Exposure, 0.5)
+  await call('flag', '--value', 'reject', '--advance', 'false')
+  await call('history-undo')
+  assert.equal((await historyPhoto()).flag, '')
+  await call('history-undo')
+  assert.equal((await historyPhoto()).edit.Exposure, undefined)
+  await call('history-undo')
+  assert.equal((await historyPhoto()).rating, 0)
+  await call('history-redo')
+  assert.equal((await historyPhoto()).rating, 3)
+  assert.equal((await historyPhoto()).edit.Exposure, undefined)
+  await call('history-redo')
+  assert.equal((await historyPhoto()).edit.Exposure, 0.5)
+  await call('history-redo')
+  assert.equal((await historyPhoto()).flag, 'reject')
+  await call('view', '--mode', 'detail')
+  assert.throws(() => call('edit', '--key', 'Exposure', '--value', '1000'), /between -5 and 5/)
+  await call('history-undo')
+  assert.equal((await historyPhoto()).edit.Exposure, undefined)
+  assert.equal((await historyPhoto()).rating, 3)
+  assert.equal((await historyPhoto()).flag, 'reject')
+  await call('history-redo')
+  await call('select', '--id', neutralTarget)
+  await call('edit', '--key', 'Contrast', '--value', '10')
+  await call('select', '--id', historyTarget)
+  await call('view', '--mode', 'grid')
+  await call('history-undo')
+  assert.equal((await historyPhoto()).edit.Exposure, undefined)
+  assert.equal((await historyPhoto(neutralTarget)).edit.Contrast, 10)
+  await call('history-redo')
+  const historyOriginal = await call(
+    'export',
+    '--format',
+    'original',
+    '--output',
+    path.join(root, 'history-original.png')
+  )
+  assert.deepEqual(await readFile(historyOriginal.path), Buffer.from(historyBytes))
+  await call('select', '--id', neutralTarget)
+  await call('reset')
+  await call('processing', '--version', '2')
+  assert.deepEqual((await historyPhoto(neutralTarget)).edit, { processVersion: 2 })
+  await call('filter', '--edited', 'no')
+  const uneditedAlbum = await call('album', '--name', 'Native neutral recipes', '--smart', 'true')
+  await call('filter', '--edited', 'any')
+  await call('scope', '--id', uneditedAlbum.id)
+  const uneditedState = await call('state')
+  assert.ok(uneditedState.photos.some((photo) => photo.id === neutralTarget))
+  assert.ok(!uneditedState.photos.some((photo) => photo.id === historyTarget))
+  await call('scope', '--id', 'all')
+  await call('filter', '--edited', 'yes')
+  const editedAlbum = await call('album', '--name', 'Native actual adjustments', '--smart', 'true')
+  await call('filter', '--edited', 'any')
+  await call('scope', '--id', editedAlbum.id)
+  const editedState = await call('state')
+  assert.ok(editedState.photos.some((photo) => photo.id === historyTarget))
+  assert.ok(!editedState.photos.some((photo) => photo.id === neutralTarget))
+  await call('scope', '--id', 'all')
+  await call('select', '--id', launch.added[0])
+  await call('view', '--mode', 'detail')
+  assert.equal((await historyPhoto(launch.added[0])).edit.Exposure, 0.5)
+  assert.equal((await historyPhoto(launch.added[0])).edit.turn, 1)
+  console.log(
+    'Native history: shared undo/redo order, active photo, Detail, failed command, original bytes and neutral smart albums passed'
+  )
   const revisions = []
   await watch({ session, count: 2, images: path.join(root, 'observed') }, async (update) => {
     assert.equal(update.result.selected, launch.added[0])

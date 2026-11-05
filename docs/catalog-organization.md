@@ -10,11 +10,19 @@ The outlined active photo supplies the editor, preview, export, copy source, and
 
 Copy edits takes an independent snapshot of the active recipe, including its process version. Paste edits replaces selected photos' recipes and creates a per-photo session undo entry. Ctrl/Command-C and Ctrl/Command-V invoke these actions outside text fields. CLI `copy-edits` optionally accepts `keys` for selective copying. An absent copied key resets that key on the target; other target keys, including the process version unless explicitly selected, are preserved. Clipboard contents and undo history last only for the current GUI session.
 
+## Undo and redo
+
+Ctrl/Command-Z and Ctrl/Command-Shift-Z use the shared `history-undo` and `history-redo` commands. In Grid, they choose the most recent applicable entry between library organization history and the active photo's edit history. Pasting settings in Grid can therefore be undone without changing an earlier rating. Detail and Local retain active-photo edit history. A multi-photo paste still creates per-photo entries: select each photo to undo its pasted recipe. Changing selection never makes a shortcut undo another photo's edit.
+
+The explicit `undo`/`redo` commands and photo-edit controls remain scoped to the active photo. `library-undo`/`library-redo` remain explicitly scoped to library organization. The two histories keep their existing independent redo branches; contextual commands choose their newest applicable entry rather than merging or duplicating records. Successful replay receives a new session order, so alternating photo and library undo operations redo in reverse replay order. A failed replay does not move its history entry to the opposite stack. History is cleared on library/local source changes and is not persisted across restart.
+
 ## Albums
 
 Albums are lists of imported-library photo IDs, and one photo can belong to multiple albums. Selecting an album limits the view. Membership adds the chosen album to the entire selection unless all selected photos already belong to it; then it removes them. Rename preserves the album ID and memberships. Delete album confirms that photos will stay in the library and other albums; the album record and imported-photo membership changes commit in one catalog transaction.
 
 Albums belong to the imported library. Local folders retain their own metadata and edits in sidecars, so album navigation and membership are disabled there. Import a local photo into Library to organize that catalog copy in albums.
+
+Choose **Smart album from current filters** in Create album, or run `album --name 'Unedited' --smart true`, to save the current search, minimum rating, flag and edit-status criteria as a live rule. Its members update when matching photo metadata or edits change; they are not manual memberships. The saved criteria persist through restart and use the same matching rules as the ordinary filtered view. In particular, an absent processing version, explicit Original version 1, and Linear version 2 all remain Unedited when the recipe is otherwise neutral. An actual adjustment makes the photo Edited. Rename and delete work for smart albums; their saved criteria currently cannot be edited through the GUI or CLI.
 
 ## Named versions
 
@@ -44,3 +52,7 @@ node cli/openlr.mjs paste-edits
 `tests/organization.test.js` verifies real browser UI selection, batch metadata, album rename/delete, version restore, copied settings and undo, filters/sorting, restart persistence, and original-byte preservation. Native local-folder and sidecar checks belong to the native integration suite; browser testing alone does not establish native behavior.
 
 `node --test tests/process-version-transport.test.js` checks neutral filtering, independent copied/saved recipes, real browser XMP round trips with depth settings, and IndexedDB preset reloads while preserving legacy records.
+
+`node --test tests/smart-albums.test.js` checks shared rating/flag/edit-status matching and actual browser GUI creation/reload of smart albums, including neutral version 1/version 2 recipes, edited version 2 recipes, live membership changes, and counts through the CLI's shared dispatch path. This browser check does not establish native CLI transport behavior.
+
+`node --test tests/history-workflow.test.js` checks actual Grid keyboard routing, interleaved photo/library undo and redo, active-photo isolation, explicit history commands, Detail scope, failed-command handling, batch per-photo behavior and unchanged original bytes. `scripts/native-smoke.mjs` repeats the shared contextual commands and smart-album membership in the real desktop application.

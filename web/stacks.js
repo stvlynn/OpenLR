@@ -1,3 +1,5 @@
+import { matchesCatalogFilters } from './organization.js'
+
 export function displayedPhotos(list, open) {
   const covers = new Map(),
     seen = new Set()
@@ -60,13 +62,7 @@ export function smartMatch(photo, rule) {
   ]
     .join(' ')
     .toLowerCase()
-  return (
-    photo.rating >= rule.rating &&
-    (rule.flag === 'any' || photo.flag === (rule.flag === 'unflagged' ? '' : rule.flag)) &&
-    (!rule.text || text.includes(rule.text.toLowerCase())) &&
-    (rule.edited === 'any' ||
-      Object.keys(photo.edit).some((key) => Boolean(photo.edit[key])) === (rule.edited === 'yes'))
-  )
+  return matchesCatalogFilters(photo, rule) && (!rule.text || text.includes(rule.text.toLowerCase()))
 }
 export function stackMenu(run) {
   const details = document.createElement('details'),

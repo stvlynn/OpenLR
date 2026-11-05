@@ -51,6 +51,10 @@ function changedFields(a, b) {
 export class LibraryHistory {
   undo = []
   redo = []
+  constructor(nextOrder) {
+    let order = 0
+    this.nextOrder = nextOrder ?? (() => ++order)
+  }
   checkpoint(command, photos, albums, local) {
     if (!tracked.has(command) || local) return null
     return { photos: new Map(photos.map((p) => [p.id, p])), albums: new Map(albums.map((a) => [a.id, a])) }
@@ -74,7 +78,7 @@ export class LibraryHistory {
       if (old !== next) albumChanges.push({ id, before: old, after: next })
     }
     if (rows.length || albumChanges.length) {
-      this.undo.push({ rows, albums: albumChanges })
+      this.undo.push({ rows, albums: albumChanges, order: this.nextOrder() })
       this.redo.length = 0
     }
   }
@@ -83,7 +87,7 @@ export class LibraryHistory {
     const step = from.at(-1)
     if (!step) return false
     await apply(step, backwards ? 'before' : 'after')
-    to.push(from.pop())
+    to.push({ ...from.pop(), order: this.nextOrder() })
     return true
   }
   clear() {

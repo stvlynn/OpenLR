@@ -87,7 +87,12 @@ const urls = new Map(),
   undo = [],
   redo = []
 const organization = new Organization()
-const libraryHistory = new LibraryHistory()
+let historyOrder = 0
+const nextHistoryOrder = () => ++historyOrder
+const libraryHistory = new LibraryHistory(nextHistoryOrder)
+function rememberEdit(photo) {
+  undo.push({ id: photo.id, edit: photo.edit, order: nextHistoryOrder() })
+}
 const presets = new Presets()
 let updateOrganization = () => {}
 let updateMerge = () => {},
@@ -571,7 +576,7 @@ async function importFiles(files, deduplicate = false) {
     async update(photo, settings) {
       await replace(photo, settings)
       if (settings.edit) {
-        undo.push({ id: photo.id, edit: photo.edit })
+        rememberEdit(photo)
         redo.length = 0
       }
     }
@@ -623,7 +628,7 @@ async function applySelection(changes, recordUndo = false) {
     await savePhotoRows(rows)
     if (recordUndo) {
       for (const p of targets) {
-        undo.push({ id: p.id, edit: p.edit })
+        rememberEdit(p)
         invalidate(p.id)
       }
       redo.length = 0
@@ -635,7 +640,7 @@ async function applySelection(changes, recordUndo = false) {
   try {
     for (const photo of targets) {
       await replace(photo, changes(photo))
-      if (recordUndo) undo.push({ id: photo.id, edit: photo.edit })
+      if (recordUndo) rememberEdit(photo)
       completed++
     }
   } catch (error) {
@@ -672,6 +677,21 @@ async function execute(command, args) {
     organization.selection.size === 1
   const nextId = advance ? visible()[visible().findIndex((row) => row.id === selected) + 1]?.id : null
   switch (command) {
+    case 'history-undo':
+    case 'history-redo': {
+      const backwards = command === 'history-undo',
+        editStep = (backwards ? undo : redo).findLast((entry) => entry.id === p?.id),
+        libraryStep =
+          mode === 'grid' && !local.state()
+            ? (backwards ? libraryHistory.undo : libraryHistory.redo).at(-1)
+            : null
+      if (!editStep && !libraryStep) break
+      const library = libraryStep && (!editStep || libraryStep.order > editStep.order)
+      return execute(
+        library ? (backwards ? 'library-undo' : 'library-redo') : backwards ? 'undo' : 'redo',
+        {}
+      )
+    }
     case 'library-undo':
     case 'library-redo': {
       if (local.state()) throw Error('Open the photo library first')
@@ -1205,7 +1225,7 @@ async function execute(command, args) {
       if (!p) throw Error('Select a photo first')
       if (cropping && cropSurface.changed && cropSurface.owner === p.id) {
         await replace(p, { edit: { ...p.edit, crop: cropSurface.box } })
-        undo.push({ id: p.id, edit: p.edit })
+        rememberEdit(p)
         redo.length = 0
       }
       mode = 'detail'
@@ -1279,7 +1299,7 @@ async function execute(command, args) {
           throw Error('The selected photo changed; local edit was canceled')
         const edit = updateLocalTools(p.edit, command, args)
         await replace(p, { edit })
-        undo.push({ id: p.id, edit: p.edit })
+        rememberEdit(p)
         redo.length = 0
         compare = cropping = false
         await draw()
@@ -1339,7 +1359,7 @@ async function execute(command, args) {
           if (optics) compileOptics(p, optics)
           const { optics: previous, ...other } = p.edit
           await replace(p, { edit: optics ? { ...other, optics } : other })
-          undo.push({ id: p.id, edit: p.edit })
+          rememberEdit(p)
           redo.length = 0
           compare = cropping = false
           break
@@ -1376,7 +1396,7 @@ async function execute(command, args) {
             })
           if (command === 'lens-blur') localTools.lensBlur = settings
           await replace(p, { edit })
-          undo.push({ id: p.id, edit: p.edit })
+          rememberEdit(p)
           redo.length = 0
           compare = cropping = false
           await draw()
@@ -1400,7 +1420,7 @@ async function execute(command, args) {
             throw Error('The photo or edits changed; AI mask was canceled')
           const edit = updateLocalTools(p.edit, 'mask.add', { mask: result.mask })
           await replace(p, { edit })
-          undo.push({ id: p.id, edit: p.edit })
+          rememberEdit(p)
           redo.length = 0
           compare = cropping = false
           await draw()
@@ -1461,7 +1481,7 @@ async function execute(command, args) {
           }
           if (eyes.length) {
             await replace(p, { edit: { ...p.edit, redEyes: [...(p.edit.redEyes || []), ...eyes] } })
-            undo.push({ id: p.id, edit: p.edit })
+            rememberEdit(p)
             redo.length = 0
           }
           result = { eyeRegions: eyes.length }
@@ -1544,7 +1564,7 @@ async function execute(command, args) {
         case 'version-restore': {
           const version = findVersion(p, args.id)
           await replace(p, { edit: structuredClone(version.edit) })
-          undo.push({ id: p.id, edit: p.edit })
+          rememberEdit(p)
           redo.length = 0
           compare = false
           break
@@ -1565,7 +1585,7 @@ async function execute(command, args) {
           const version = validateProcessVersion(args.version)
           if (version === processingVersion(p.edit)) break
           await replace(p, { edit: { ...p.edit, processVersion: version } })
-          undo.push({ id: p.id, edit: p.edit })
+          rememberEdit(p)
           redo.length = 0
           compare = false
           break
@@ -1587,7 +1607,7 @@ async function execute(command, args) {
             edit = { ...p.edit, [key]: value }
           }
           await replace(p, { edit })
-          undo.push({ id: p.id, edit: p.edit })
+          rememberEdit(p)
           redo.length = 0
           compare = false
           break
@@ -1599,7 +1619,7 @@ async function execute(command, args) {
           if (index >= 0) {
             await replace(p, { edit: from[index].edit })
             from.splice(index, 1)
-            to.push({ id: p.id, edit: p.edit })
+            to.push({ id: p.id, edit: p.edit, order: nextHistoryOrder() })
           }
           break
         }
@@ -1607,7 +1627,7 @@ async function execute(command, args) {
           const changes = readXmp(args.xml)
           await replace(p, changes)
           if (changes.edit) {
-            undo.push({ id: p.id, edit: p.edit })
+            rememberEdit(p)
             redo.length = 0
           }
           break
@@ -1637,7 +1657,7 @@ async function execute(command, args) {
             stopPlayback()
             await media.seek(range.start)
             await replace(p, { edit: { ...p.edit, trim: range } })
-            undo.push({ id: p.id, edit: p.edit })
+            rememberEdit(p)
             redo.length = 0
           }
           break
@@ -1655,7 +1675,7 @@ async function execute(command, args) {
             number(args.radius ?? 3, 0.1, 100)
           )
           await replace(p, { edit })
-          undo.push({ id: p.id, edit: p.edit })
+          rememberEdit(p)
           redo.length = 0
           break
         }
@@ -1668,7 +1688,7 @@ async function execute(command, args) {
           if (p.edit.processVersion !== undefined || preset.processVersion !== undefined)
             edit.processVersion = processingVersion(preset)
           await replace(p, { edit })
-          undo.push({ id: p.id, edit: p.edit })
+          rememberEdit(p)
           redo.length = 0
           compare = false
           break
@@ -1678,7 +1698,7 @@ async function execute(command, args) {
         case 'auto-tone': {
           const exposure = autoExposure(histogram(render(await source(p.id), neutralRecipe(p.edit), 400)))
           await replace(p, { edit: { ...p.edit, Exposure: exposure } })
-          undo.push({ id: p.id, edit: p.edit })
+          rememberEdit(p)
           redo.length = 0
           break
         }
@@ -1710,14 +1730,14 @@ async function execute(command, args) {
             else points[index] = validatePoint({ ...points[index], ...args })
           }
           await replace(p, { edit: { ...p.edit, pointColors: points } })
-          undo.push({ id: p.id, edit: p.edit })
+          rememberEdit(p)
           redo.length = 0
           break
         }
         case 'white-balance': {
           const values = neutralBalance(await source(p.id), number(args.x, 0, 1), number(args.y, 0, 1))
           await replace(p, { edit: { ...p.edit, ...values } })
-          undo.push({ id: p.id, edit: p.edit })
+          rememberEdit(p)
           redo.length = 0
           sampling = false
           break
@@ -2128,16 +2148,7 @@ document.onkeydown = (e) => {
   else if (mod && key === 'a') act('select-all')
   else if (mod && key === 'c') act('copy-edits')
   else if (mod && key === 'v') act('paste-edits')
-  else if (mod && key === 'z')
-    act(
-      mode === 'grid' && !local.state()
-        ? e.shiftKey
-          ? 'library-redo'
-          : 'library-undo'
-        : e.shiftKey
-          ? 'redo'
-          : 'undo'
-    )
+  else if (mod && key === 'z') act(e.shiftKey ? 'history-redo' : 'history-undo')
   else if (mod && key === 'f') $('search').focus()
   else if (mod && e.shiftKey && key === 'i') choosePhotos()
   else if (mod && key === 'e') {

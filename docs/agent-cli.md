@@ -42,6 +42,8 @@ Success prints JSON to standard output. Failures print a JSON error to standard 
 
 `state` returns the current scope and visible photos, selection, edit recipes, ratings, flags, keywords, and album metadata. Change scope or clear search before selecting a photo excluded by the current view. `delete` is reversible: it moves a catalog entry to Deleted; `restore` restores it while that photo is selected there. Undo/redo history lasts for the current GUI session.
 
+`history-undo` and `history-redo` match the workspace keyboard shortcuts: Grid chooses the latest library or active-photo edit entry; Detail and Local use active-photo edits. Explicit `undo`/`redo` and `library-undo`/`library-redo` retain their narrower scopes.
+
 See [catalog organization](catalog-organization.md) for multi-selection, batch metadata and pasted edits, album rename/delete, filters, ordering, and named versions. `state.selection` lists selected IDs; `state.selected` identifies the active editor image. Their commands come from the shared schema, so `schema version-save`, `schema filter`, and `schema select-many` work offline without a separate CLI implementation.
 
 [Photo merging](photo-merge.md) adds `merge-hdr`, `merge-panorama`, and `export-hdr`. Merge commands create a new library photo from selected originals and return registration/fusion diagnostics. `export-hdr --output merged.hdr` writes the actual retained scene-linear Radiance file; normal `preview` and `export` use the tone-mapped catalog image.
