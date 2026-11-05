@@ -991,6 +991,48 @@ try {
   console.log(
     'Native XMP target guard: stale photo rejection before mutation, actual sidecar application and workspace capture, undo/redo and unchanged original bytes passed.'
   )
+  const purgeSourceA = path.join(root, 'purge-A.png'),
+    purgeSourceB = path.join(root, 'purge-B.png')
+  await writeFile(purgeSourceA, rangeBytes)
+  await writeFile(purgeSourceB, rangeBytes)
+  const purgeA = (await call('import', purgeSourceA)).added[0],
+    purgeB = (await call('import', purgeSourceB)).added[0]
+  await call('select', '--id', purgeA)
+  await call('virtual-copy')
+  const retainedCopy = (await call('state')).selected
+  await call('select-many', '--ids', JSON.stringify([purgeA, purgeB]))
+  await call('delete')
+  await call('scope', '--id', 'trash')
+  await call('select-many', '--ids', JSON.stringify([purgeA, purgeB]))
+  await assert.rejects(
+    () => call('purge', '--expectedIds', JSON.stringify([purgeA])),
+    /changed|select|confirm/i
+  )
+  assert.deepEqual((await call('state')).photos.map((photo) => photo.id).sort(), [purgeA, purgeB].sort())
+  const purged = await call(
+    'purge',
+    '--expectedIds',
+    JSON.stringify([purgeB, purgeA]),
+    '--capture',
+    path.join(root, 'guarded-purge.png')
+  )
+  assert.equal((await readFile(purged.frame.path)).subarray(1, 4).toString(), 'PNG')
+  assert.equal((await call('state')).photos.length, 0)
+  await call('scope', '--id', 'all')
+  await call('select', '--id', retainedCopy)
+  const retainedOriginal = await call(
+    'export',
+    '--format',
+    'original',
+    '--output',
+    path.join(root, 'purge-retained-original.png')
+  )
+  assert.deepEqual(await readFile(retainedOriginal.path), rangeBytes)
+  assert.deepEqual(await readFile(purgeSourceA), rangeBytes)
+  assert.deepEqual(await readFile(purgeSourceB), rangeBytes)
+  console.log(
+    'Native purge confirmation: changed-set refusal, reordered exact-set deletion, actual workspace capture, shared original retention and unchanged source files passed.'
+  )
   const colors = [
     [180, 60, 40],
     [45, 160, 70],

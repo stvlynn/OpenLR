@@ -47,7 +47,7 @@ import { exportSelection, BATCH_EXPORT_MESSAGES } from './batch-export.js'
 import { ExportProgress, EXPORT_PROGRESS_MESSAGES } from './export-progress.js'
 import { getImageWorkerDiagnostics } from './image-worker.js'
 import { EXPORT_FORMATS } from './formats.js'
-import { Organization, namedVersion, findVersion } from './organization.js'
+import { Organization, namedVersion, findVersion, PURGE_MESSAGES } from './organization.js'
 import { validateSmartRule, sameSmartRule, SMART_ALBUM_MESSAGES } from './smart-album-rule.js'
 import { mountOrganization } from './organization-ui.js'
 import { mergePhotos } from './merge.js'
@@ -1582,6 +1582,11 @@ async function execute(command, args, context = {}) {
         }
         case 'purge': {
           const targets = organization.targets(photos)
+          if (args.expectedIds !== undefined) {
+            const expected = new Set(args.expectedIds)
+            if (expected.size !== targets.length || targets.some((photo) => !expected.has(photo.id)))
+              throw Error(PURGE_MESSAGES.changedSelection)
+          }
           if (local.state() || !targets.length || targets.some((photo) => !photo.deleted))
             throw Error('Select deleted library photos')
           const ids = new Set(targets.map((photo) => photo.id)),
@@ -2128,9 +2133,16 @@ $('keywords').onchange = (e) => act('keywords', { value: e.target.value })
 $('color-label').onchange = (e) => act('label', { value: e.target.value })
 $('rename-photo').onchange = (e) => act('rename', { name: e.target.value })
 $('capture-time').onchange = (e) => act('capture-time', { time: e.target.value })
-$('purge').onclick = () => $('purge-dialog').showModal()
+let purgeSelection = null
+$('purge').onclick = () => {
+  purgeSelection = organization.targets(photos).map((photo) => photo.id)
+  $('purge-dialog').returnValue = ''
+  $('purge-dialog').showModal()
+}
 $('purge-dialog').onclose = (e) => {
-  if (e.target.returnValue === 'ok') act('purge')
+  const expectedIds = purgeSelection
+  purgeSelection = null
+  if (e.target.returnValue === 'ok' && expectedIds) act('purge', { expectedIds })
   e.target.returnValue = ''
 }
 $('delete').onclick = () => act(active()?.deleted ? 'restore' : 'delete')

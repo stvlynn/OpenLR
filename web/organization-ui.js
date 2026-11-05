@@ -92,17 +92,19 @@ export function mountOrganization(run) {
     if (dialog.returnValue === 'ok') fn?.(name.value)
   }
   const albumTools = element('div', { className: 'album-tools' })
-  const rename = button('Rename album', () =>
-    ask('Rename album', current.albums.find((a) => a.id === current.scope)?.name, '', (name) =>
-      run('album-rename', { id: current.scope, name })
+  const rename = button('Rename album', () => {
+    const id = current.scope
+    ask('Rename album', current.albums.find((a) => a.id === id)?.name, '', (name) =>
+      run('album-rename', { id, name })
     )
-  )
+  })
   rename.id = 'rename-album'
-  const remove = button('Delete album', () =>
+  const remove = button('Delete album', () => {
+    const id = current.scope
     ask('Delete album', null, 'Photos stay in your library and other albums.', () =>
-      run('album-delete', { id: current.scope })
+      run('album-delete', { id })
     )
-  )
+  })
   remove.id = 'delete-album'
   const ruleDialog = element('dialog', { id: 'smart-album-dialog' }),
     ruleForm = element('form', { method: 'dialog' }),

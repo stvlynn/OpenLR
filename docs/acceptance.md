@@ -116,3 +116,9 @@ Windows 与 WSL Ubuntu 24.04／WebKitGTK 2.52.6 的最终桌面构建及各七�
 新增三项实际 Chrome 156.0.8078.80 文件输入测试明确注入读取等待／失败，未替换生产队列、XMP 解析或保存。换照片后独立重载检查两张照片均未变化；同照片新编辑保留且撤销仍回到真正的编辑；读取失败没有未处理异常，同文件重试可成功导入 Unicode 关键词、评级、旗标与曝光。CLI 有效／过期目标、撤销／重做与原件字节也通过定向检查。`node --test tests/xmp-target.test.js tests/process-version-transport.test.js tests/point-color.test.js` 为 **6/6、零跳过**。注入的时间安排用于确定性验证边界，不代表测量了物理磁盘延迟。
 
 最终 Windows／Node 24.9／Chrome 156 的 `OPENLR_TEST_CMS=1 OPENLR_TEST_METADATA=1 npm test` 通过 **272/272、零跳过**；代码格式与实际 CLI schema 检查通过。Windows WebView2 与 WSL Ubuntu 24.04／WebKitGTK 2.52.6 均完成桌面构建及各七组原生套件。新增原生验收从实际导出的 XMP 读回文本，检查过期照片拒绝、有效应用、真实 PNG 工作区截图、撤销／重做及原件逐字节不变；异步读取时间注入只在浏览器专项中使用。Linux 为 Xvfb／D-Bus 真实 GTK/WebKit 与 IPC，不代表物理显示器、GPU 或系统文件选择器操作。当前 macOS 仍须对应实际远程运行；前一提交 `509abb5` 的 [42020066091](https://github.com/stvlynn/OpenLR/actions/runs/42020066091) 因账户付款／限额未启动任何作业步骤，未计为通过。
+
+2026-11-05 确认目标补充：实际 Chrome 156.0.8078.80 审计复现了永久删除确认期间 A→B 换选，以及保持活动 A 但扩选 A+C 时错误删除新目标；相册重命名／删除在切换 scope 后也错误操作 B。现有永久删除对话框捕获完整选择，通过共享 `purge` 的可选 `expectedIds` 在事务前比较集合；成员变化拒绝，顺序变化允许。相册对话框捕获原始 ID，沿用现有显式 ID 命令。未新增确认步骤、独立删除事务或强制 CLI 门禁；取消本已正常，不把它作为旧缺陷。来源及设计取舍见[确认目标研究](../research/confirmation-targets.md)。
+
+新增三项实际浏览器测试与既有组织／堆栈测试共 **5/5、零跳过**。真实对话框按钮和 Escape 验证目标漂移拒绝、同集合换序成功、取消、共享原件保留与最后引用释放；独立读取存储并重载确认，过期确认没有删除任何照片。相册 A 的改名／删除在 scope B 下仍只作用 A，B 和照片保留。未注入 I/O 延迟、伪造 close 事件或替换生产队列；测试只使用生成图片和隔离目录。
+
+最终 Windows／Node 24.9／Chrome 156 的 `OPENLR_TEST_CMS=1 OPENLR_TEST_METADATA=1 npm test` 为 **275/275、零跳过**，代码格式与实际 CLI dry-run 通过。Windows WebView2 和 WSL Ubuntu 24.04／WebKitGTK 2.52.6 均完成桌面构建及各七组原生套件。新增原生流程使用两个生成原件及一个保留的虚拟副本，验证不匹配集合拒绝、换序集合成功删除、实际 PNG 工作区截图、共享原件逐字节保留与磁盘源文件不变。Linux 使用 Xvfb／D-Bus 运行真实 GTK/WebKit 与 IPC，未证明物理 GPU／显示器或 OS 选择器交互。最新 macOS 仍需对应远程实际验收；前一提交 `89d30d9` 的 [42021424979](https://github.com/stvlynn/OpenLR/actions/runs/42021424979) 因账户付款／限额未执行任何作业步骤，未算作通过。

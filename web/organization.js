@@ -1,6 +1,10 @@
 // Catalog rules shared by the GUI dispatcher; no DOM or persistence dependencies.
 import { processingVersion } from './process-version.js'
 
+export const PURGE_MESSAGES = {
+  changedSelection: 'The selection changed; choose Delete permanently again'
+}
+
 export const CATALOG_FLAG_VALUES = ['any', 'pick', 'reject', 'unflagged']
 export const CATALOG_EDIT_VALUES = ['any', 'yes', 'no']
 

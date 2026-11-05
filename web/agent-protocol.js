@@ -200,7 +200,13 @@ export const definitions = {
   'capture-time': entry('Set capture time on selected photos', { time: string('ISO date and time') }, [
     'time'
   ]),
-  purge: entry('Permanently remove the selected deleted library photos, releasing unreferenced originals'),
+  purge: entry('Permanently remove the selected deleted library photos, releasing unreferenced originals', {
+    expectedIds: {
+      type: 'array',
+      items: { type: 'string' },
+      description: 'Optional exact selected-photo membership guard; order is ignored'
+    }
+  }),
   'mask-overlay': entry(
     'Show, hide or toggle the selected mask coverage overlay without changing photo pixels',
     { enabled: { type: 'boolean', description: 'Omit to toggle' } }
@@ -995,6 +1001,8 @@ export function validateArgs(command, args) {
     (args.id === undefined || args.path.some((index) => index !== 0 && index !== 1))
   )
     throw Error('A component path requires a root ID and zero/one indexes')
+  if (command === 'purge' && args.expectedIds?.some((id) => typeof id !== 'string'))
+    throw Error('expectedIds must contain photo IDs')
   if (command === 'album-rule') validateSmartRule(args.rule)
   if (command === 'export' && args.format !== undefined) {
     validateExportColorSpace(args.format, args.colorSpace)
