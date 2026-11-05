@@ -18,6 +18,7 @@ import * as camera from './camera.js'
 import * as sharing from './sharing.js'
 import { geometry, validCrop } from './geometry.js'
 import { CropSurface } from './crop-surface.js'
+import { CROP_GUIDES, CROP_GUIDE_MESSAGES } from './crop-guides.js'
 import { drawHistogram, histogram, autoExposure } from './histogram.js'
 import { controls, render, toBlob } from './render.js'
 import { saveExport } from './desktop.js'
@@ -408,6 +409,7 @@ async function draw() {
   selectedPoint = ''
   $('aspect').value = p.edit.aspect || ''
   $('crop-tool').textContent = cropping ? 'Done' : 'Crop area'
+  updateCropGuideControls()
   for (const input of document.querySelectorAll('[data-control]')) {
     input.value = p.edit[input.dataset.control] || 0
     input.previousElementSibling.value = input.value
@@ -454,6 +456,7 @@ function snapshot() {
     sampling,
     cropping,
     cropDraft: cropDraft(),
+    cropGuide: { ...cropSurface.guide },
     localSelection: localToolsUI?.selection(),
     film,
     zoom,
@@ -611,6 +614,7 @@ async function execute(command, args) {
         visibleCount: visible().length,
         selectionCount: organization.selection.size,
         cropDraft: cropDraft(),
+        cropGuide: { ...cropSurface.guide },
         localSelection: localToolsUI?.selection(),
         photo: photo
           ? {
@@ -1078,6 +1082,13 @@ async function execute(command, args) {
       else await document.documentElement.requestFullscreen()
       break
     }
+    case 'crop-guide':
+      cropSurface.setGuide({
+        type: args.type,
+        orientation: args.orientation ?? cropSurface.guide.orientation
+      })
+      updateCropGuideControls()
+      return { cropGuide: { ...cropSurface.guide } }
     case 'crop-drag':
     case 'crop-nudge':
       if (!cropping || !p || cropSurface.owner !== p.id) throw Error('Open the crop tool first')
@@ -1768,6 +1779,30 @@ function notifyWorkspaceChange() {
   window.dispatchEvent(new Event('openlr-change'))
 }
 const cropSurface = new CropSurface($('stage'), () => act('crop-tool'), notifyWorkspaceChange)
+function updateCropGuideControls() {
+  $('crop-guide').value = cropSurface.guide.type
+  $('crop-guide-orientation').value = cropSurface.guide.orientation
+  $('crop-guide-orientation').disabled = !['triangle', 'golden-spiral'].includes(cropSurface.guide.type)
+  $('crop-guide-orientation').closest('label').hidden = $('crop-guide-orientation').disabled
+}
+const guideLabel = document.createElement('label'),
+  guideSelect = document.createElement('select')
+guideSelect.id = 'crop-guide'
+guideLabel.append(CROP_GUIDE_MESSAGES.label, guideSelect)
+for (const [value, label] of Object.entries(CROP_GUIDES)) guideSelect.append(option(value, label))
+const orientationLabel = document.createElement('label'),
+  orientationSelect = document.createElement('select')
+orientationSelect.id = 'crop-guide-orientation'
+orientationLabel.append(CROP_GUIDE_MESSAGES.orientation, orientationSelect)
+CROP_GUIDE_MESSAGES.orientations.forEach((label, value) => orientationSelect.append(option(value, label)))
+$('crop-tool').closest('details').append(guideLabel, orientationLabel)
+guideSelect.onchange = () => act('crop-guide', { type: guideSelect.value })
+orientationSelect.onchange = () =>
+  act('crop-guide', {
+    type: guideSelect.value,
+    orientation: Number(orientationSelect.value)
+  })
+updateCropGuideControls()
 async function choosePhotos() {
   if (!globalThis.mygo?.call) {
     $('files').click()

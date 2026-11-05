@@ -18,6 +18,8 @@ The forward geometric homography applies perspective, horizontal shear, aspect/s
 
 Brush/repair coordinates remain normalized original-image positions. Pointer input reverses crop/turn/reflection and then lens/geometry; transparent-edge input is ignored. Mask overlays follow the same spatial warp, with green/reference geometry rather than channel-dependent TCA. Saved versions, local sidecars and OpenLR's XMP recipe preserve the optics branch. XMP import validates it separately from crop and local-tool settings.
 
+[Crop composition guides](crop-guides.md) follow the current draft rectangle on this corrected base canvas. They are view-only session state, rendered in the existing crop overlay rather than the image pipeline, and never enter exports or edit recipes.
+
 ## Shared commands
 
 The CLI, UI and live agent all use `web/agent-protocol.js` and the same dispatcher. Examples:

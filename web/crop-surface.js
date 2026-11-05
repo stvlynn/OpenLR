@@ -1,7 +1,9 @@
 import { geometry } from './geometry.js'
+import { cropGuideGeometry, cropGuidePath, CROP_GUIDE_MESSAGES } from './crop-guides.js'
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value))
 export class CropSurface {
   constructor(stage, finish, notify) {
+    this.guide = { type: 'thirds', orientation: 0 }
     this.stage = stage
     this.finish = finish
     this.changed = false
@@ -52,6 +54,10 @@ export class CropSurface {
     const frame = document.createElement('div')
     frame.className = 'crop-surface'
     frame.setAttribute('aria-label', 'Crop rectangle')
+    this.overlay = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+    this.overlay.classList.add('crop-guide')
+    this.overlay.setAttribute('aria-label', CROP_GUIDE_MESSAGES.description)
+    frame.append(this.overlay)
     for (const handle of ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w']) {
       const grip = document.createElement('i')
       grip.dataset.grip = handle
@@ -72,6 +78,32 @@ export class CropSurface {
       width: r.w * image.width + 'px',
       height: r.h * image.height + 'px'
     })
+    this.drawGuide(r.w * image.width, r.h * image.height)
+  }
+  setGuide(guide) {
+    this.guide = { ...guide }
+    this.draw()
+  }
+  drawGuide(width, height) {
+    const { paths, labels } = cropGuideGeometry(this.guide.type, width, height, this.guide.orientation)
+    const svg = this.overlay
+    svg.setAttribute('viewBox', `0 0 ${width} ${height}`)
+    svg.dataset.type = this.guide.type
+    svg.dataset.orientation = this.guide.orientation
+    svg.replaceChildren()
+    for (const name of ['shadow', 'light']) {
+      const path = document.createElementNS(svg.namespaceURI, 'path')
+      path.setAttribute('d', cropGuidePath(paths))
+      path.setAttribute('class', name)
+      svg.append(path)
+    }
+    for (const label of labels) {
+      const text = document.createElementNS(svg.namespaceURI, 'text')
+      text.setAttribute('x', label.x)
+      text.setAttribute('y', label.y)
+      text.textContent = label.text
+      svg.append(text)
+    }
   }
   point(e) {
     const b = this.canvas.getBoundingClientRect()

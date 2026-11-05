@@ -1,5 +1,6 @@
 import { controls } from './adjustments.js'
 import { validCrop } from './geometry.js'
+import { CROP_GUIDES } from './crop-guides.js'
 import { LOCAL_CONTROLS, validateLocalTool, validateLocalChanges } from './local-tools.js'
 import { EXPORT_TYPES } from './formats.js'
 import { AI_TARGETS } from './ai-models.js'
@@ -739,6 +740,16 @@ export const definitions = {
   histogram: entry('Return RGB and luminance bin counts sampled from the current edited image'),
   'auto-tone': entry('Set exposure using the median luminance of the original'),
   'crop-tool': entry('Open the crop rectangle tool, or commit a drawn rectangle'),
+  'crop-guide': entry(
+    'Set view-only composition guides; does not change photo edits or exports',
+    {
+      type: string('Composition guide', { enum: Object.keys(CROP_GUIDES) }),
+      orientation: number('Mirror asymmetric guides: 0 default, 1 horizontal, 2 vertical, 3 both', 0, 3, {
+        type: 'integer'
+      })
+    },
+    ['type']
+  ),
   'crop-nudge': entry(
     'Move the open crop draft by preview pixels',
     {

@@ -93,6 +93,35 @@ try {
     '0.625'
   )
   assert.deepEqual(initialCrop, { x: 0.25, y: 0.25, w: 0.5, h: 0.375 })
+  const beforeGuide = await call(
+    'export',
+    '--format',
+    'image/png',
+    '--output',
+    path.join(root, 'before-guide.png')
+  )
+  const guide = await call(
+    'crop-guide',
+    '--type',
+    'golden-spiral',
+    '--orientation',
+    '1',
+    '--capture',
+    path.join(root, 'crop-guide.png')
+  )
+  assert.deepEqual(guide.result.cropGuide, { type: 'golden-spiral', orientation: 1 })
+  assert.equal((await readFile(guide.frame.path)).subarray(1, 4).toString(), 'PNG')
+  const guideState = await call('state', '--summary', 'true')
+  assert.deepEqual(guideState.cropGuide, guide.result.cropGuide)
+  assert.deepEqual(guideState.cropDraft, initialCrop)
+  const afterGuide = await call(
+    'export',
+    '--format',
+    'image/png',
+    '--output',
+    path.join(root, 'after-guide.png')
+  )
+  assert.deepEqual(await readFile(afterGuide.path), await readFile(beforeGuide.path))
   const moved = await call('crop-nudge', '--dx', '1', '--dy', '0', '--capture', path.join(root, 'crop.png'))
   assert.ok(moved.result.cropDraft.x > initialCrop.x)
   assert.equal(moved.result.cropDraft.y, initialCrop.y)
