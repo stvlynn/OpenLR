@@ -130,31 +130,20 @@ export async function processCodec({ operation, format, file, pixels, quality, c
         result = await (await import('./vendor/codecs/jxl/decode.js')).default(bytes)
       else throw Error('Unsupported image format')
       return { bitmap: await createImageBitmap(result) }
-    } else if (operation === 'encode-tiff16') {
-      validateExportColorSpace(format, colorSpace)
-      if (format !== 'image/tiff' || !(pixels.data instanceof Uint16Array))
-        throw Error('Expected 16-bit TIFF output samples')
-      return { bytes: encodeColorTiff(pixels, makeColorProfile(colorSpace)).buffer }
     } else if (operation === 'prepare-color') {
       validateExportColorSpace(format, colorSpace)
       const converted = convertSrgbPixels(pixels, colorSpace)
       return { bytes: converted.data.buffer, profile: makeColorProfile(colorSpace) }
-    } else if (operation === 'encode') {
+    } else if (operation === 'encode' || operation === 'encode-target') {
       validateExportColorSpace(format, colorSpace)
+      const converted = operation === 'encode' ? convertSrgbPixels(pixels, colorSpace) : pixels
+      const profile = makeColorProfile(colorSpace)
       let bytes
       if (format === 'image/tiff' || format === 'image/png') {
-        const converted = convertSrgbPixels(pixels, colorSpace),
-          profile = makeColorProfile(colorSpace)
         bytes = (format === 'image/tiff' ? encodeColorTiff : encodeColorPng)(converted, profile)
       } else {
         const { encodeProfiled } = await import('./color-codecs.js')
-        bytes = await encodeProfiled(
-          format,
-          convertSrgbPixels(pixels, colorSpace),
-          makeColorProfile(colorSpace),
-          quality,
-          colorSpace
-        )
+        bytes = await encodeProfiled(format, converted, profile, quality, colorSpace)
       }
       if (!bytes?.byteLength) throw Error('The image encoder returned no data')
       if (ArrayBuffer.isView(bytes))

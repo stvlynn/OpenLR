@@ -24,6 +24,8 @@ On a Mac, use Photos **Export Unmodified Original**, enabling **Export IPTC as X
 
 This path works with standard exported files and does not parse private Photos database schemas or request PhotoKit access. The native picker and export scanner reject `.photoslibrary` bundles and directories inside them. Hidden/private bundles and symlink directories are not traversed. Only explicitly authorized export folders are enumerated. No macOS PhotoKit or real Photos library has been tested here.
 
+An accompanying OpenLR XMP recipe retains its explicit processing version. Migration decodes still originals through that version before generating thumbnails, so Linear recipes keep their working frame for preview and export. Unsupported OpenLR versions fail that photo's migration and remain retryable; they are not reduced to legacy settings. Linear recipes on video are rejected before poster decoding. Other unsupported or malformed foreign XMP continues to produce a warning while importing supported metadata and legacy edits.
+
 Edits, favorites, hidden state, face data, original albums and Live Photo pairing are not recoverable from ordinary originals/XMP alone. Exported still and video components can be imported as independent resources when supported by the existing codecs. iCloud-only resources must first be downloaded/exported by Photos. OpenLR does not access iCloud or upload these resources automatically. See [Apple's export instructions](https://support.apple.com/en-in/guide/photos/-pht6e157c5f/mac).
 
 ## CLI and explicit sync
@@ -48,6 +50,8 @@ Saved scan plans and detailed reports are device-local records in the catalog's 
 ## Verification and dependency
 
 `node --test tests/migration.test.js tests/migration-workflow.test.js tests/agent-cli.test.js tests/sync.test.js` covers generated SQLite schema/records, compressed XMP, scalar non-evaluation, unsafe paths, missing/incomplete records, metadata, static albums, virtual-copy sharing, retry, edit persistence and two independent device contexts. The remote context is forbidden from reading the source native reference protocol and verifies downloaded-image export instead. The Go `TestMigrationReferencesStayInsideExplicitRoot` test checks native authorization, exact-path stat, traversal/missing rejection and Photos bundle boundaries.
+
+The browser workflow also uses a generated DNG in a synthetic exported resources folder with OpenLR Linear XMP. It compares the actual thumbnail, preview and PNG export, checks TIFF16 output and exact original bytes, and repeats preview after reload. Unsupported recipe versions and Linear video recipes fail visibly while an invalid foreign sidecar retains the documented warning path. These generated fixtures do not establish compatibility with an actual Photos export or macOS PhotoKit.
 
 `node scripts/native-migration-smoke.mjs <built OpenLR executable>` passed on Windows/WebView2 with isolated generated PNGs and synthetic `.lrcat` schema. It verified the actual native authorized resource stream, exact original export bytes, missing-file recovery, unchanged catalog/original hashes and standard Apple export XMP. `.workspace/native-final/migration-report.json` explicitly records `realAdobeCatalogValidated:false`, `privatePhotosLibraryRead:false`, `photoKitValidated:false`, and `nativeReferenceProtocolValidated:true`. The screenshot is `migration-synthetic.png`. This result must not be described as validation against a user's catalog or Photos Library.
 

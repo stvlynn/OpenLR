@@ -15,6 +15,8 @@ import {
 import { globalToneParameters, globalToneRgb } from './tone.js'
 import { assertLinearFrame, linearFrameToRgba8 } from './pixel-frame.js'
 import { transformFrame } from './frame-geometry.js'
+import { workingFrame } from './working-frames.js'
+import { processingVersion, PROCESS_MESSAGES } from './process-version.js'
 import { controls } from './adjustments.js'
 export { controls } from './adjustments.js'
 const linear = Float64Array.from({ length: 256 }, (_, i) => {
@@ -63,6 +65,11 @@ export function frameCanvas(frame) {
 }
 
 export function render(image, edit = {}, maxSize = Infinity) {
+  if (processingVersion(edit) === 2) {
+    const frame = workingFrame(image)
+    if (!frame) throw new Error(PROCESS_MESSAGES.missingSource)
+    return frameCanvas(renderFrame(frame, edit, maxSize))
+  }
   const canvas = document.createElement('canvas')
   const geom = geometry(image, edit, maxSize)
   const { x, y, w, h, width, height, turn, flip } = geom

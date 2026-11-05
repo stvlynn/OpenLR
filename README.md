@@ -29,6 +29,8 @@ npm run desktop
 
 JPEG、PNG、TIFF、AVIF 和 JPEG XL 可选择 [输出色彩空间](docs/export-color.md)，将当前 sRGB 编辑结果转换为 Display P3、Adobe RGB、ProPhoto RGB 或 Rec.2020 SDR，并写入匹配的 ICC 配置文件。
 
+在详情页选择 **Processing → Linear**，或运行 `processing --version 2`，可对静态照片启用[浮点线性处理](docs/linear-working-frames.md)。RAW 保留宽色域 16-bit 解码样本，TIFF 直接输出 16-bit；其他渲染格式在目标色彩空间量化为 8-bit。原有照片和普通新导入默认保持原处理方式，切换可撤销，重置保留处理版本。栅格格式当前仍使用原有显示解码，不能据此宣称恢复其原始高位深。
+
 ## Agent CLI
 
 安装包附带单文件 Node CLI。也可以在工作区运行以下命令。GUI 和 CLI 操作同一份实时状态。

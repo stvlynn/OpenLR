@@ -1,6 +1,9 @@
 import { localWeight, applyLocalTools } from './local-tools.js'
-import { filledSource } from './fill.js'
+import { filledSource, filledFrame } from './fill.js'
+import { correctEyesFrame } from './culling.js'
 import { render } from './render.js'
+import { processingVersion, PROCESS_MESSAGES } from './process-version.js'
+import { workingFrame } from './working-frames.js'
 
 export function maskCoverageSource(image, edit, tool, { maxEdge = Infinity, style = 'rgba' } = {}) {
   if (!['gray', 'rgba'].includes(style)) throw Error('Expected gray or rgba mask preview')
@@ -9,11 +12,28 @@ export function maskCoverageSource(image, edit, tool, { maxEdge = Infinity, styl
   canvas.width = Math.max(1, Math.round(image.width * scale))
   canvas.height = Math.max(1, Math.round(image.height * scale))
   const ctx = canvas.getContext('2d', { willReadFrequently: true })
-  ctx.drawImage(filledSource(image, edit.fills, maxEdge), 0, 0, canvas.width, canvas.height)
-  const reference = applyLocalTools(ctx.getImageData(0, 0, canvas.width, canvas.height), {
+  const isLinear = processingVersion(edit) === 2
+  if (isLinear && (canvas.width !== image.width || canvas.height !== image.height)) {
+    // Range selection precedes geometry in the renderer. Interpolating source
+    // colors first can invent selected colors that no source pixel contains.
+    ctx.drawImage(maskCoverageSource(image, edit, tool, { style }), 0, 0, canvas.width, canvas.height)
+    return canvas
+  }
+  let reference
+  if (isLinear) {
+    const source = workingFrame(image)
+    if (!source) throw new Error(PROCESS_MESSAGES.missingSource)
+    // Match the renderer's pre-mask snapshot at original coordinates.
+    const filled = filledFrame({ ...source, data: source.data.slice() }, edit.fills),
+      corrected = correctEyesFrame(filled, edit.redEyes)
+    reference = applyLocalTools(corrected, { repairs: edit.localTools?.repairs ?? [] })
+  } else {
+    ctx.drawImage(filledSource(image, edit.fills, maxEdge), 0, 0, canvas.width, canvas.height)
+    reference = applyLocalTools(ctx.getImageData(0, 0, canvas.width, canvas.height), {
       repairs: edit.localTools?.repairs ?? []
-    }),
-    pixels = ctx.createImageData(canvas.width, canvas.height)
+    })
+  }
+  const pixels = ctx.createImageData(canvas.width, canvas.height)
   for (let i = 0; i < canvas.width * canvas.height; i++) {
     const value = Math.round(
       255 *
@@ -23,7 +43,8 @@ export function maskCoverageSource(image, edit, tool, { maxEdge = Infinity, styl
           (Math.floor(i / canvas.width) + 0.5) / canvas.height,
           canvas.width,
           canvas.height,
-          reference.data.subarray(i * 4, i * 4 + 3)
+          reference.data.subarray(i * 4, i * 4 + 3),
+          isLinear ? 'srgb-linear' : 'srgb'
         )
     )
     pixels.data[i * 4] = style === 'rgba' ? 255 : value

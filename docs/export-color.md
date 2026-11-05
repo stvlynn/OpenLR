@@ -11,11 +11,11 @@ The default is sRGB. `web/export-color.js` owns format capabilities used by the 
 
 ## Pixel and profile contract
 
-Export consumes the same edited sRGB canvas after crop, size and watermark as before. A worker converts unassociated 8-bit sRGB samples through relative-colorimetric RGB matrices and transfer functions, with Bradford white-point adaptation. Only the final target samples are clipped and quantized. Alpha is copied unchanged before compression; PNG/TIFF and quality-1 AVIF/JPEG XL preserve it exactly. Lossy AVIF/JPEG XL may also compress alpha. JPEG first composites transparency on black in the current sRGB rendering space, then converts the opaque result.
+Original processing exports consume the edited sRGB canvas after crop, size and watermark. A worker converts unassociated 8-bit sRGB samples through relative-colorimetric RGB matrices and transfer functions, with Bradford white-point adaptation. Only the final target samples are clipped and quantized. Alpha is copied unchanged before compression; PNG/TIFF and quality-1 AVIF/JPEG XL preserve it exactly. Lossy AVIF/JPEG XL may also compress alpha. JPEG first composites transparency on black in the current sRGB rendering space, then converts the opaque result.
 
 Five independently generated ICC v4.3 matrix/TRC profiles describe those exact spaces. No Adobe or operating-system profile is distributed. Display P3 is D65 with the sRGB curve, not DCI-P3. ProPhoto uses D50 and its linear black toe. Rec.2020 is explicitly gamma 2.4, full-range SDR; it does not imply PQ, HLG or HDR output. Definitions, source specifications and independent measurements are in [the transform experiment](../research/color-transform-experiment.md).
 
-The content is still derived from the existing **8-bit sRGB editing pipeline**. Encoding it in a larger space does not recover source gamut or sensor precision already discarded at import/render. Float conversion primitives are available for a future high-precision pipeline, but that pipeline is not implemented by this change. General input ICC conversion, perceptual gamut mapping, print CMYK, soft proofing and HDR display remain separate work.
+Original processing remains derived from the **8-bit sRGB editing pipeline**; encoding that result in a larger space cannot recover discarded precision. Explicit **Linear** processing instead retains wide RAW Float32 samples through edits and converts directly into the chosen target space, with 16-bit TIFF or 8-bit PNG/JPEG/AVIF/JPEG XL output. Its watermark composites in linear light, and JPEG flattens over black in linear light. Non-RAW input currently retains the existing display-decoder precision limits; see [linear working frames](linear-working-frames.md). General input ICC conversion, perceptual gamut mapping, print CMYK, soft proofing and HDR display remain separate work.
 
 ## Containers and re-import
 
@@ -32,7 +32,7 @@ The existing worker runner owns transfer and lifetime. Worker startup failure us
 
 ## Verification
 
-The internal [linear working-frame API](linear-working-frames.md) also converts genuine float results directly into 16-bit ICC TIFF samples, using this same container writer. It is separately verified by `tests/float-tiff.test.js` and `tests/float-raw.test.js`; the application export command continues to use the existing 8-bit recipe path until process-version migration is integrated.
+The internal [linear working-frame API](linear-working-frames.md) also converts genuine float results directly into 16-bit ICC TIFF samples, using this same container writer. It is separately verified by `tests/float-tiff.test.js` and `tests/float-raw.test.js`; the application export command selects it for Linear processing recipes. Other rendered formats convert directly into target-space 8-bit samples from that float result. Original processing keeps the previous byte path.
 
 ```sh
 node --test tests/color-spaces.test.js tests/color-containers.test.js tests/color-workflow.test.js

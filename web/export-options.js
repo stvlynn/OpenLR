@@ -1,4 +1,6 @@
 import { exportColorSpaces } from './export-color.js'
+import { decodeSrgb } from './color-spaces.js'
+import { assertLinearFrame } from './pixel-frame.js'
 
 export function readExportOptions() {
   const get = (id) => document.getElementById(id).value
@@ -24,4 +26,24 @@ export function applyWatermark(canvas, text) {
   ctx.fillStyle = 'rgba(255,255,255,.9)'
   ctx.fillText(text, canvas.width - size, canvas.height - size, Math.max(1, canvas.width - size * 2))
   ctx.restore()
+}
+
+export function applyFrameWatermark(frame, text) {
+  if (!text) return frame
+  assertLinearFrame(frame)
+  const overlay = document.createElement('canvas')
+  overlay.width = frame.width
+  overlay.height = frame.height
+  applyWatermark(overlay, text)
+  const pixels = overlay.getContext('2d').getImageData(0, 0, frame.width, frame.height).data
+  for (let i = 0; i < pixels.length; i += 4) {
+    const a = pixels[i + 3] / 255
+    if (!a) continue
+    const remaining = frame.data[i + 3] * (1 - a),
+      alpha = a + remaining
+    for (let c = 0; c < 3; c++)
+      frame.data[i + c] = (decodeSrgb(pixels[i + c] / 255) * a + frame.data[i + c] * remaining) / alpha
+    frame.data[i + 3] = alpha
+  }
+  return frame
 }

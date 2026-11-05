@@ -34,12 +34,13 @@ type LocalRoot struct {
 }
 
 type LocalEntry struct {
-	Name     string          `json:"name"`
-	Relative string          `json:"relative"`
-	Size     int64           `json:"size"`
-	Modified int64           `json:"modified"`
-	Recipe   json.RawMessage `json:"recipe"`
-	Error    string          `json:"error,omitempty"`
+	Name           string          `json:"name"`
+	Relative       string          `json:"relative"`
+	Size           int64           `json:"size"`
+	Modified       int64           `json:"modified"`
+	Recipe         json.RawMessage `json:"recipe"`
+	SidecarPresent bool            `json:"sidecarPresent"`
+	Error          string          `json:"error,omitempty"`
 }
 
 type LocalFolder struct {
@@ -52,6 +53,74 @@ type LocalFolder struct {
 type localSidecar struct {
 	Version int             `json:"version"`
 	Recipe  json.RawMessage `json:"recipe"`
+}
+
+// Local envelopes protect clients that predate linear processing: those clients
+// accept only envelope 1, so any process-2 snapshot requires envelope 2.
+func localRecipeVersion(recipe json.RawMessage) (int, error) {
+	var object map[string]json.RawMessage
+	if err := json.Unmarshal(recipe, &object); err != nil || object == nil {
+		return 0, errors.New("edit recipe must be a JSON object")
+	}
+	version, err := localEditVersion(object["edit"])
+	if err != nil {
+		return 0, err
+	}
+	if raw := object["versions"]; len(raw) > 0 {
+		var snapshots []struct {
+			Edit json.RawMessage `json:"edit"`
+		}
+		if err := json.Unmarshal(raw, &snapshots); err != nil {
+			return 0, errors.New("saved versions must be an array")
+		}
+		for _, snapshot := range snapshots {
+			saved, err := localEditVersion(snapshot.Edit)
+			if err != nil {
+				return 0, fmt.Errorf("saved version: %w", err)
+			}
+			if saved > version {
+				version = saved
+			}
+		}
+	}
+	return version, nil
+}
+
+func localEditVersion(recipe json.RawMessage) (int, error) {
+	if len(recipe) == 0 || string(recipe) == "null" {
+		return 1, nil
+	}
+	var edit map[string]json.RawMessage
+	if err := json.Unmarshal(recipe, &edit); err != nil || edit == nil {
+		return 0, errors.New("photo edits must be a JSON object")
+	}
+	raw, explicit := edit["processVersion"]
+	if !explicit {
+		return 1, nil
+	}
+	var version float64
+	if string(raw) == "null" || json.Unmarshal(raw, &version) != nil || (version != 1 && version != 2) {
+		return 0, errors.New("unsupported photo process version")
+	}
+	return int(version), nil
+}
+
+func readLocalSidecar(data []byte) (localSidecar, error) {
+	var sidecar localSidecar
+	if err := json.Unmarshal(data, &sidecar); err != nil {
+		return sidecar, errors.New("Cannot read OpenLR edit sidecar")
+	}
+	if sidecar.Version != 1 && sidecar.Version != 2 {
+		return sidecar, errors.New("Unsupported OpenLR edit sidecar version")
+	}
+	version, err := localRecipeVersion(sidecar.Recipe)
+	if err != nil {
+		return sidecar, fmt.Errorf("Cannot read OpenLR edit sidecar: %w", err)
+	}
+	if sidecar.Version < version {
+		return sidecar, errors.New("OpenLR process version requires edit sidecar version 2")
+	}
+	return sidecar, nil
 }
 
 func newLocal() *Local {
@@ -239,14 +308,15 @@ func (l *Local) OpenFolder(id, relative string) (*LocalFolder, error) {
 		photo := LocalEntry{Name: entry.Name(), Relative: filepath.ToSlash(path), Size: info.Size(), Modified: info.ModTime().UnixMilli(), Recipe: json.RawMessage(`{}`)}
 		data, readErr := dir.ReadFile(path + ".openlr.json")
 		if readErr == nil {
-			var sidecar localSidecar
-			var recipe map[string]json.RawMessage
-			if err := json.Unmarshal(data, &sidecar); err != nil || sidecar.Version != 1 || json.Unmarshal(sidecar.Recipe, &recipe) != nil || recipe == nil {
-				photo.Error = "Cannot read OpenLR edit sidecar"
+			photo.SidecarPresent = true
+			sidecar, err := readLocalSidecar(data)
+			if err != nil {
+				photo.Error = err.Error()
 			} else {
 				photo.Recipe = sidecar.Recipe
 			}
 		} else if !errors.Is(readErr, fs.ErrNotExist) {
+			photo.SidecarPresent = true
 			photo.Error = "Cannot read OpenLR edit sidecar"
 		}
 		result.Photos = append(result.Photos, photo)
@@ -296,11 +366,19 @@ func (l *Local) SaveRecipe(id, relative, recipe string) error {
 	if !info.Mode().IsRegular() || !localPhotoExtensions[strings.ToLower(filepath.Ext(rel))] {
 		return errors.New("edit target must be a photo")
 	}
-	var object map[string]json.RawMessage
-	if err := json.Unmarshal([]byte(recipe), &object); err != nil || object == nil {
-		return errors.New("edit recipe must be a JSON object")
+	version, err := localRecipeVersion(json.RawMessage(recipe))
+	if err != nil {
+		return err
 	}
-	data, err := json.MarshalIndent(localSidecar{Version: 1, Recipe: json.RawMessage(recipe)}, "", "  ")
+	previous, readErr := dir.ReadFile(rel + ".openlr.json")
+	if readErr == nil {
+		if _, err := readLocalSidecar(previous); err != nil {
+			return err
+		}
+	} else if !errors.Is(readErr, fs.ErrNotExist) {
+		return fmt.Errorf("read existing edit sidecar: %w", readErr)
+	}
+	data, err := json.MarshalIndent(localSidecar{Version: version, Recipe: json.RawMessage(recipe)}, "", "  ")
 	if err != nil {
 		return err
 	}

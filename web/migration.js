@@ -1,7 +1,8 @@
 import * as db from './catalog.js'
 import * as local from './local.js'
 import { decodeFile } from './transfer.js'
-import { decodePhoto } from './decode.js'
+import { decodeEditSource } from './edit-source.js'
+import { processingVersion, PROCESS_MESSAGES } from './process-version.js'
 import { isVideo, poster } from './video.js'
 import { metadata } from './metadata.js'
 import { render, toBlob, controls } from './render.js'
@@ -153,6 +154,7 @@ function changes(photo, warnings) {
     try {
       edit = readXmp(photo.xmp).edit ?? {}
     } catch (error) {
+      if (error.code === 'PROCESS_VERSION') throw error
       warnings.push('XMP: ' + error.message)
     }
   for (const [key, field] of Object.entries(CRS_FIELDS))
@@ -241,9 +243,10 @@ export async function commit(id) {
           warnings.push('Sidecar: ' + error.message)
         }
       }
-      const edit = changes({ ...source, xmp }, warnings),
-        media = isVideo(file) ? await poster(file) : null
-      image = media?.bitmap ?? (await decodePhoto(file))
+      const edit = changes({ ...source, xmp }, warnings)
+      if (isVideo(file) && processingVersion(edit) === 2) throw Error(PROCESS_MESSAGES.video)
+      const media = isVideo(file) ? await poster(file) : null
+      image = media?.bitmap ?? (await decodeEditSource(file, edit))
       const sidecar = xmp
         ? (() => {
             try {

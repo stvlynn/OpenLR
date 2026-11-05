@@ -4,6 +4,8 @@ import { chromium } from 'playwright-core'
 import { serveWorkspace } from './browser-server.mjs'
 import { makeLrcat } from './fixtures/lrcat.mjs'
 import { frame, png } from './fixtures/merge-scene.js'
+import { makeDng } from './fixtures/dng.mjs'
+import UTIF from '../web/vendor/codecs/utif.js'
 
 test('synthetic Classic/Apple resource migration reviews explicit references, retries missing files, persists edits and syncs portable originals', async (t) => {
   const server = await serveWorkspace()
@@ -205,6 +207,127 @@ test('synthetic Classic/Apple resource migration reviews explicit references, re
   assert.equal(applePhoto.rating, 5)
   assert.equal(applePhoto.keywords, 'Exported keyword')
   assert.ok(state.albums.some((album) => album.name === 'Export album'))
+
+  // This is a generated standard export folder, not an actual Photos library.
+  const raw = Buffer.from(makeDng()),
+    linearXmp = await a.page.evaluate(async () =>
+      (await import('./xmp.js')).exportXmp({ edit: { processVersion: 2, Exposure: -0.5 } })
+    )
+  resources.set('Export album/linear.dng', raw)
+  resources.set('Export album/linear.xmp', Buffer.from(linearXmp))
+  resources.set('Export album/future.png', original)
+  resources.set(
+    'Export album/future.xmp',
+    Buffer.from(linearXmp.replace('&quot;processVersion&quot;:2', '&quot;processVersion&quot;:3'))
+  )
+  resources.set('Export album/foreign.png', original)
+  resources.set('Export album/foreign.xmp', Buffer.from('<invalid-foreign-sidecar'))
+  resources.set(
+    'Export album/video.webm',
+    Buffer.from('Not a video: reject linear processing before poster decoding')
+  )
+  resources.set('Export album/video.xmp', Buffer.from(linearXmp))
+  const linearScan = await a.run('migration-apple-scan', { root: 'apple-root' }),
+    linearCommit = await a.run('migration-commit', { id: linearScan.id })
+  assert.equal(linearScan.total, 5)
+  assert.equal(linearCommit.imported.length, 2)
+  assert.equal(linearCommit.existing.length, 1)
+  assert.equal(linearCommit.failed.length, 2)
+  assert.match(
+    linearCommit.failed.find((photo) => photo.name === 'future.png').error,
+    /Unsupported photo processing version/
+  )
+  assert.match(linearCommit.failed.find((photo) => photo.name === 'video.webm').error, /still photos/)
+  state = await a.run('state')
+  assert.equal(
+    state.photos.some((photo) => photo.name === 'future.png'),
+    false
+  )
+  assert.equal(
+    state.photos.some((photo) => photo.name === 'video.webm'),
+    false
+  )
+  const linearPhoto = state.photos.find((photo) => photo.name === 'linear.dng'),
+    foreignPhoto = state.photos.find((photo) => photo.name === 'foreign.png')
+  assert.deepEqual(linearPhoto.edit, { processVersion: 2, Exposure: -0.5 })
+  assert.deepEqual(foreignPhoto.edit, {})
+  assert.ok(foreignPhoto.migration.warnings.some((warning) => /XMP: Invalid XMP document/.test(warning)))
+  await a.run('select', { id: linearPhoto.id })
+  await a.run('view', { mode: 'detail' })
+  const linearImages = await a.page.evaluate(async (id) => {
+    const { all } = await import('./catalog.js'),
+      photo = (await all('photos')).find((photo) => photo.id === id)
+    const read = async (blob) => {
+      const image = await createImageBitmap(blob),
+        canvas = document.createElement('canvas')
+      canvas.width = image.width
+      canvas.height = image.height
+      const paint = canvas.getContext('2d', { willReadFrequently: true })
+      paint.drawImage(image, 0, 0)
+      image.close()
+      return {
+        width: canvas.width,
+        height: canvas.height,
+        data: Array.from(paint.getImageData(0, 0, canvas.width, canvas.height).data)
+      }
+    }
+    const preview = await read((await window.openlr.run('preview')).blob),
+      jpeg = document.createElement('canvas')
+    jpeg.width = preview.width
+    jpeg.height = preview.height
+    jpeg
+      .getContext('2d')
+      .putImageData(new ImageData(Uint8ClampedArray.from(preview.data), preview.width, preview.height), 0, 0)
+    return {
+      thumbnail: await read(photo.thumbnail),
+      thumbnailReference: await read(
+        await new Promise((resolve) => jpeg.toBlob(resolve, 'image/jpeg', 0.92))
+      ),
+      preview,
+      rendered: await read((await window.openlr.run('export', { format: 'image/png' })).blob),
+      tiff: Array.from(
+        new Uint8Array(await (await window.openlr.run('export', { format: 'image/tiff' })).blob.arrayBuffer())
+      ),
+      original: Array.from(
+        new Uint8Array(await (await window.openlr.run('export', { format: 'original' })).blob.arrayBuffer())
+      )
+    }
+  }, linearPhoto.id)
+  assert.equal(linearImages.thumbnail.width, linearImages.preview.width)
+  assert.equal(linearImages.thumbnail.height, linearImages.preview.height)
+  assert.equal(
+    linearImages.thumbnail.data.filter(
+      (value, index) => value !== linearImages.thumbnailReference.data[index]
+    ).length,
+    0,
+    'The stored JPEG thumbnail must match the linear preview after the same terminal JPEG encoding'
+  )
+  assert.deepEqual(linearImages.rendered, linearImages.preview)
+  assert.ok(linearImages.preview.data.some((value, index) => index % 4 !== 3 && value > 0 && value < 255))
+  assert.deepEqual(UTIF.decode(Uint8Array.from(linearImages.tiff).buffer)[0].t258, [16, 16, 16, 16])
+  assert.deepEqual(Buffer.from(linearImages.original), raw)
+  await a.page.reload()
+  await a.page.waitForFunction(() => window.openlr)
+  assert.deepEqual(
+    (await a.run('state')).photos.find((photo) => photo.id === linearPhoto.id).edit,
+    linearPhoto.edit
+  )
+  await a.run('select', { id: linearPhoto.id })
+  const reloaded = await a.page.evaluate(async () => {
+    const bitmap = await createImageBitmap((await window.openlr.run('preview')).blob),
+      canvas = document.createElement('canvas')
+    canvas.width = bitmap.width
+    canvas.height = bitmap.height
+    const paint = canvas.getContext('2d', { willReadFrequently: true })
+    paint.drawImage(bitmap, 0, 0)
+    bitmap.close()
+    return {
+      width: canvas.width,
+      height: canvas.height,
+      data: Array.from(paint.getImageData(0, 0, canvas.width, canvas.height).data)
+    }
+  })
+  assert.deepEqual(reloaded, linearImages.preview)
   assert.deepEqual(a.errors, [])
   assert.deepEqual(b.errors, [])
   assert.ok(

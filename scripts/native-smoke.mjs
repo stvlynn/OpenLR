@@ -8,6 +8,7 @@ import { setTimeout as delay } from 'node:timers/promises'
 import { execute, parse, watch } from '../cli/openlr.mjs'
 import { makeDng } from '../tests/fixtures/dng.mjs'
 import { png as fixturePng } from '../tests/fixtures/merge-scene.js'
+import UTIF from '../web/vendor/codecs/utif.js'
 
 const executable = process.argv[2]
 if (!executable) throw Error('Pass the path to a built OpenLR executable')
@@ -65,6 +66,48 @@ try {
   assert.deepEqual(launch.failed, [])
   assert.equal(launch.added.length, 1)
   await call('view', '--mode', 'detail')
+  const processing = await call('processing', '--version', '2')
+  assert.equal(processing.photos.find((p) => p.id === launch.added[0]).edit.processVersion, 2)
+  const linearExport = await call(
+    'export',
+    '--format',
+    'image/tiff',
+    '--colorSpace',
+    'prophoto-rgb',
+    '--output',
+    path.join(root, 'linear.tif')
+  )
+  const linearBytes = await readFile(linearExport.path)
+  const linearBuffer = linearBytes.buffer.slice(
+    linearBytes.byteOffset,
+    linearBytes.byteOffset + linearBytes.byteLength
+  )
+  const linearTiff = UTIF.decode(linearBuffer)[0]
+  UTIF.decodeImage(linearBuffer, linearTiff)
+  assert.deepEqual(linearTiff.t258, [16, 16, 16, 16])
+  assert.ok(linearTiff.t34675.length > 128)
+  const samples = new DataView(linearTiff.data.buffer, linearTiff.data.byteOffset, linearTiff.data.byteLength)
+  let lowBits = 0
+  for (let i = 0; i < samples.byteLength; i += 8)
+    for (let c = 0; c < 3; c++) if (samples.getUint16(i + c * 2, true) % 257) lowBits++
+  assert.ok(lowBits > 100)
+  await call('edit', '--key', 'Exposure', '--value', '1')
+  const resetProcessing = await call('reset')
+  assert.deepEqual(resetProcessing.photos.find((p) => p.id === launch.added[0]).edit, { processVersion: 2 })
+  const resetExport = await call(
+    'export',
+    '--format',
+    'image/tiff',
+    '--colorSpace',
+    'prophoto-rgb',
+    '--output',
+    path.join(root, 'linear-reset.tif')
+  )
+  assert.deepEqual(await readFile(resetExport.path), linearBytes)
+  await call('processing', '--version', '1')
+  console.log(
+    'Native linear processing: actual RAW, TIFF16 low samples, profile, reset and version switching passed'
+  )
   await call('edit', '--key', 'Exposure', '--value', '.5')
   await call('edit', '--key', 'turn', '--value', '1')
   const { result: state, frame } = await call(

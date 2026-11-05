@@ -6,6 +6,9 @@ import { validatePoint } from './point-color.js'
 import { validateLocalTool } from './local-tools.js'
 import { validateArgs } from './agent-protocol.js'
 import { validateOptics } from './optics.js'
+import { processingVersion, validateProcessVersion } from './process-version.js'
+import { validateSoftMask } from './soft-mask.js'
+import { validateDepthSettings } from './depth-effects.js'
 
 const ns = {
   rdf: 'http://www.w3.org/1999/02/22-rdf-syntax-ns#',
@@ -35,6 +38,7 @@ const escapeXml = (s) =>
 export function exportXmp(p) {
   const edit = p.edit || {},
     attrs = { 'xmp:Rating': p.rating || 0, 'crs:HasSettings': 'True', 'olr:Flag': p.flag || '' }
+  processingVersion(edit)
   for (const [key, prop] of Object.entries(fields))
     if (edit[key] !== undefined) attrs['crs:' + prop] = edit[key]
   if ((edit.crop || edit.aspect) && p.width && p.height) {
@@ -72,7 +76,8 @@ function safeRecipe(recipe) {
   if (!recipe || typeof recipe !== 'object' || Array.isArray(recipe)) throw Error('Invalid XMP recipe')
   const result = {}
   for (const [key, value] of Object.entries(recipe)) {
-    if (key === 'redEyes') {
+    if (key === 'processVersion') result.processVersion = validateProcessVersion(value)
+    else if (key === 'redEyes') {
       if (!Array.isArray(value) || !value.every(validEye)) throw Error('Invalid red-eye regions')
       result.redEyes = value
     } else if (key === 'pointColors') result.pointColors = value.map(validatePoint)
@@ -89,12 +94,25 @@ function safeRecipe(recipe) {
     } else if (key === 'optics') {
       result.optics = validateOptics(value)
     } else if (key === 'localTools') {
+      if (!value || typeof value !== 'object' || Array.isArray(value)) throw Error('Invalid local tools')
+      if (Object.keys(value).some((key) => !['repairs', 'masks', 'depth', 'lensBlur'].includes(key)))
+        throw Error('Unknown local tools property')
       const tools = {}
       for (const [group, kind] of [
         ['repairs', 'repair'],
         ['masks', 'mask']
       ])
         tools[group] = (value[group] ?? []).map((item) => validateLocalTool(kind, item))
+      if (value.depth !== undefined) {
+        if (!value.depth || typeof value.depth !== 'object' || Array.isArray(value.depth))
+          throw Error('Invalid depth map')
+        tools.depth = { ...structuredClone(value.depth), raster: validateSoftMask(value.depth.raster) }
+      }
+      if (value.lensBlur !== undefined) {
+        if (!value.lensBlur || typeof value.lensBlur !== 'object' || Array.isArray(value.lensBlur))
+          throw Error('Invalid lens blur settings')
+        tools.lensBlur = validateDepthSettings(value.lensBlur)
+      }
       result.localTools = tools
     } else {
       validateArgs('edit', { key, value })

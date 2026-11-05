@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted for the processing kernel. Application recipe migration and default activation remain pending.
+Accepted. Explicit application opt-in is defined by [processing versions](008-processing-version.md); automatic default migration is not performed.
 
 ## Context
 
@@ -20,9 +20,9 @@ Extend the existing TIFF writer to accept actual Uint16 samples. The float outpu
 
 ## Consequences
 
-Kernel tests can now traverse genuine wide RAW samples, all ordinary edit stages and a real 16-bit output. This does not activate a new application process version. Existing catalogs and GUI/CLI exports remain on their documented legacy policy until versioning, source-cache ownership, neutral comparisons, reset, sidecars, presets, sync and XMP are integrated and accepted together.
+Kernel tests can now traverse genuine wide RAW samples, all ordinary edit stages and a real 16-bit output. Application integration uses explicit versioned opt-in, retaining existing recipes until the user switches processing. Source-cache ownership, neutral comparisons, reset and transport preserve that version; see the linked versioning decision.
 
-A 24 MP RGBAFloat32 buffer takes about 384 MB. The renderer owns a copy and some stages allocate further buffers. Tiling, large-image memory/latency measurement and native acceptance of the new path remain work; no arbitrary file-size gate is introduced.
+A 24 MP RGBAFloat32 buffer takes about 384 MB. The renderer owns a copy and some stages allocate further buffers. Tiling and large-image memory/latency measurement remain work; no arbitrary file-size gate is introduced.
 
 ## Alternatives considered
 

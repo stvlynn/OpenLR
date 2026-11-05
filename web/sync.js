@@ -1,7 +1,8 @@
 import { encodeBlob } from './transfer.js'
 import * as db from './catalog.js'
-import { decodePhoto } from './decode.js'
+import { decodeEditSource } from './edit-source.js'
 import { render, toBlob } from './render.js'
+import { processingVersion } from './process-version.js'
 const stores = ['photos', 'albums', 'presets']
 const stringify = (value) =>
   JSON.stringify(value, (_, v) =>
@@ -12,6 +13,15 @@ const stringify = (value) =>
 const empty = () => ({ version: 1, photos: {}, albums: {}, presets: {} })
 const map = (items) => Object.fromEntries(items.map((v) => [v.id, v]))
 const same = (a, b) => stringify(a) === stringify(b)
+function requiredManifestVersion(manifest) {
+  let version = 1
+  for (const store of ['photos', 'presets'])
+    for (const row of Object.values(manifest[store])) {
+      version = Math.max(version, processingVersion(row.edit))
+      for (const snapshot of row.versions ?? []) version = Math.max(version, processingVersion(snapshot.edit))
+    }
+  return version
+}
 export function portablePhoto({ reference, local, thumbnail, migration, ...photo }) {
   if (migration) {
     const { sourcePath, warnings, ...provenance } = migration
@@ -23,6 +33,18 @@ function combine(base, local, remote, path, conflicts, prefer) {
   if (same(local, remote) || same(base, remote)) return local
   if (same(base, local)) return remote
   const object = (value) => value !== null && typeof value === 'object' && !Array.isArray(value)
+  // A transition changes the meaning of every recipe value. Without a common
+  // baseline in that process version, even disjoint fields cannot safely merge.
+  if (
+    path === 'edit' &&
+    object(local) &&
+    object(remote) &&
+    (processingVersion(local) !== processingVersion(remote) ||
+      processingVersion(base) !== processingVersion(local))
+  ) {
+    conflicts.push(path)
+    return prefer === 'remote' ? remote : local
+  }
   if (object(local) && object(remote) && (base === undefined || object(base))) {
     const merged = {}
     for (const key of new Set([...Object.keys(base || {}), ...Object.keys(local), ...Object.keys(remote)])) {
@@ -61,6 +83,9 @@ export function reconcile(base, local, remote, prefer = '') {
       if (selected) next[store][id] = selected
     }
   }
+  // The envelope is the compatibility gate old clients already enforce. Keep
+  // it monotonic so an old client cannot resume writing a promoted library.
+  next.version = Math.max(base.version, local.version, remote.version, requiredManifestVersion(next))
   return { next, conflicts }
 }
 function bytes(value) {
@@ -127,12 +152,13 @@ export async function synchronize(
     local.photos = map(records.map(portablePhoto))
     local.albums = map(await db.all('albums'))
     local.presets = map(await db.all('presets'))
+    local.version = requiredManifestVersion(local)
     const manifestName = 'openlr-manifest.json',
       response = await call('Get', manifestName)
     const remote =
       response.status === 404 ? empty() : JSON.parse(new TextDecoder().decode(bytes(response.data)))
     if (
-      remote.version !== 1 ||
+      ![1, 2].includes(remote.version) ||
       stores.some((s) => !remote[s] || typeof remote[s] !== 'object' || Array.isArray(remote[s]))
     )
       throw Error('Unsupported remote catalog')
@@ -147,6 +173,8 @@ export async function synchronize(
         if (s === 'photos' && (row.reference || row.local || row.migration?.sourcePath))
           throw Error('Remote catalog must not contain device-local original paths')
       }
+    if (requiredManifestVersion(remote) > remote.version)
+      throw Error('Remote catalog process version requires a newer manifest')
     const { next, conflicts } = reconcile(
       response.status === 404 ? empty() : base,
       local,
@@ -201,7 +229,7 @@ export async function synchronize(
         }
       }
       if (!storedOriginal) downloads.set(assetId, { id: assetId, file, ...(radiance ? { radiance } : {}) })
-      const image = await decodePhoto(file)
+      const image = await decodeEditSource(file, p.edit)
       try {
         changes.push({
           photo: {

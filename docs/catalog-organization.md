@@ -8,7 +8,7 @@ Click a photo to make it the single selection and active editor image. Ctrl/Comm
 
 The outlined active photo supplies the editor, preview, export, copy source, and versions. Star rating, flag, keywords, album membership, Delete/Restore, and Paste edits apply to the selected group. A slider change changes only the active photo. Batch writes finish one photo at a time; a failure reports the completed count and stops, rather than pretending the whole group was updated.
 
-Copy edits takes an independent snapshot of the active recipe. Paste edits replaces selected photos' recipes and creates a per-photo session undo entry. Ctrl/Command-C and Ctrl/Command-V invoke these actions outside text fields. CLI `copy-edits` optionally accepts `keys` for selective copying. An absent copied key resets that key on the target; other target keys are preserved. Clipboard contents and undo history last only for the current GUI session.
+Copy edits takes an independent snapshot of the active recipe, including its process version. Paste edits replaces selected photos' recipes and creates a per-photo session undo entry. Ctrl/Command-C and Ctrl/Command-V invoke these actions outside text fields. CLI `copy-edits` optionally accepts `keys` for selective copying. An absent copied key resets that key on the target; other target keys, including the process version unless explicitly selected, are preserved. Clipboard contents and undo history last only for the current GUI session.
 
 ## Albums
 
@@ -20,11 +20,13 @@ Albums belong to the imported library. Local folders retain their own metadata a
 
 Open Versions in the detail editor and choose Save version. A version stores a name, ID, timestamp, and independent copy of the complete edit recipe on the active photo. Restore applies that recipe to the same photo and can be undone during the session. Rename and Delete version change the saved snapshot record; deleting a version leaves the current edits unchanged.
 
-Versions persist with imported catalog records or local sidecars and survive restart. Subsequent edits, copied settings, and resets do not mutate an existing version. This implementation provides named snapshots; it does not create automatic session versions or synchronize versions through a cloud service.
+Versions persist with imported catalog records or local sidecars and survive restart. Subsequent edits, copied settings, and resets do not mutate an existing version. This implementation provides named snapshots rather than automatic session versions. Saved snapshots also travel with explicit library sync.
 
 ## Filtering and ordering
 
-The current scope, text search, minimum star rating, flag, and edited status combine to determine visible photos. Search matches filenames and keywords. Edited status checks whether the recipe has a non-default stored value. Sort by added time, numeric-aware filename, or star rating, with ascending or descending direction. These view settings and selection are session state; photo metadata, recipes, named versions, albums, and memberships are persisted.
+The current scope, text search, minimum star rating, flag, and edited status combine to determine visible photos. Search matches filenames and keywords. Edited status checks whether the recipe has a non-default stored value, ignoring `processVersion` metadata. Sort by added time, numeric-aware filename, or star rating, with ascending or descending direction. These view settings and selection are session state; photo metadata, recipes, named versions, albums, and memberships are persisted.
+
+Named versions and full copied recipes preserve an explicit process version or its absence. Saved adjustment presets retain an explicit version when present; existing and built-in presets without one remain legacy recipes and are not rewritten merely by loading them. OpenLR XMP recipes preserve the version, depth raster and provenance, and lens-blur settings; importing validates the version, normalized raster, and blur settings with the same domain validators used by editing. An absent version means legacy processing; unsupported versions are rejected.
 
 ```powershell
 node cli/openlr.mjs schema select-many
@@ -40,3 +42,5 @@ node cli/openlr.mjs paste-edits
 `state` returns `selected` (active ID), `selection` (group IDs), `filters`, `sortDirection`, clipboard metadata, and each visible photo's saved versions. Read version and album IDs from it before applying ID-based commands. The CLI reads its schema from the same command catalog as the GUI agent.
 
 `tests/organization.test.js` verifies real browser UI selection, batch metadata, album rename/delete, version restore, copied settings and undo, filters/sorting, restart persistence, and original-byte preservation. Native local-folder and sidecar checks belong to the native integration suite; browser testing alone does not establish native behavior.
+
+`node --test tests/process-version-transport.test.js` checks neutral filtering, independent copied/saved recipes, real browser XMP round trips with depth settings, and IndexedDB preset reloads while preserving legacy records.

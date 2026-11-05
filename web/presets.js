@@ -1,5 +1,6 @@
 import { all, save, transaction } from './catalog.js'
 import { controls } from './adjustments.js'
+import { processingVersion } from './process-version.js'
 const adjustments = Object.assign({}, ...Object.values(controls))
 const builtIn = [
   { id: 'mono', name: 'Monochrome', edit: { Saturation: -100, Contrast: 9 } },
@@ -13,7 +14,9 @@ export class Presets {
   }
   async create(name, recipe) {
     if (!name?.trim()) throw Error('Enter a preset name')
+    processingVersion(recipe)
     const edit = Object.fromEntries(Object.entries(recipe).filter(([key]) => Object.hasOwn(adjustments, key)))
+    if (Object.hasOwn(recipe, 'processVersion')) edit.processVersion = recipe.processVersion
     const preset = { id: crypto.randomUUID(), name: name.trim(), edit }
     await save('presets', preset)
     this.items.push(preset)
@@ -22,6 +25,7 @@ export class Presets {
   get(id) {
     const preset = this.items.find((p) => p.id === id)
     if (!preset) throw Error('Preset not found')
+    processingVersion(preset.edit)
     return preset
   }
   async remove(id) {

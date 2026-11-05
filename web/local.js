@@ -1,6 +1,7 @@
-import { decodePhoto } from './decode.js'
+import { decodeEditSource } from './edit-source.js'
 import { render, toBlob } from './render.js'
 import { whenVisible } from './thumbnail-visibility.js'
+import { processingVersion } from './process-version.js'
 
 const messages = {
   desktop: 'Local folders require the desktop app.',
@@ -24,6 +25,10 @@ const observers = new Set()
 const call = (name, ...args) => {
   if (!globalThis.mygo?.call) throw Error(messages.desktop)
   return globalThis.mygo.call('Local.' + name, ...args)
+}
+function validateVersions(recipe) {
+  processingVersion(recipe.edit || {})
+  for (const version of recipe.versions || []) processingVersion(version.edit || {})
 }
 export const state = () =>
   folder
@@ -57,8 +62,14 @@ export async function open(root = '', relative = '', recursive = folder?.recursi
   roots = await call('Folders')
   const warnings = []
   const photos = next.photos.map((entry) => {
-    if (entry.error) warnings.push({ name: entry.name, error: entry.error })
     const recipe = entry.recipe || {}
+    let sidecarError = entry.error || ''
+    try {
+      validateVersions(recipe)
+    } catch (error) {
+      sidecarError ||= error.message
+    }
+    if (sidecarError) warnings.push({ name: entry.name, error: sidecarError })
     return {
       ...recipe,
       id: 'local:' + next.root.id + ':' + entry.relative,
@@ -78,7 +89,8 @@ export async function open(root = '', relative = '', recursive = folder?.recursi
         relative: entry.relative,
         size: entry.size,
         modified: entry.modified,
-        sidecarError: entry.error || ''
+        sidecarPresent: entry.sidecarPresent,
+        sidecarError
       }
     }
   })
@@ -100,12 +112,19 @@ export async function save(photo) {
   if (photo.local.sidecarError)
     throw Error(photo.local.sidecarError + '; repair or remove that sidecar before saving.')
   const { thumbnail, local, id, name, width, height, added, ...recipe } = photo
+  validateVersions(recipe)
   await call('SaveRecipe', local.root, local.relative, JSON.stringify(recipe))
+  local.sidecarPresent = true
 }
 
 // Decode only thumbnails that enter the viewport. Originals remain on disk.
 export function observeThumbnail(photo, img, onReady) {
   if (!photo.local || photo.thumbnail !== placeholder) return
+  if (photo.local.sidecarError) {
+    img.alt = 'Cannot preview ' + photo.name
+    img.title = photo.local.sidecarError
+    return
+  }
   const revision = generation
   const load = () => {
     thumbnailQueue = thumbnailQueue
@@ -114,7 +133,7 @@ export function observeThumbnail(photo, img, onReady) {
         if (revision !== generation || !img.isConnected) return
         let image
         try {
-          image = await decodePhoto((await original(photo)).file)
+          image = await decodeEditSource((await original(photo)).file, photo.edit)
           if (revision !== generation) return
           photo.width = image.width
           photo.height = image.height

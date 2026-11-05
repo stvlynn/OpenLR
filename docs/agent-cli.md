@@ -22,6 +22,8 @@ The shared queue validates command arguments before executing an action or recor
 
 ## Arguments and output
 
+`processing --version 2` selects Linear processing for the active still photo; `--version 1` selects Original processing. Optional `--photoId` guards the intended selection. Both the detail selector and CLI use this command. `state` includes the stored `edit.processVersion` (absence means 1). Switching is undoable; reset and neutral comparison preserve the chosen version. Linear `export --format image/tiff` writes genuine 16-bit target-space samples, while PNG/JPEG/AVIF/JPEG XL use target-space 8-bit output. See [processing contracts and limits](linear-working-frames.md).
+
 Both desktop commands and CLI-only commands such as `watch` appear in CLI search. Use `schema watch` for its invocation and output format. After the import path delimiter (`--`), even `--help` is a literal filename.
 
 Use named options, or supply a JSON object with `--args` (`--body` is an alias). Import also accepts positional local paths or repeated `--file`. `--` marks the start of literal import paths. String arguments, including empty strings, can be provided through JSON when shell quoting is awkward.

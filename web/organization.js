@@ -1,4 +1,6 @@
 // Catalog rules shared by the GUI dispatcher; no DOM or persistence dependencies.
+import { processingVersion } from './process-version.js'
+
 export class Organization {
   selection = new Set()
   explicit = false
@@ -13,8 +15,9 @@ export class Organization {
       photo.rating >= rating &&
       (flag === 'any' || photo.flag === (flag === 'unflagged' ? '' : flag)) &&
       (edited === 'any' ||
-        Object.values(photo.edit).some(
-          (value) => value !== 0 && value !== false && value !== '' && value !== null
+        Object.entries(photo.edit).some(
+          ([key, value]) =>
+            key !== 'processVersion' && value !== 0 && value !== false && value !== '' && value !== null
         ) ===
           (edited === 'yes'))
     )
@@ -88,18 +91,21 @@ export class Organization {
   copy(photo, keys) {
     if (keys !== undefined && (!Array.isArray(keys) || keys.some((key) => typeof key !== 'string')))
       throw new Error('Edit keys must be an array of names')
+    processingVersion(photo.edit)
     this.clipboard = { source: photo.id, edit: structuredClone(photo.edit), keys: keys ?? null }
     return { source: photo.id, keys: this.clipboard.keys, copied: true }
   }
   pasted(photo) {
     if (!this.clipboard) throw new Error('Copy edits from a photo first')
     const { edit, keys } = this.clipboard
+    processingVersion(edit)
     if (keys === null) return structuredClone(edit)
     const result = structuredClone(photo.edit)
     for (const key of keys) {
       if (Object.hasOwn(edit, key)) result[key] = structuredClone(edit[key])
       else delete result[key]
     }
+    processingVersion(result)
     return result
   }
 }
@@ -107,11 +113,13 @@ export class Organization {
 export function namedVersion(photo, name) {
   name = String(name ?? '').trim()
   if (!name) throw new Error('Enter a version name')
+  processingVersion(photo.edit)
   return { id: crypto.randomUUID(), name, created: Date.now(), edit: structuredClone(photo.edit) }
 }
 
 export function findVersion(photo, id) {
   const version = photo.versions?.find((v) => v.id === id)
   if (!version) throw new Error('Version not found on the selected photo')
+  processingVersion(version.edit)
   return version
 }

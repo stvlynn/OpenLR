@@ -1,8 +1,16 @@
 import { importBatch } from './import-library.js'
 import { validateArgs } from './agent-protocol.js'
 import { decodeFile } from './transfer.js'
+import { decodeEditSource } from './edit-source.js'
+import {
+  processingVersion,
+  neutralRecipe,
+  validateProcessVersion,
+  PROCESS_MESSAGES
+} from './process-version.js'
+import { workingFrame } from './working-frames.js'
 import { isVideo, openVideo, clipRange, exportVideo } from './video.js'
-import { decodePhoto, PHOTO_ACCEPT, RAW_PREVIEW_VERSION, isRawPhoto } from './decode.js'
+import { PHOTO_ACCEPT, RAW_PREVIEW_VERSION, isRawPhoto } from './decode.js'
 import { whenVisible } from './thumbnail-visibility.js'
 import { Presets } from './presets.js'
 import { LibraryHistory } from './library-history.js'
@@ -11,7 +19,7 @@ import { displayedPhotos, findStacks, smartMatch, stackMenu } from './stacks.js'
 import { exportXmp, readXmp, exportPackage } from './xmp.js'
 import { mountSync, synchronize } from './sync.js'
 import { metadata, describe } from './metadata.js'
-import { readExportOptions, applyWatermark } from './export-options.js'
+import { readExportOptions, applyWatermark, applyFrameWatermark } from './export-options.js'
 import { COLOR_SPACES } from './color-spaces.js'
 import { exportColorSpaces, validateExportColorSpace, EXPORT_COLOR_MESSAGES } from './export-color.js'
 import * as db from './catalog.js'
@@ -23,9 +31,9 @@ import { geometry, validCrop } from './geometry.js'
 import { CropSurface } from './crop-surface.js'
 import { CROP_GUIDES, CROP_GUIDE_MESSAGES } from './crop-guides.js'
 import { drawHistogram, histogram, autoExposure } from './histogram.js'
-import { controls, render, toBlob } from './render.js'
+import { controls, render, renderFrame, toBlob } from './render.js'
 import { saveExport } from './desktop.js'
-import { encodePhoto } from './encode.js'
+import { encodePhoto, encodeFrame } from './encode.js'
 import { getImageWorkerDiagnostics } from './image-worker.js'
 import { EXPORT_FORMATS, EXPORT_TYPES, exportFilename } from './formats.js'
 import { Organization, namedVersion, findVersion } from './organization.js'
@@ -72,6 +80,7 @@ let compare = false,
   cropping = false,
   bitmap = null,
   bitmapId = '',
+  bitmapVersion = 1,
   queue = Promise.resolve()
 const urls = new Map(),
   undo = [],
@@ -153,12 +162,19 @@ function visible() {
     openStacks
   )
 }
-async function source(id) {
-  if (bitmapId !== id) {
+async function source(id, recipe = photos.find((photo) => photo.id === id)?.edit ?? {}) {
+  const selectedPhoto = photos.find((photo) => photo.id === id)
+  if (selectedPhoto?.local?.sidecarError) throw new Error(selectedPhoto.local.sidecarError)
+  const version = processingVersion(recipe)
+  if (bitmapId !== id || bitmapVersion !== version) {
     const data = await original(id)
     const photo = photos.find((p) => p.id === id)
     const media = isVideo(data.file) ? await openVideo(data.file) : null
-    const next = media ? media.video : await decodePhoto(data.file)
+    if (media && version === 2) {
+      media.close()
+      throw new Error(PROCESS_MESSAGES.video)
+    }
+    const next = media ? media.video : await decodeEditSource(data.file, recipe)
     if (media) {
       photo.duration = media.duration
       await media.seek(clipRange(photo.edit.trim, media.duration).start)
@@ -176,6 +192,7 @@ async function source(id) {
     bitmap?.close?.()
     bitmap = next
     bitmapId = id
+    bitmapVersion = version
   }
   return bitmap
 }
@@ -255,7 +272,7 @@ function refreshRawThumbnail(photo, img) {
             if (!photos.includes(photo)) return
             let image
             try {
-              image = await decodePhoto((await original(photo.id)).file)
+              image = await decodeEditSource((await original(photo.id)).file, photo.edit)
               const thumbnail = await toBlob(render(image, photo.edit, 240))
               // Replaced rows represent newer edits or another library; never overwrite them.
               if (!photos.includes(photo)) return
@@ -330,7 +347,11 @@ function syncTiles(container, items) {
   }
 }
 function paintStage(image, edit) {
-  const recipe = cropping ? { ...edit, crop: null, aspect: '', turn: 0, flip: false } : compare ? {} : edit
+  const recipe = cropping
+    ? { ...edit, crop: null, aspect: '', turn: 0, flip: false }
+    : compare
+      ? neutralRecipe(edit)
+      : edit
   const stage = $('stage'),
     shape = geometry(image, recipe)
   const w = shape.turn % 2 ? shape.height : shape.width,
@@ -339,7 +360,7 @@ function paintStage(image, edit) {
   const edge = zoom ? Infinity : Math.max(1, Math.round(Math.max(w, h) * fit))
   const preview = render(image, recipe, edge)
   stage.classList.toggle('pair', pair)
-  if (pair) stage.replaceChildren(render(image, {}, edge), preview)
+  if (pair) stage.replaceChildren(render(image, neutralRecipe(edit), edge), preview)
   else stage.replaceChildren(preview)
   if (cropping) cropSurface.mount(preview, image, edit, selected)
   else cropSurface.reset()
@@ -412,6 +433,8 @@ async function draw() {
     .forEach((btn) => btn.setAttribute('aria-pressed', btn.dataset.scope === scope))
   $('filename').textContent = p?.name || ''
   $('new-album').disabled = Boolean(local.state())
+  $('processing-version').value = String(processingVersion(p?.edit))
+  $('processing-version').disabled = !p || Boolean(p.duration)
   presets.render($('preset-list'))
   $('preset-delete').disabled = presets.builtIn($('preset-list').value)
   const current = snapshot()
@@ -559,7 +582,7 @@ export { commands } from './agent-protocol.js'
 async function preparePhoto(p, changes) {
   const next = { ...p, ...changes }
   if (changes.edit) {
-    next.thumbnail = await toBlob(render(await source(p.id), changes.edit, 240))
+    next.thumbnail = await toBlob(render(await source(p.id, changes.edit), changes.edit, 240))
     next.rawPreviewVersion = RAW_PREVIEW_VERSION
   }
   return next
@@ -1525,9 +1548,19 @@ async function execute(command, args) {
           findVersion(p, args.id)
           await replace(p, { versions: p.versions.filter((v) => v.id !== args.id) })
           break
+        case 'processing': {
+          if (args.photoId !== undefined && args.photoId !== p.id) throw Error('The selected photo changed')
+          const version = validateProcessVersion(args.version)
+          if (version === processingVersion(p.edit)) break
+          await replace(p, { edit: { ...p.edit, processVersion: version } })
+          undo.push({ id: p.id, edit: p.edit })
+          redo.length = 0
+          compare = false
+          break
+        }
         case 'edit':
         case 'reset': {
-          let edit = {}
+          let edit = neutralRecipe(p.edit)
           if (command === 'edit') {
             const { key, value } = args
             if (Object.hasOwn(groups, key)) number(value, ...groups[key])
@@ -1618,7 +1651,11 @@ async function execute(command, args) {
           result = await presets.create(args.name, p.edit)
           break
         case 'preset-apply': {
-          await replace(p, { edit: { ...p.edit, ...presets.get(args.id).edit } })
+          const preset = presets.get(args.id).edit
+          const edit = { ...p.edit, ...preset }
+          if (p.edit.processVersion !== undefined || preset.processVersion !== undefined)
+            edit.processVersion = processingVersion(preset)
+          await replace(p, { edit })
           undo.push({ id: p.id, edit: p.edit })
           redo.length = 0
           compare = false
@@ -1627,7 +1664,7 @@ async function execute(command, args) {
         case 'histogram':
           return histogram(render(await source(p.id), p.edit, 400))
         case 'auto-tone': {
-          const exposure = autoExposure(histogram(render(await source(p.id), {}, 400)))
+          const exposure = autoExposure(histogram(render(await source(p.id), neutralRecipe(p.edit), 400)))
           await replace(p, { edit: { ...p.edit, Exposure: exposure } })
           undo.push({ id: p.id, edit: p.edit })
           redo.length = 0
@@ -1717,7 +1754,17 @@ async function execute(command, args) {
                 ? 1280
                 : Infinity
               : number(args.maxSize, 1, Number.MAX_SAFE_INTEGER)
-          const canvas = render(await source(p.id), command === 'preview' && compare ? {} : p.edit, max)
+          const image = await source(p.id)
+          const recipe = command === 'preview' && compare ? neutralRecipe(p.edit) : p.edit
+          if (processingVersion(recipe) === 2) {
+            const frame = renderFrame(workingFrame(image), recipe, max)
+            if (command === 'export') applyFrameWatermark(frame, args.watermark)
+            return {
+              blob: await encodeFrame(frame, format, number(args.quality ?? 0.92, 0, 1), colorSpace),
+              filename: exportFilename(p.name, format)
+            }
+          }
+          const canvas = render(image, recipe, max)
           if (command === 'export') applyWatermark(canvas, args.watermark)
           return {
             blob: await encodePhoto(canvas, format, number(args.quality ?? 0.92, 0, 1), colorSpace),
@@ -1779,6 +1826,18 @@ function notice(text) {
 function act(cmd, args) {
   return run(cmd, args).catch((e) => notice(e.message))
 }
+const processingLabel = document.createElement('label')
+processingLabel.textContent = PROCESS_MESSAGES.label
+const processingSelect = document.createElement('select')
+processingSelect.id = 'processing-version'
+processingSelect.setAttribute('aria-label', PROCESS_MESSAGES.label)
+processingSelect.append(option('1', PROCESS_MESSAGES.legacy), option('2', PROCESS_MESSAGES.linear))
+processingSelect.onchange = async () => {
+  await act('processing', { version: Number(processingSelect.value), photoId: selected })
+  processingSelect.value = String(processingVersion(active()?.edit))
+}
+processingLabel.append(processingSelect)
+$('reset').before(processingLabel)
 const localToolContainer = document.createElement('div')
 $('reset').before(localToolContainer)
 localToolsUI = createLocalToolsUI({ container: localToolContainer, run, getActive: active, notify: notice })
@@ -1807,12 +1866,20 @@ for (const [group, items] of Object.entries(controls)) {
     input.oninput = () => {
       output.value = input.value
       const id = selected,
+        recipe = active()?.edit,
         value = Number(input.value)
       cancelAnimationFrame(sliderFrame)
       sliderFrame = requestAnimationFrame(() => {
-        if (bitmap && bitmapId === id && selected === id && mode === 'detail') {
+        if (
+          bitmap &&
+          bitmapId === id &&
+          selected === id &&
+          mode === 'detail' &&
+          active()?.edit === recipe &&
+          bitmapVersion === processingVersion(recipe)
+        ) {
           compare = false
-          paintStage(bitmap, { ...active().edit, [key]: value })
+          paintStage(bitmap, { ...recipe, [key]: value })
         }
       })
     }

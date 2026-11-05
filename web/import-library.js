@@ -1,5 +1,7 @@
 import { addPhoto } from './catalog.js'
-import { decodePhoto, RAW_PREVIEW_VERSION } from './decode.js'
+import { RAW_PREVIEW_VERSION } from './decode.js'
+import { decodeEditSource } from './edit-source.js'
+import { processingVersion, PROCESS_MESSAGES } from './process-version.js'
 import { isVideo, poster } from './video.js'
 import { metadata } from './metadata.js'
 import { readXmp } from './xmp.js'
@@ -51,8 +53,9 @@ export async function importBatch(files, { photos, album, readOriginal, update, 
         if (Object.keys(settings).length) await update(duplicate, settings)
         existing.push(duplicate.id)
       } else {
+        if (isVideo(file) && processingVersion(settings.edit) === 2) throw Error(PROCESS_MESSAGES.video)
         const media = isVideo(file) ? await poster(file) : null
-        image = media?.bitmap ?? (await decodePhoto(file))
+        image = media?.bitmap ?? (await decodeEditSource(file, settings.edit))
         const p = {
           id: crypto.randomUUID(),
           name: file.name,

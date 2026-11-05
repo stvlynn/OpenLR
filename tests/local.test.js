@@ -97,3 +97,95 @@ test('local adapter browses references, preserves edits on reopen, and reuses im
   assert.equal((await run('state')).local, null)
   assert.equal((await run('state')).photos.length, 0)
 })
+
+test('local adapter preserves sidecar presence and processing versions and refuses unsupported snapshots', async (t) => {
+  const server = await serveWorkspace()
+  t.after(server.close)
+  const browser = await chromium.launch({ channel: process.env.CHROME_CHANNEL || 'chrome', headless: true })
+  t.after(() => browser.close())
+  const page = await browser.newPage()
+  await page.goto(server.url)
+  const result = await page.evaluate(async () => {
+    const adapter = await import('./local.js')
+    const root = { id: 'fixture-root', name: 'Fixtures', path: 'test-fixtures' }
+    const entries = [
+      { name: 'new.png', sidecarPresent: false, recipe: {} },
+      { name: 'historical.png', sidecarPresent: true, recipe: {} },
+      {
+        name: 'linear.png',
+        sidecarPresent: true,
+        recipe: {
+          edit: { processVersion: 2, Exposure: 0.25 },
+          rating: 4,
+          keywords: 'fixture',
+          versions: [
+            { id: 'old', edit: {} },
+            { id: 'linear', edit: { processVersion: 2 } }
+          ]
+        }
+      },
+      { name: 'future.png', sidecarPresent: true, recipe: { edit: { processVersion: 3 } } },
+      { name: 'snapshot.png', sidecarPresent: true, recipe: { versions: [{ edit: { processVersion: 99 } }] } }
+    ]
+    const writes = []
+    globalThis.mygo = {
+      call: async (method, ...args) => {
+        if (method === 'Local.Folders') return [root]
+        if (method === 'Local.OpenFolder')
+          return {
+            root,
+            relative: '.',
+            directories: [],
+            photos: entries.map((entry) => ({ ...entry, relative: entry.name, modified: 1, size: 10 }))
+          }
+        if (method === 'Local.SaveRecipe') {
+          writes.push(JSON.parse(args[2]))
+          return
+        }
+        throw Error('Unexpected call ' + method)
+      }
+    }
+    const opened = await adapter.open(root.id)
+    const edits = structuredClone(opened.photos.slice(0, 3).map((photo) => photo.edit))
+    await adapter.save(opened.photos[2])
+    const errors = []
+    for (const photo of opened.photos.slice(3)) {
+      try {
+        await adapter.save(photo)
+      } catch (error) {
+        errors.push(error.message)
+      }
+    }
+    const img = document.createElement('img')
+    adapter.observeThumbnail(opened.photos[3], img, () => {
+      throw Error('Unsupported thumbnail was rendered')
+    })
+    opened.photos[0].edit = { processVersion: 7 }
+    try {
+      await adapter.save(opened.photos[0])
+    } catch (error) {
+      errors.push(error.message)
+    }
+    return {
+      presence: opened.photos.map((photo) => photo.local.sidecarPresent),
+      edits,
+      writes,
+      errors,
+      warnings: opened.warnings,
+      thumbnailError: img.title
+    }
+  })
+  assert.deepEqual(result.presence, [false, true, true, true, true])
+  assert.deepEqual(result.edits, [{}, {}, { processVersion: 2, Exposure: 0.25 }])
+  assert.equal(result.writes.length, 1)
+  assert.equal(result.writes[0].rating, 4)
+  assert.equal(result.writes[0].keywords, 'fixture')
+  assert.deepEqual(result.writes[0].versions, [
+    { id: 'old', edit: {} },
+    { id: 'linear', edit: { processVersion: 2 } }
+  ])
+  assert.equal(result.errors.length, 3)
+  assert.ok(result.errors.every((message) => /processing version/.test(message)))
+  assert.equal(result.warnings.length, 2)
+  assert.match(result.thumbnailError, /processing version/)
+})

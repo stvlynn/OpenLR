@@ -775,7 +775,15 @@ export const definitions = {
     },
     ['grip', 'x1', 'y1', 'x2', 'y2']
   ),
-  reset: entry('Reset all selected-photo edits'),
+  processing: entry(
+    'Choose the selected still photo processing version',
+    {
+      version: { type: 'integer', enum: [1, 2], description: '1: original processing, 2: linear processing' },
+      photoId: string('Optional selected-photo guard')
+    },
+    ['version']
+  ),
+  reset: entry('Reset all selected-photo edits, retaining its processing version'),
   undo: entry('Undo an edit on the selected photo in the current GUI session'),
   redo: entry('Redo an edit on the selected photo in the current GUI session'),
   compare: entry('Toggle the original image comparison in detail view'),
