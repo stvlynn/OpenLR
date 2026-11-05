@@ -104,3 +104,9 @@ Windows 与 WSL Ubuntu 24.04／WebKitGTK 2.52.6 的桌面构建及各七组原�
 
 Windows／Node 24.9／Chrome 155 的 `OPENLR_TEST_CMS=1 OPENLR_TEST_METADATA=1 npm test` 通过 **266/266、零跳过**。新增三项真实浏览器测试覆盖两种处理版本、所有四分之一旋转与翻转／裁剪／镜头映射、嵌套组件更新和撤销／重载、明确草稿、无效目标及原件保持。单像素源矩形与完整源画布的六次消融值完全一致，并与加曝光的成片取样明确不同。初次专项测试未打开 Masks 面板，修正测试操作后完整回归通过；生产行为未为测试放宽。来源及可复现实验见[范围取样研究](../research/range-color-sampling.md)。
 Windows 与 WSL Ubuntu 24.04／WebKitGTK 2.52.6 的最终桌面构建及各七组原生套件全部通过。真实 CLI 检查两种处理版本的原图／成片颜色差异、裁剪／比较退出、实际 PNG 工作区截图、选中范围更新／撤销、过期照片拒绝及原件逐字节保持。Linux 在 Xvfb／D-Bus 下运行真实 GTK/WebKit；不代表物理显示器、GPU 或 OS 文件选择器验收。最新 macOS 结论仍须对应实际远程运行。前一提交 `bf4ce28` 的远程任务 [42015919034](https://github.com/stvlynn/OpenLR/actions/runs/42015919034) 因账户付款／限额未启动任何作业步骤。
+
+2026-11-05 点颜色选择补充：Point color 下拉框与 `point-select` 共用应用持有的照片关联选择，完整／摘要状态公开 `selectedPoint`。选择不写配方、不占用撤销记录、不重新计算图像；添加在保存成功后选中新样本，删除／重置／撤销与配方替换保留有效选择或回到首项，切换照片独立重建选择，复制配方的相同样本 ID 不会跨照片携带选点。更新／删除仍明确指定 ID，吸管仍新增样本。真实浏览器新旧消融确认旧版选择不可观测、新版命令与下拉框双向对应，两者配方均不变。来源与实验见[点颜色研究](../research/point-color-selection.md)。
+
+验收期间另行复现了拉直工具吞掉后续颜色取样点击的真实错误，包含尚未选参考点与已点击第一参考点两种情况。新增指针回归先在旧代码三秒内持续失败，加入既有工具退出清单后通过；未新增几何或取样实现。定向 `node --test tests/point-selection.test.js tests/point-color.test.js tests/optics-workflow.test.js` 为 **5/5、零跳过**。实际测试浏览器版本为 Chrome **156.0.8078.80**，此前验收历史中的浏览器版本不用于推断本轮环境。
+
+修复后的最终 Windows／Node 24.9／Chrome 156 全量 `OPENLR_TEST_CMS=1 OPENLR_TEST_METADATA=1 npm test` 为 **269/269、零跳过**。Windows WebView2 与 WSL Ubuntu 24.04／WebKitGTK 2.52.6 均重新构建，随后各七组原生 GUI／CLI 套件全部通过；新增原生检查包含完整／摘要选点、实际 PNG 窗口截图、不改配方与撤销顺序、删除／重置／换照片、无效与过期目标拒绝、原件逐字节一致。命令 schema、离线 dry-run 和代码格式检查通过。Linux 为 Xvfb／D-Bus 的真实原生 IPC 验收，不代表物理 GPU／显示器或 OS 文件选择器。macOS 的本轮结果仍须实际远程运行；前一提交 `41fba14` 的 [42018284168](https://github.com/stvlynn/OpenLR/actions/runs/42018284168) 因账户付款／限额未启动任何作业步骤，未计为通过。

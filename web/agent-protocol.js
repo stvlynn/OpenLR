@@ -260,6 +260,11 @@ export const definitions = {
     },
     ['x', 'y']
   ),
+  'point-select': entry(
+    'Select the point color sample shown in the adjustment panel',
+    { id: string('Sample ID'), photoId: string('Optional current-photo guard') },
+    ['id']
+  ),
   'point-add': entry('Add a point color sample', { color: string('sRGB hex color') }, ['color']),
   'point-update': entry(
     'Adjust pixels near a sampled color',

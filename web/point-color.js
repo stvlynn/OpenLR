@@ -76,7 +76,9 @@ export function pointPanel(run) {
   remove.onclick = () => run('point-remove', { id: select.value })
   panel.append(remove)
   document.getElementById('adjustments').after(panel)
-  let points = []
+  let points = [],
+    selectedId = '',
+    photoId = ''
   function update() {
     const p = points.find((p) => p.id === select.value)
     for (const [key, { input, output }] of Object.entries(inputs)) {
@@ -86,12 +88,17 @@ export function pointPanel(run) {
     }
     remove.disabled = !p
   }
-  select.onchange = update
-  return (values = [], latest) => {
-    const last = latest || select.value
+  select.onchange = async () => {
+    await run('point-select', { id: select.value, photoId })
+    select.value = selectedId
+    update()
+  }
+  return (values = [], selection = '', asset = '') => {
     points = values
+    selectedId = selection
+    photoId = asset
     select.replaceChildren(...points.map((p) => new Option(p.color, p.id)))
-    if (points.some((p) => p.id === last)) select.value = last
+    select.value = selectedId
     update()
   }
 }

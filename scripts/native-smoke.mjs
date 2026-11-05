@@ -891,6 +891,63 @@ try {
   console.log(
     'Native range color: original versus edited sampling in both processing versions, crop/compare activation, actual capture, selected mask update/undo, stale-photo guard and unchanged original bytes passed.'
   )
+  const pointFirst = (await call('point-add', '--color', '#ff0000')).id,
+    pointSecond = (await call('point-add', '--color', '#0000ff')).id
+  await call('point-update', '--id', pointSecond, '--hue', '45')
+  assert.equal((await call('state')).selectedPoint, pointSecond)
+  const pointBefore = (await call('state')).photos.find((photo) => photo.id === rangeAsset).edit
+  const pointSelected = await call(
+    'point-select',
+    '--id',
+    pointFirst,
+    '--photoId',
+    rangeAsset,
+    '--capture',
+    path.join(root, 'point-selection.png')
+  )
+  assert.equal(pointSelected.result.id, pointFirst)
+  assert.equal(pointSelected.selected, rangeAsset)
+  assert.equal((await readFile(pointSelected.frame.path)).subarray(1, 4).toString(), 'PNG')
+  assert.equal((await call('state')).selectedPoint, pointFirst)
+  assert.equal((await call('state', '--summary', 'true')).selectedPoint, pointFirst)
+  assert.deepEqual((await call('state')).photos.find((photo) => photo.id === rangeAsset).edit, pointBefore)
+  await call('undo')
+  assert.equal(
+    (await call('state')).photos.find((photo) => photo.id === rangeAsset).edit.pointColors[1].hue,
+    0
+  )
+  assert.equal((await call('state')).selectedPoint, pointFirst)
+  await call('redo')
+  await assert.rejects(
+    () => call('point-select', '--id', pointSecond, '--photoId', 'stale-photo'),
+    /changed|selected/i
+  )
+  await assert.rejects(() => call('point-select', '--id', 'missing-point'), /sample|point|found/i)
+  assert.equal((await call('state')).selectedPoint, pointFirst)
+  await call('point-select', '--id', pointSecond)
+  await call('point-remove', '--id', pointSecond)
+  assert.equal((await call('state')).selectedPoint, pointFirst)
+  await call('undo')
+  await call('point-select', '--id', pointSecond)
+  await call('select', '--id', launch.added[0])
+  assert.equal((await call('state')).selectedPoint, '')
+  await call('select', '--id', rangeAsset)
+  assert.equal((await call('state')).selectedPoint, pointFirst)
+  await call('reset')
+  assert.equal((await call('state')).selectedPoint, '')
+  await call('undo')
+  assert.equal((await call('state')).selectedPoint, pointFirst)
+  const pointOriginal = await call(
+    'export',
+    '--format',
+    'original',
+    '--output',
+    path.join(root, 'point-original.png')
+  )
+  assert.deepEqual(await readFile(pointOriginal.path), rangeBytes)
+  console.log(
+    'Native point selection: shared full/summary identity, actual capture, unchanged recipe and undo history, removal/reset/photo reconciliation, stale-target rejection and original bytes passed.'
+  )
   const colors = [
     [180, 60, 40],
     [45, 160, 70],

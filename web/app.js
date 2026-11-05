@@ -140,7 +140,8 @@ let sampling = false,
   pair = false,
   inspector = true,
   clipping = false,
-  selectedPoint = ''
+  selectedPoint = '',
+  pointPhoto = ''
 let updatePoints = () => {}
 let playingMedia = null,
   frameTicket = 0,
@@ -411,6 +412,11 @@ async function draw() {
   if (!selected) mode = 'grid'
   const p = active(),
     detail = mode === 'detail'
+  const points = p?.edit.pointColors ?? []
+  if (pointPhoto !== (p?.id ?? '') || !points.some((point) => point.id === selectedPoint))
+    selectedPoint = points[0]?.id ?? ''
+  pointPhoto = p?.id ?? ''
+  updatePoints(points, selectedPoint, pointPhoto)
   if (!detail || bitmapId !== selected) {
     localToolsUI?.unmount()
     opticsUI?.unmount()
@@ -511,8 +517,6 @@ async function draw() {
   $('sample').setAttribute('aria-pressed', sampling === 'white')
   $('remove-mask').disabled = !p.edit.localTools?.masks?.length
   $('clip-indicator').setAttribute('aria-pressed', clipping)
-  updatePoints(p.edit.pointColors || [], selectedPoint)
-  selectedPoint = ''
   $('aspect').value = p.edit.aspect || ''
   $('crop-tool').textContent = cropping ? 'Done' : 'Crop area'
   updateCropGuideControls()
@@ -576,6 +580,7 @@ function snapshot() {
     localSelection: localToolsUI?.selection(),
     localTool: localToolsUI?.getMode() ?? 'off',
     rangeColor: localToolsUI?.rangeColor() ?? '#808080',
+    selectedPoint,
     film,
     zoom,
     albums,
@@ -690,6 +695,7 @@ async function execute(command, args, context = {}) {
       'local-tool',
       'crop-tool',
       'sample-tool',
+      'point-tool',
       'compare',
       'compare-pair',
       'select',
@@ -775,6 +781,7 @@ async function execute(command, args, context = {}) {
         localSelection: localToolsUI?.selection(),
         localTool: localToolsUI?.getMode() ?? 'off',
         rangeColor: localToolsUI?.rangeColor() ?? '#808080',
+        selectedPoint,
         photo: photo
           ? {
               id: photo.id,
@@ -1791,6 +1798,14 @@ async function execute(command, args, context = {}) {
           localToolsUI.setRangeColor(color)
           return { color }
         }
+        case 'point-select':
+          if (args.photoId !== undefined && args.photoId !== p.id) throw Error('The selected photo changed')
+          if (!p.edit.pointColors?.some((point) => point.id === args.id))
+            throw Error('Color sample not found')
+          selectedPoint = args.id
+          pointPhoto = p.id
+          updatePoints(p.edit.pointColors, selectedPoint, pointPhoto)
+          return { id: selectedPoint }
         case 'point-add':
         case 'point-update':
         case 'point-remove': {
@@ -1805,8 +1820,6 @@ async function execute(command, args, context = {}) {
               range: 15
             })
             points.push(point)
-            selectedPoint = point.id
-            sampling = false
             result = point
           } else {
             const index = points.findIndex((v) => v.id === args.id)
@@ -1815,6 +1828,11 @@ async function execute(command, args, context = {}) {
             else points[index] = validatePoint({ ...points[index], ...args })
           }
           await replace(p, { edit: { ...p.edit, pointColors: points } })
+          if (command === 'point-add') {
+            selectedPoint = result.id
+            pointPhoto = p.id
+            sampling = false
+          }
           rememberEdit(p)
           redo.length = 0
           break
