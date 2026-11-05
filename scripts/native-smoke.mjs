@@ -18,11 +18,14 @@ import { makeColorProfile, encodeSrgb } from '../web/color-spaces.js'
 import { readPng } from '../web/png.js'
 import { defaultOptions as avifOptions } from '../web/vendor/codecs/avif/meta.js'
 import { readExifTool } from '../tests/exiftool.mjs'
+import { inspectNativeStartup } from './native-startup-diagnostics.mjs'
 
 const executable = process.argv[2]
 if (!executable) throw Error('Pass the path to a built OpenLR executable')
 const root = await mkdtemp(path.join(tmpdir(), 'openlr-native-'))
 const session = path.join(root, 'agent.json')
+const startedAt = performance.now()
+let launchError, primaryError
 const host = spawn(path.resolve(executable), [], {
   env: {
     ...process.env,
@@ -35,7 +38,10 @@ const host = spawn(path.resolve(executable), [], {
   },
   stdio: 'inherit'
 })
-const exited = new Promise((resolve) => host.once('exit', (code, signal) => resolve({ code, signal })))
+host.once('error', (error) => {
+  launchError = error
+})
+const exited = new Promise((resolve) => host.once('close', (code, signal) => resolve({ code, signal })))
 const call = (...args) => execute(parse([...args, '--session', session]))
 function hasImageSignature(bytes, format) {
   if (format === 'image/png')
@@ -529,17 +535,31 @@ async function verifyWorkspaceDisclosures() {
 }
 
 try {
-  const end = Date.now() + 45000
-  for (;;) {
-    if (host.exitCode !== null || host.signalCode) throw Error('Host exited before agent connected')
+  let sessionAt, requestAt
+  try {
+    const end = Date.now() + 45000
+    for (;;) {
+      if (launchError) throw launchError
+      if (host.exitCode !== null || host.signalCode) throw Error('Host exited before agent connected')
+      try {
+        await access(session)
+        break
+      } catch {}
+      if (Date.now() > end) throw Error('No agent session after 45 seconds')
+      await delay(120)
+    }
+    sessionAt = performance.now()
+    requestAt = performance.now()
+    await call('state', '--summary', 'true', '--timeout', '30')
+  } catch (error) {
     try {
-      await access(session)
-      break
-    } catch {}
-    if (Date.now() > end) throw Error('No agent session after 45 seconds')
-    await delay(120)
+      const diagnostic = await inspectNativeStartup({ session, host, startedAt, sessionAt, requestAt })
+      console.error('Native startup diagnostics: ' + JSON.stringify(diagnostic))
+    } catch {
+      console.error('Native startup diagnostics unavailable')
+    }
+    throw error
   }
-  await call('state', '--summary', 'true', '--timeout', '30')
   await verifyPhotosPanel()
   const file = path.join(root, 'sensor.dng'),
     data = Buffer.from(makeDng())
@@ -2270,8 +2290,32 @@ try {
   console.log(
     'Native GUI/CLI passed RAW, editing, PNG preview, original bytes, live observation, workspace capture, person segmentation, TIFF export and WebDAV sync.'
   )
+} catch (error) {
+  primaryError = error
+  throw error
 } finally {
-  host.kill()
-  await Promise.race([exited, delay(3000)])
-  await rm(root, { recursive: true, force: true, maxRetries: 6, retryDelay: 200 })
+  const cleanupErrors = []
+  try {
+    host.kill()
+    await Promise.race([
+      exited,
+      delay(3000, undefined, { ref: false }).then(() => {
+        throw Error('Native host did not exit')
+      })
+    ])
+  } catch (error) {
+    cleanupErrors.push(error)
+  }
+  try {
+    assert.equal(path.dirname(path.resolve(root)), path.resolve(tmpdir()))
+    assert.ok(path.basename(root).startsWith('openlr-native-'))
+    await rm(root, { recursive: true, force: true, maxRetries: 6, retryDelay: 200 })
+  } catch (error) {
+    cleanupErrors.push(error)
+  }
+  if (cleanupErrors.length) {
+    if (primaryError)
+      console.error('Native cleanup failed: ' + cleanupErrors.map((error) => error.name).join(', '))
+    else throw new AggregateError(cleanupErrors, 'Native cleanup failed')
+  }
 }
