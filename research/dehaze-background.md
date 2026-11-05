@@ -74,3 +74,12 @@ The main thread must not retain an obsolete full-size temporary merely because a
 6. Measure total peak RSS, retained buffers, queue waiting time and warm/cold rendering on actual Windows WebView2 and Linux WebKitGTK. A browser heartbeat alone does not establish native support. macOS still requires its own actual execution.
 
 No production files were changed by this review. The current synchronous cold path remains a known responsiveness gap until these implementation and acceptance steps exist.
+
+
+## Implemented transport foundation
+
+The shared runner now accepts an optional AbortSignal with queued/pre-handshake/active cancellation, prompt caller rejection and serialized completion of a running asynchronous fallback. A thin exact dehaze worker and owned-frame client use the existing queue and analyzer. Actual Chrome tests establish exact maps and unchanged returned source samples, preserved separate originals, active cancellation/retry and startup fallback. A generated 2048×1536 worker analysis took about 823 ms while a 10 ms main-thread heartbeat fired 82 times in that run. This is bounded adapter evidence, not proof that the application preview is nonblocking.
+
+The preparation cache, UI request ownership and production caller wiring above remain unimplemented. The existing synchronous `render` path is unchanged by this foundation; do not relabel the previous 24MP interaction measurements as fixed. There is no new independent dehaze math or worker scheduler.
+
+The installed pinned Mediabunny source confirms asynchronous video-export processing is supported: `node_modules/mediabunny/src/conversion.ts` declares `process` as returning `MaybePromise` (line 279) and forwards it to the transform (line 1892); `src/media-source.ts` awaits a promised processed result (line 460). This removes an API uncertainty for future `exportVideo` integration, but does not implement frame capture, cancellation or playback ownership in OpenLR.
