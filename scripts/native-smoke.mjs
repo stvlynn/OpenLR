@@ -777,6 +777,31 @@ try {
     assert.deepEqual(full.photos.find((photo) => photo.id === full.selected).edit, beforeToolEdit)
   }
   await call('local-select', '--id', localSelection.id)
+  const straightenPhoto = (await call('state')).selected
+  await call('straighten-tool', '--axis', 'vertical', '--photoId', straightenPhoto)
+  assert.deepEqual((await call('state')).straightenTool, { axis: 'vertical', first: null })
+  assert.deepEqual((await call('state', '--summary', 'true')).straightenTool, {
+    axis: 'vertical',
+    first: null
+  })
+  await assert.rejects(
+    call('straighten-tool', '--axis', 'off', '--photoId', 'stale'),
+    /selected photo changed/
+  )
+  const canceledStraighten = await call(
+    'straighten-tool',
+    '--axis',
+    'off',
+    '--capture',
+    path.join(root, 'straighten-canceled.png')
+  )
+  assert.equal((await readFile(canceledStraighten.frame.path)).subarray(1, 4).toString(), 'PNG')
+  const afterStraighten = await call('state')
+  assert.deepEqual(afterStraighten.straightenTool, { axis: 'off', first: null })
+  assert.deepEqual(afterStraighten.photos.find((photo) => photo.id === straightenPhoto).edit, beforeToolEdit)
+  console.log(
+    'Native straighten session: guarded activation/cancellation, full/summary state, actual capture and unchanged recipe passed.'
+  )
   console.log(
     'Native local tools: shared activation exits crop/compare, full/summary tool identity, actual capture and unchanged recipe passed.'
   )

@@ -1,7 +1,7 @@
 import { OPTICS_CONTROLS, listLensProfiles } from './optics.js'
 import { viewToOriginal } from './local-tools-ui.js'
 
-export function mountOptics({ run, getActive, notify }) {
+export function mountOptics({ run, getActive, notify, onChange }) {
   const el = (tag, props = {}) => Object.assign(document.createElement(tag), props)
   document.head.append(el('link', { rel: 'stylesheet', href: new URL('./optics.css', import.meta.url).href }))
   const panel = el('details', { id: 'optics-panel' }),
@@ -120,10 +120,12 @@ export function mountOptics({ run, getActive, notify }) {
     }
   }
   reset.onclick = () => run('optics-reset', { photoId: getActive()?.id }).catch(showError)
-  guide.onclick = () => run('straighten-tool', { axis: axis.value }).catch(showError)
+  guide.onclick = () =>
+    run('straighten-tool', { axis: mode ? 'off' : axis.value, photoId: getActive()?.id }).catch(showError)
   function setMode(value) {
     mode = value
     first = null
+    guide.textContent = value ? 'Cancel straighten line' : 'Draw straighten line'
     status.textContent = value ? 'Click two points along a ' + value + ' reference line.' : ''
   }
   function sync() {
@@ -194,6 +196,7 @@ export function mountOptics({ run, getActive, notify }) {
       if (!first) {
         first = point
         status.textContent = 'First point set. Click the other end of the reference line.'
+        onChange?.()
         return
       }
       const start = first,
@@ -231,6 +234,7 @@ export function mountOptics({ run, getActive, notify }) {
       cleanup = () => {}
     },
     active: () => Boolean(mode),
+    snapshot: () => ({ axis: mode || 'off', first: first ? { ...first } : null }),
     deactivate: () => setMode(''),
     panel
   }

@@ -654,6 +654,7 @@ function snapshot() {
     cropping,
     cropDraft: cropDraft(),
     cropGuide: { ...cropSurface.guide },
+    straightenTool: opticsUI?.snapshot(),
     localSelection: localToolsUI?.selection(),
     localTool: localToolsUI?.getMode() ?? 'off',
     rangeColor: localToolsUI?.rangeColor() ?? '#808080',
@@ -869,6 +870,7 @@ async function execute(command, args, context = {}) {
         processing: processingState(),
         cropDraft: cropDraft(),
         cropGuide: { ...cropSurface.guide },
+        straightenTool: opticsUI?.snapshot(),
         localSelection: localToolsUI?.selection(),
         localTool: localToolsUI?.getMode() ?? 'off',
         rangeColor: localToolsUI?.rangeColor() ?? '#808080',
@@ -1055,6 +1057,11 @@ async function execute(command, args, context = {}) {
       return matchLensProfiles(p.metadata)
     }
     case 'straighten-tool': {
+      if (args.photoId !== undefined && args.photoId !== p?.id) throw Error('The selected photo changed')
+      if (args.axis === 'off') {
+        opticsUI.deactivate()
+        break
+      }
       if (!p || isVideo(p)) throw Error('Select a photo to straighten')
       mode = 'detail'
       inspector = true
@@ -2531,6 +2538,11 @@ $('export-dialog').onclose = async (e) => {
   }
 }
 document.onkeydown = (e) => {
+  if (e.key === 'Escape' && opticsUI?.active() && !document.querySelector('dialog[open]')) {
+    e.preventDefault()
+    act('straighten-tool', { axis: 'off' })
+    return
+  }
   if (e.key === 'Escape' && localToolsUI?.hasDraft() && !document.querySelector('dialog[open]')) {
     e.preventDefault()
     act('local-cancel')
@@ -2658,5 +2670,5 @@ $('layout').onclick = () => act('grid-layout', { layout: gridLayout === 'square'
 $('end-slides').onclick = () => act('slideshow', { stop: true })
 updateMerge = mountMerge(run, notice)
 updateEnhance = mountEnhance(run, notice)
-opticsUI = mountOptics({ run, getActive: active, notify: notice })
+opticsUI = mountOptics({ run, getActive: active, notify: notice, onChange: notifyWorkspaceChange })
 migrationUI = mountMigration({ run, notify: notice })

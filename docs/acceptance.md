@@ -17,6 +17,8 @@
 
 ## 补充验证
 
+- **拉直参考会话（2026-11-06）**。`tests/straighten-session.test.js` 用真实 Chrome 核对首点的 full/summary 回读及变更通知、输入焦点下 Escape、按钮与带照片身份的 CLI 取消、过期请求拒绝、退出视图、重新拉直和撤销；几何相关定向测试 8/8，通过后完整浏览器回归 316/316，无失败或跳过，约 210 秒。Windows 本次 MyGo 构建的 `build/windows-amd64/OpenLR.exe` 通过主原生 smoke，包括实际 CLI 状态、取消、PNG 截图和配方不变。首次原生命令误用了较旧的 `build/release` 产物，因不认识新增 `photoId` 参数而失败；核对构建路径和时间后改用实际新产物通过，未将旧产物失败当作功能通过。本项不声称原生鼠标手势或本次其他六组原生套件已在本地重跑；公开 Actions 的旧版本结果仍保留独立版本边界。
+
 - **输出色彩空间**。JPEG/PNG/TIFF/AVIF/JPEG XL 的五种空间经过像素转换及 ICC 封装；5,265 色独立 Little CMS 对照与 25 种文件往返检查实际执行。AVIF/JPEG XL 绑定从固定源代码重建，额外验证真实码流、ICC、无损样本及线程/SIMD，见 [AVIF 实验](../research/avif-color-binding.md) 和 [JPEG XL 实验](../research/jxl-color-binding.md)。Windows 原生 GUI/CLI 对四个中间调色块重导入采样，PNG/TIFF/AVIF/JPEG XL 最大误差 2、JPEG 最大误差 4 个通道等级。此为目标编码，不是恢复 RAW 广色域；定义与剩余范围见 [输出颜色](export-color.md)。
 
 - **高位深栅格输入**。TIFF 的 1,056 个生成布局验证了条带／分块、双端序、四种压缩和预测器；AVIF 使用实际 WASM 验证 10/12-bit 低位及透明度。真实浏览器 GUI 经导入、Linear、TIFF16 导出、重导入与重载，保留超过 256 个等级和原件字节。ICC matrix/TRC 输入与独立 Little CMS 2.17/2.19 的 16 种配置、每种 10,557 色对照；解析曲线最大线性误差 3.15e−7，采样曲线约 2.21e−5。生成 ICC 的 TIFF16 往返最多相差一个样本码值。可复现范围及不支持的配置见 [TIFF](../research/high-depth-tiff.md)、[AVIF](../research/high-depth-avif.md) 和 [输入颜色](../research/float-input-color.md)，合成数据不代表所有相机或 TIFF 文件均已验证。

@@ -375,7 +375,8 @@ export const definitions = {
     ['start', 'end']
   ),
   'straighten-tool': entry('Choose two image points in the GUI for an actual straightening reference', {
-    axis: string('Reference line axis', { enum: ['horizontal', 'vertical'] })
+    axis: string('Reference line axis, or off to cancel', { enum: ['horizontal', 'vertical', 'off'] }),
+    photoId: string('Optional selected-photo identity guard')
   }),
   'mask.combine': entry(
     'Combine two mask coverages into one group; retain first adjustments and consume second mask',

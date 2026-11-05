@@ -1,0 +1,78 @@
+import test from 'node:test'
+import assert from 'node:assert/strict'
+import { chromium } from 'playwright-core'
+import { serveWorkspace } from './browser-server.mjs'
+
+test('straighten reference exposes live points and cancels through GUI and guarded shared commands', async (t) => {
+  const server = await serveWorkspace()
+  t.after(server.close)
+  const browser = await chromium.launch({ channel: process.env.CHROME_CHANNEL || 'chrome', headless: true })
+  t.after(() => browser.close())
+  const page = await browser.newPage({ viewport: { width: 1280, height: 900 } })
+  await page.goto(server.url)
+  await page.waitForFunction(() => window.openlr)
+  const run = (command, args = {}) =>
+    page.evaluate(({ command, args }) => window.openlr.run(command, args), { command, args })
+  await page.evaluate(async () => {
+    const canvas = document.createElement('canvas')
+    canvas.width = 240
+    canvas.height = 160
+    const ctx = canvas.getContext('2d')
+    ctx.fillStyle = '#6a8c99'
+    ctx.fillRect(0, 0, 240, 160)
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve))
+    await window.openlr.run('import', { files: [new File([blob], 'reference.png', { type: 'image/png' })] })
+    window.straightenChanges = 0
+    window.addEventListener('openlr-change', () => window.straightenChanges++)
+  })
+  await run('view', { mode: 'detail' })
+  const before = await run('state')
+  const id = before.selected
+  const click = async (x, y) => {
+    const box = await page.locator('#stage canvas').boundingBox()
+    await page.mouse.click(box.x + box.width * x, box.y + box.height * y)
+  }
+  await run('straighten-tool', { axis: 'horizontal' })
+  const changes = await page.evaluate(() => window.straightenChanges)
+  await click(0.25, 0.35)
+  let state = await run('state')
+  assert.equal(state.straightenTool.axis, 'horizontal')
+  assert.ok(Math.abs(state.straightenTool.first.x - 0.25) < 0.01)
+  assert.ok(Math.abs(state.straightenTool.first.y - 0.35) < 0.01)
+  assert.deepEqual((await run('state', { summary: true })).straightenTool, state.straightenTool)
+  assert.ok((await page.evaluate(() => window.straightenChanges)) > changes)
+  const failed = await page.evaluate(() =>
+    window.openlr.dispatch('straighten-tool', { axis: 'off', photoId: 'stale' })
+  )
+  assert.equal(failed.ok, false)
+  assert.deepEqual((await run('state')).straightenTool, state.straightenTool)
+  await page.locator('#optics-panel').evaluate((node) => {
+    node.open = true
+  })
+  await page.getByLabel('Lens focal length', { exact: true }).focus()
+  await page.keyboard.press('Escape')
+  state = await run('state')
+  assert.deepEqual(state.straightenTool, { axis: 'off', first: null })
+  assert.equal(state.mode, 'detail')
+  assert.deepEqual(state.photos[0].edit, before.photos[0].edit)
+  await run('straighten-tool', { axis: 'vertical', photoId: id })
+  await click(0.3, 0.4)
+  await run('straighten-tool', { axis: 'off', photoId: id })
+  assert.deepEqual((await run('state')).straightenTool, { axis: 'off', first: null })
+  await page.getByRole('button', { name: 'Draw straighten line', exact: true }).click()
+  await click(0.3, 0.4)
+  await page.getByRole('button', { name: 'Cancel straighten line', exact: true }).click()
+  assert.deepEqual((await run('state')).straightenTool, { axis: 'off', first: null })
+  await run('straighten-tool')
+  await click(0.2, 0.3)
+  await run('view', { mode: 'grid' })
+  assert.deepEqual((await run('state')).straightenTool, { axis: 'off', first: null })
+  await run('straighten-tool')
+  await click(0.25, 0.3)
+  await click(0.75, 0.5)
+  state = await run('state')
+  assert.deepEqual(state.straightenTool, { axis: 'off', first: null })
+  assert.ok(Math.abs(state.photos[0].edit.optics.rotate) > 1)
+  await run('undo')
+  assert.deepEqual((await run('state')).photos[0].edit, before.photos[0].edit)
+})

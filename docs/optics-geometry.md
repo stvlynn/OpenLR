@@ -10,6 +10,8 @@ Profile application selects an exact calibration sample or linearly interpolates
 
 **Draw straighten line** accepts two actual image points on a horizontal or vertical reference. It solves a rotation from that line, accounting for existing perspective, crop, reflection and quarter-turn rotation. There is no automatic scene inference. Commands reject coincident points, folded radial mappings and projective horizons crossing the canvas.
 
+While picking, the same button becomes **Cancel straighten line**. Escape cancels the reference without leaving Detail, including when an inspector input retains focus; an open dialog keeps its own Escape handling. `straighten-tool --axis off` performs the same cancellation. The command accepts an optional `--photoId` guard. Full and summary `state` expose `straightenTool:{axis,first}`, with `off`/`null` when inactive and the first point in normalized original-image coordinates while picking. The first click emits the ordinary live observation event. Cancellation changes neither the recipe nor undo history; changing photo/view or activating another image tool discards the reference.
+
 ## Rendering and coordinates
 
 `web/optics.js` compiles one mapping shared by image resampling, local-tool input and overlays. The pipeline is original-image local masks/repair, lens/TCA and geometry, crop/quarter-turn/reflection, then global color rendering. Crop fractions refer to the corrected base canvas, which retains the original image bounds.
