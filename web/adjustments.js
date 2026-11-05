@@ -21,6 +21,12 @@ export const controls = {
     'Curve lights': [-100, 100, 1]
   },
   'Color mixer': mixerControls,
-  Effects: { Texture: [-100, 100, 1], Clarity: [-100, 100, 1], Vignette: [-100, 100, 1], Grain: [0, 100, 1] },
+  Effects: {
+    Dehaze: [-100, 100, 1],
+    Texture: [-100, 100, 1],
+    Clarity: [-100, 100, 1],
+    Vignette: [-100, 100, 1],
+    Grain: [0, 100, 1]
+  },
   Detail: { Sharpening: [0, 100, 1], 'Noise reduction': [0, 100, 1] }
 }

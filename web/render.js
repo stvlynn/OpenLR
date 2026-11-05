@@ -1,3 +1,4 @@
+import { analyzeDehaze, createDehazePixel } from './dehaze.js'
 import { geometry } from './geometry.js'
 import { filledSource, filledFrame } from './fill.js'
 import { correctEyes, correctEyesFrame } from './culling.js'
@@ -13,7 +14,7 @@ import {
   spatialEffectsFloat
 } from './color.js'
 import { globalToneParameters, globalToneRgb } from './tone.js'
-import { assertLinearFrame, linearFrameToRgba8 } from './pixel-frame.js'
+import { assertLinearFrame, linearFrameToRgba8, rgba8ToLinearFrame, isLinearFrame } from './pixel-frame.js'
 import { transformFrame } from './frame-geometry.js'
 import { workingFrame } from './working-frames.js'
 import { processingVersion, PROCESS_MESSAGES } from './process-version.js'
@@ -34,17 +35,50 @@ function sourceStages(image, edit, stages) {
   return result
 }
 
-export function renderFrame(image, edit = {}, maxSize = Infinity) {
-  assertLinearFrame(image)
-  // A render owns its mutable pixels. Cached originals never become edit state.
+// Original decoded frames and ImageBitmaps are immutable. Keep only the latest
+// source-correction revision per source; crop, output size and strength reuse it.
+const dehazeSources = new WeakMap()
+function dehazedSource(image, edit, prepare) {
+  const cacheable =
+    isLinearFrame(image) || (typeof ImageBitmap !== 'undefined' && image instanceof ImageBitmap)
+  const key = JSON.stringify([edit.fills, edit.redEyes, edit.localTools, edit.optics])
+  let entry = cacheable ? dehazeSources.get(image) : null
+  if (!entry || entry.key !== key) {
+    entry = { key, source: prepare(), analysis: null }
+    if (cacheable) dehazeSources.set(image, entry)
+  }
+  if (
+    !entry.analysis ||
+    (edit.Dehaze > 0 && entry.analysis.visible && !entry.analysis.black && !entry.analysis.transmission)
+  )
+    entry.analysis = analyzeDehaze(entry.source, { transmission: edit.Dehaze > 0 })
+  return entry
+}
+function correctedFrame(image, edit) {
   const owned = { ...image, data: image.data.slice() }
-  const source = sourceStages(owned, edit, {
+  return sourceStages(owned, edit, {
     fill: (input) => filledFrame(input, edit.fills),
     eyes: (input) => correctEyesFrame(input, edit.redEyes),
     local: (input) => applyLocalTools(input, edit.localTools),
     optics: (input) => warpOpticsFrame(input, edit.optics, image)
   })
-  const frame = transformFrame(source, edit, maxSize, image)
+}
+function correctedBitmap(image, edit, edge) {
+  return sourceStages(image, edit, {
+    fill: (input) => filledSource(input, edit.fills, edge),
+    eyes: (input) => correctEyes(input, edit.redEyes, edge),
+    local: (input) => renderLocalSource(input, edit.localTools, edge),
+    optics: (input) => renderOpticsSource(input, edit.optics, image, edge)
+  })
+}
+
+export function renderFrame(image, edit = {}, maxSize = Infinity) {
+  assertLinearFrame(image)
+  // A render owns its mutable pixels. Cached originals never become edit state.
+  const prepared = edit.Dehaze ? dehazedSource(image, edit, () => correctedFrame(image, edit)) : null
+  const frame = prepared
+    ? transformFrame(prepared.source, edit, maxSize, image, createDehazePixel(edit.Dehaze, prepared.analysis))
+    : transformFrame(correctedFrame(image, edit), edit, maxSize, image)
   const tone = createGlobalTone(edit),
     curve = createFloatToneCurve(edit),
     points = createPointCurves(edit),
@@ -61,8 +95,8 @@ export function renderFrame(image, edit = {}, maxSize = Infinity) {
   return assertLinearFrame(frame)
 }
 
-export function frameCanvas(frame) {
-  const pixels = linearFrameToRgba8(frame),
+export function frameCanvas(frame, readPixel = null) {
+  const pixels = linearFrameToRgba8(frame, readPixel),
     canvas = document.createElement('canvas')
   canvas.width = pixels.width
   canvas.height = pixels.height
@@ -80,12 +114,19 @@ export function render(image, edit = {}, maxSize = Infinity) {
   const geom = geometry(image, edit, maxSize)
   const { x, y, w, h, width, height, turn, flip } = geom
   const sourceEdge = Math.max((width * image.width) / w, (height * image.height) / h)
-  const localSource = sourceStages(image, edit, {
-    fill: (input) => filledSource(input, edit.fills, sourceEdge),
-    eyes: (input) => correctEyes(input, edit.redEyes, sourceEdge),
-    local: (input) => renderLocalSource(input, edit.localTools, sourceEdge),
-    optics: (input) => renderOpticsSource(input, edit.optics, image, sourceEdge)
-  })
+  let localSource
+  if (edit.Dehaze) {
+    const prepared = dehazedSource(image, edit, () => {
+      const corrected = correctedBitmap(image, edit, Infinity)
+      const full = document.createElement('canvas')
+      full.width = corrected.width
+      full.height = corrected.height
+      const context = full.getContext('2d', { willReadFrequently: true })
+      context.drawImage(corrected, 0, 0)
+      return rgba8ToLinearFrame(context.getImageData(0, 0, full.width, full.height))
+    })
+    localSource = frameCanvas(prepared.source, createDehazePixel(edit.Dehaze, prepared.analysis))
+  } else localSource = correctedBitmap(image, edit, sourceEdge)
   const sourceScaleX = localSource.width / image.width,
     sourceScaleY = localSource.height / image.height
   canvas.width = turn % 2 ? height : width

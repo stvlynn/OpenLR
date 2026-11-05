@@ -1,0 +1,23 @@
+# Dehaze
+
+Effects → Dehaze reduces an atmospheric veil with positive values and adds a veil with negative values. The range is -100 through 100; zero is unchanged. The existing slider supports dragging and keyboard steps, previews before committing and uses the ordinary edit/history pathway. `edit --key Dehaze --value 35` performs the same operation through the shared CLI. Preview and export return actual processed image bytes.
+
+The scalar `Dehaze` belongs to the existing Effects copy category. Presets, named versions, copied recipes, OpenLR XMP, local sidecars and sync carry it through existing edit storage. Reset, undo and redo retain their normal scope. Originals remain unchanged. There is no separate dehaze preset or storage engine.
+
+## Independent processing
+
+A local dark-channel prior estimates atmospheric light and transmission. An alpha-weighted scalar guided filter refines transmission around image edges. Strength mixes transmission toward identity; the minimum transmission is .1, bounding reconstruction gain to ten. Negative strength adds up to a 60% uniform veil using estimated atmospheric light. Exact black uses white only for negative haze synthesis. All-transparent images remain unchanged; hidden colors do not affect visible neighbors.
+
+The analysis uses bounded linear-sRGB proxy colors, but reconstruction consumes the original signed, unbounded samples. Alpha is unchanged. Display and byte output still clip at their representable boundary. The model is independently specified in [research](../research/dehaze.md), not an Adobe rendering match or a measured depth map. Bright clear objects, snow and sky can violate the prior and be overcorrected at high positive strength. The research deliberately preserves a severe counterexample; this is a user-controlled effect, not automatic haze detection.
+
+## Source and preview consistency
+
+Dehaze runs after source corrections and optics, before crop/resize, global tone, curves, color mixing and grading. Its analysis is computed at corrected source resolution. Crop and requested preview/export size do not change atmospheric light or the filter footprint. Immutable decoded frames and ImageBitmaps retain the latest source-correction analysis; changes to fills, red-eye, local tools or optics replace it. Strength and later color edits reuse that analysis. Mutable canvases and video frames are recomputed instead of reusing stale samples. Cached originals and analyzed source pixels are never mutated. Reconstruction uses the same shared pixel rule directly before geometric interpolation in Linear, or byte encoding in Original, avoiding a full reconstructed-float copy. Float32 rounding occurs before interpolation, preserving the materialized source-stage result.
+
+For nonzero dehaze, Original processing performs its preceding source corrections at full resolution, decodes those bytes to the shared linear operation, then encodes once before its existing geometric/display processing. This explicitly differs from the old preview-sized source path only when dehaze is enabled. Linear processing retains floating samples throughout. Zero/absence bypasses analysis and keeps historical rendering unchanged.
+
+Analysis consumes source-sized working planes and executes synchronously in the existing renderer. Large-image latency and memory measurements belong in [performance evidence](dehaze-performance.md), with native platform results in [acceptance](acceptance.md). First analysis still blocks the main thread for seconds on 24MP input; the current optimization does not establish responsive background processing. No arbitrary photo-size rejection is introduced. Memory allocation or processing failures must remain visible; cached analysis is tied to immutable source ownership, not a persistent disk cache.
+
+## Verification
+
+Run `node --test tests/dehaze.test.js tests/dehaze-workflow.test.js` and the full suite, then the native suite on each actual target OS. Check independent synthetic recovery, the bright-object counterexample, alpha contamination, signed/HDR and negative haze, source immutability, source-cache invalidation, crop/size agreement, existing slider/history/storage and decoded exports. Test entry points alone do not establish platform success. [Decision 019](decisions/019-dehaze.md) records the alternatives.

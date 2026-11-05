@@ -33,3 +33,9 @@ The first core gap above is now addressed by the [point-curve contract](../docs/
 ## Subsequent color-grading implementation
 
 The tonal grading gap is addressed by [color grading](../docs/color-grading.md) and [decision 018](../docs/decisions/018-color-grading.md): three regional wheels plus Global, shared linear rendering, live transient preview, guarded commands and existing storage/transport. Numerical ablations and public-domain-photo/gradient visual inspection are recorded in [research](color-grading.md). Actual test/platform results remain in [acceptance](../docs/acceptance.md). Dehaze, final clean-checkout delivery audit and the external verification limits above remain outstanding; this increment does not complete the overall goal.
+
+## Dehaze implementation and remaining interaction work
+
+The missing scalar operation now has an independent exact dark-channel/guided-filter implementation, shared Effects/CLI control and existing storage integration. Numerical and image behavior are described in [dehaze](../docs/dehaze.md); the RGB downsampling alternative was rejected by [quality ablation](dehaze-scale.md). Source-coordinate analysis and fused reconstruction retain preview/export consistency.
+
+This does not close the dehaze interaction requirement: measured 24MP first previews still block for seconds, and Original repeated strength previews remain around two seconds on the recorded machine. [Performance evidence](../docs/dehaze-performance.md) owns precise measurements. Background analysis/rendering with source/revision cancellation remains required follow-up; mutable video frames also do not reuse source analysis. Do not count functional pixel/native tests as proof of responsive large-image interaction. Final clean-checkout, command/control coverage and current macOS verification also remain outstanding.

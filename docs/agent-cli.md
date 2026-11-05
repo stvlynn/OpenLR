@@ -60,6 +60,8 @@ See [catalog organization](catalog-organization.md) for multi-selection, batch m
 
 [Catalog migration](catalog-migration.md) adds `migration-scan --catalog <local.lrcat>`, reviewed root mapping, `migration-inspect`, `migration-commit`, `migration-retry` and saved reports. `migration-apple-scan` accepts an authorized standard originals/XMP export folder. The scan does not read referenced originals; commit retains authorized disk references; explicit Sync uploads originals through the shared resolver and omits source-device paths from portable manifests. Genuine Adobe catalogs and PhotoKit are not claimed as tested.
 
+`edit --key Dehaze --value 35` adjusts the existing Effects control; negative values add haze and zero restores neutral behavior. The [dehaze contract](dehaze.md) describes source-resolution analysis and output limitations.
+
 ## Shared-session transport
 
 Rendered formats accept `export --metadata copyright` or `--metadata supported`; the default `none` keeps the existing absence of source photo metadata. Policies are shared with GUI, `export-settings` and `export-previous`. The supported field list, Unicode/EXIF encoding and excluded location/private fields are specified in [photo metadata export](export-metadata.md).

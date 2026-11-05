@@ -2092,7 +2092,11 @@ for (const [group, items] of Object.entries(controls)) {
           bitmapVersion === processingVersion(recipe)
         ) {
           compare = false
-          paintStage(bitmap, { ...recipe, [key]: value })
+          try {
+            paintStage(bitmap, { ...recipe, [key]: value })
+          } catch (error) {
+            notice(error.message)
+          }
         }
       })
     }

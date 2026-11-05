@@ -103,6 +103,7 @@ try {
   await call('view', '--mode', 'detail')
   await call('processing', '--version', '2')
   await call('edit', '--key', 'Exposure', '--value', '.5')
+  await call('edit', '--key', 'Dehaze', '--value', '20')
   await call('edit', '--key', 'turn', '--value', '1')
   await call('rate', '--value', '4')
   const localCurve = [
@@ -118,6 +119,8 @@ try {
   assert.equal((await sidecar()).version, 2)
   assert.equal((await sidecar()).recipe.edit.processVersion, 2)
   assert.equal((await sidecar()).recipe.edit.Exposure, 0.5)
+  assert.equal((await sidecar()).recipe.edit.Dehaze, 20)
+  assert.equal((await sidecar()).recipe.versions[0].edit.Dehaze, 20)
   assert.equal((await sidecar()).recipe.rating, 4)
   assert.equal((await sidecar()).recipe.versions[0].edit.processVersion, 2)
   assert.deepEqual((await sidecar()).recipe.edit.toneCurves, { red: localCurve })
@@ -181,6 +184,8 @@ try {
   assert.equal(reopened.photos[0].rating, 4)
   assert.equal(reopened.photos[0].edit.turn, 1)
   assert.equal(reopened.photos[0].edit.processVersion, 2)
+  assert.equal(reopened.photos[0].edit.Dehaze, 20)
+  assert.equal(reopened.photos[0].versions[0].edit.Dehaze, 20)
   assert.equal(reopened.photos[0].versions[0].edit.processVersion, 2)
   assert.deepEqual(reopened.photos[0].edit.toneCurves, { red: localCurve })
   assert.deepEqual(reopened.photos[0].versions[0].edit.toneCurves, { red: localCurve })
@@ -193,7 +198,7 @@ try {
   assert.equal(library.local, null)
   assert.equal(library.photos.length, 0)
   console.log(
-    'Native Local passed fixture folder browsing, DNG read, process-2 sidecar edits and named versions including point curves and color grading, version-preserving reset, actual TIFF16 samples, unsupported-sidecar rejection, original preservation, preview/export, restart/reopen of curve/grading recipes and versions, historical-empty-sidecar presence, and zero catalog imports. Folder permission was seeded by the test harness; the system chooser was not automated.'
+    'Native Local passed fixture folder browsing, DNG read, process-2 sidecar edits and named versions including point curves, color grading and Dehaze, version-preserving reset, actual TIFF16 samples, unsupported-sidecar rejection, original preservation, preview/export, restart/reopen of curve/grading/Dehaze recipes and versions, historical-empty-sidecar presence, and zero catalog imports. Folder permission was seeded by the test harness; the system chooser was not automated.'
   )
 } finally {
   await stop()

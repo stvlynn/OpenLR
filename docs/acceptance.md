@@ -149,3 +149,14 @@ Windows／Node 24.9／Chrome 156.0.8078.80 最终 `OPENLR_TEST_CMS=1 OPENLR_TEST
 最终 Windows WebView2 与 WSL Ubuntu 24.04／WebKitGTK 2.52.6 均重新构建并通过各七组原生套件，Windows 安装包成功生成。新增原生检查通过实际 CLI 与窗口截图读取模式，并独立解码两种处理版本的 TIFF，验证分级亮度增益、过期来源／分级旧值拒绝、撤销和原件逐字节保持。实际 Local 侧车检查同时读回当前分级及命名版本，重启应用／重新打开目录后仍保持。文件夹许可仍由测试夹具预置；Linux 使用 Xvfb／D-Bus，未证明系统选择器、物理显示器或 GPU；相机为模拟器，迁移为合成 schema。macOS 仍需真实远程执行；前一实现提交 `3c50489` 的 [42029595968](https://github.com/stvlynn/OpenLR/actions/runs/42029595968) 因账户付款／额度三个作业均未执行步骤，不能计为通过。
 
 颜色分级提交 `60d21ce` 推送后确认仓库仍为 private。最新 [CI 42032635421](https://github.com/stvlynn/OpenLR/actions/runs/42032635421) 的 Windows、Ubuntu 和 macOS 作业步骤数均为零；macOS check-run `127262648812` 注明账户付款失败或支出限额需要调整。该运行未提供任何平台执行证据，不改变本地两端已通过、当前 macOS 尚未验证的结论。
+
+
+2026-11-05 去雾功能与精确优化：在已记录的本机 Dehaze 控件证据、原始论文／Context7 文档及独立消融之后，实现源图尺度的暗通道、空气光、加权引导透射率与共享线性重建。正值去雾、负值加雾，Effects 滑块和 `edit --key Dehaze` 共用现有配方、历史、预设、版本、XMP 和复制路径；无额外文件大小门禁。零值保持旧渲染。见[去雾合同](dehaze.md)、[决策 019](decisions/019-dehaze.md)。
+
+Windows／Node 24.9／Chrome 156.0.8078.80 的 `OPENLR_TEST_CMS=1 OPENLR_TEST_METADATA=1 npm test` 通过 **302/302、零失败、零跳过**。四项领域测试用独立朴素窗口参考核验透射率、空气光、透明污染、负值／HDR、极小 alpha、恒等与溢出错误；两项真实浏览器测试核验两种处理版本的正负像素、裁剪／缩放输出、光学编辑缓存失效、键盘／撤销、预设／版本／XMP／选择复制／重载与原件。另有 192 组合的融合几何逐位比较，覆盖四种强度、裁剪、旋转、翻转、输出尺寸和混合 alpha／负值／HDR；结果与完整 Float32 重建后再变换完全一致。
+
+最终 Windows WebView2 与 WSL Ubuntu 24.04／WebKitGTK 2.52.6 均已重新构建并通过各七组原生套件。Windows 安装包成功生成。新增原生检查独立解码两种处理版本 TIFF 的去雾／加雾结果，检查真实窗口截图、撤销及原件逐字节保持；实际 Local `.openlr.json` 当前配方和命名版本均保存 Dehaze，重启／重新打开后仍在。Linux 使用 Xvfb／D-Bus；目录权限由夹具预置、相机为模拟器、迁移为合成 schema，不扩大为物理设备或系统选择器验收。当前 macOS 仍需实际远程执行。
+
+此轮功能测试通过**不代表大图交互完成**。24MP 精确分析的流式统计与融合重建，把 Linear 首次预览从约 22.12 秒降至 7.02 秒、缓存调节从约 1.14 秒降至 .40 秒；Original Chrome 首次 9.76 秒、缓存约 2.10 秒，仍同步阻塞。详细机器、内存、测量范围及未完成项见[性能记录](dehaze-performance.md)。固定 512／1024／2048 RGB 分析图因丢失暗点线索、产生明显重建误差而被[消融实验](../research/dehaze-scale.md)拒绝，未用降低质量掩盖延迟。[后台处理提案](../research/dehaze-background.md)记录下一步的共享 worker、所有权与验收要求，目前尚未实现。
+
+公共领域 astronaut、生成雾场和明亮无雾渐变已通过实际 dispatcher 导出后目视检查，两种处理版本全部六项重置均恢复原像素。高强度会使明亮无雾场景过暗并放大量化条带；这是已保留的负面结果，不声称自动识别雾、无光晕或普遍改善。代码格式、CLI 合法值 dry-run 和越界拒绝亦已执行。

@@ -3,10 +3,12 @@ import { assertLinearFrame, sampleLinearRgba } from './pixel-frame.js'
 
 // Crop bounds are expressed against reference, while frame may be a smaller
 // preview. Quarter turns/reflections copy exact pixel centers without sampling.
-export function transformFrame(frame, edit = {}, maxSize = Infinity, reference = frame) {
-  assertLinearFrame(frame)
+// An optional alpha-preserving reader maps an already validated immutable source
+// before interpolation, avoiding a full-frame intermediate for spatial effects.
+export function transformFrame(frame, edit = {}, maxSize = Infinity, reference = frame, readPixel = null) {
+  if (!readPixel) assertLinearFrame(frame)
   const geom = geometry(reference, edit, maxSize)
-  return resampleGeometry(frame, geom, reference)
+  return resampleGeometry(frame, geom, reference, readPixel)
 }
 
 export function resizeFrame(frame, width, height) {
@@ -20,7 +22,7 @@ export function resizeFrame(frame, width, height) {
   )
 }
 
-function resampleGeometry(frame, geom, reference) {
+function resampleGeometry(frame, geom, reference, readPixel = null) {
   const { width, height, flip } = geom,
     turn = ((geom.turn % 4) + 4) % 4,
     outputWidth = turn % 2 ? height : width,
@@ -28,6 +30,7 @@ function resampleGeometry(frame, geom, reference) {
     scaleX = frame.width / reference.width,
     scaleY = frame.height / reference.height
   if (
+    !readPixel &&
     !turn &&
     !flip &&
     geom.x === 0 &&
@@ -39,7 +42,8 @@ function resampleGeometry(frame, geom, reference) {
   )
     return frame
   const data = new Float32Array(outputWidth * outputHeight * 4),
-    sample = new Float64Array(4)
+    sample = new Float64Array(4),
+    pixel = readPixel ? new Float32Array(4) : null
   for (let y = 0; y < outputHeight; y++)
     for (let x = 0; x < outputWidth; x++) {
       let u, v
@@ -67,9 +71,11 @@ function resampleGeometry(frame, geom, reference) {
         offset = (y * outputWidth + x) * 4
       if (Math.abs(ix - sx) < 1e-10 && Math.abs(iy - sy) < 1e-10) {
         const sourceOffset = (iy * frame.width + ix) * 4
-        for (let channel = 0; channel < 4; channel++)
-          data[offset + channel] = frame.data[sourceOffset + channel]
-      } else if (sampleLinearRgba(frame, sx, sy, sample)) data.set(sample, offset)
+        if (readPixel) readPixel(frame.data, sourceOffset, data, offset)
+        else
+          for (let channel = 0; channel < 4; channel++)
+            data[offset + channel] = frame.data[sourceOffset + channel]
+      } else if (sampleLinearRgba(frame, sx, sy, sample, readPixel, pixel)) data.set(sample, offset)
     }
   return { ...frame, width: outputWidth, height: outputHeight, data }
 }

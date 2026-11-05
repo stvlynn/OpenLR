@@ -1242,6 +1242,78 @@ try {
   console.log(
     'Native color grading: live mode and capture, both process TIFF luminance pixels, stale source/value refusal, undo and unchanged original bytes passed.'
   )
+  const hazeData = new Uint8Array(96 * 64 * 3)
+  for (let y = 0; y < 64; y++)
+    for (let x = 0; x < 96; x++) {
+      const rgb =
+        y < 8
+          ? [255, 255, 255]
+          : x % 7 === 0 && y % 7 === 0
+            ? [100, 110, 120]
+            : x < 48
+              ? [160, 170, 180]
+              : [190, 195, 200]
+      hazeData.set(rgb, (y * 96 + x) * 3)
+    }
+  const hazeBytes = Buffer.from(
+    makePng({ width: 96, height: 64, bits: 8, colorType: 2, srgb: 0, data: hazeData })
+  )
+  const hazeFile = path.join(root, 'dehaze-source.png')
+  await writeFile(hazeFile, hazeBytes)
+  const hazeAsset = (await call('import', hazeFile)).added[0]
+  const hazeAddedExpected = [160, 170, 180].map((byte) => {
+    const encoded = byte / 255
+    const linear = encoded <= 0.04045 ? encoded / 12.92 : ((encoded + 0.055) / 1.055) ** 2.4
+    return Math.round(255 * encodeSrgb(0.4 * linear + 0.6))
+  })
+  for (const version of [1, 2]) {
+    await call('processing', '--version', String(version))
+    for (const amount of [60, -100]) {
+      await call('edit', '--key', 'Dehaze', '--value', String(amount))
+      const output = await call(
+        'export',
+        '--format',
+        'image/tiff',
+        '--output',
+        path.join(root, `dehaze-${version}-${amount}.tif`)
+      )
+      const bytes = await readFile(output.path)
+      const buffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)
+      const ifd = UTIF.decode(buffer)[0]
+      UTIF.decodeImage(buffer, ifd)
+      assert.deepEqual([ifd.width, ifd.height], [96, 64])
+      const rgba = UTIF.toRGBA8(ifd).subarray((31 * 96 + 21) * 4, (31 * 96 + 21) * 4 + 4)
+      for (let channel = 0; channel < 3; channel++) {
+        if (amount > 0) assert.ok(rgba[channel] < [160, 170, 180][channel])
+        else assert.ok(Math.abs(rgba[channel] - hazeAddedExpected[channel]) <= 1)
+      }
+      assert.equal(rgba[3], 255)
+    }
+  }
+  const hazeCapture = await call(
+    'edit',
+    '--key',
+    'Dehaze',
+    '--value',
+    '35',
+    '--capture',
+    path.join(root, 'dehaze.png')
+  )
+  assert.equal((await readFile(hazeCapture.frame.path)).subarray(1, 4).toString(), 'PNG')
+  assert.equal((await call('state')).photos.find((photo) => photo.id === hazeAsset).edit.Dehaze, 35)
+  await call('undo')
+  assert.equal((await call('state')).photos.find((photo) => photo.id === hazeAsset).edit.Dehaze, -100)
+  const hazeOriginal = await call(
+    'export',
+    '--format',
+    'original',
+    '--output',
+    path.join(root, 'dehaze-original.png')
+  )
+  assert.deepEqual(await readFile(hazeOriginal.path), hazeBytes)
+  console.log(
+    'Native Dehaze: both process TIFF pixels for removal and added haze, live edit capture, undo and unchanged original bytes passed.'
+  )
   const colors = [
     [180, 60, 40],
     [45, 160, 70],
