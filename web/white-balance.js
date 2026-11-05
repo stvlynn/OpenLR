@@ -1,3 +1,11 @@
+export const WHITE_BALANCE_MESSAGES = {
+  changedPhoto: 'The selected photo changed',
+  activateSampler: 'Activate the White balance sampler in Detail first',
+  changedPreview: 'The displayed image changed. Sample white balance again.',
+  preview: 'Wait for the current edited preview before sampling white balance',
+  outsideSource: 'Choose a point inside the corrected source image'
+}
+
 // Solve the red/blue and green/magenta gains against a neutral patch in linear light.
 export function neutralBalance(image, x, y) {
   const canvas = document.createElement('canvas')

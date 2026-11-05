@@ -17,6 +17,10 @@
 
 ## 补充验证
 
+- **裁剪捕获与白平衡归属（2026-11-06）**。裁剪／构图定向 6/6 通过；同一捕获回归使用 `ca1299b` 旧模块时失败，确认能检出草稿未恢复。白平衡及相关屏幕取样／光学定向 8/8，通过最终独立 2/2 核对 5×5 混合色块计算、真实点击、变换坐标、排队换照片及同照片重绘、撤销／重载、预览／PNG 导出与原件。重新构建的 Windows MyGo 包通过主原生 smoke：白平衡两种坐标命令返回相同 Temperature/Tint 和预览像素，保护过期照片、返回实际 PNG 截图并正确撤销。Windows／Node 24.9／Chrome 156 的完整 `OPENLR_TEST_CMS=1 OPENLR_TEST_METADATA=1 npm test` 为 **346/346、零失败、零跳过**，约 242.5 秒，启用既有被动视频诊断；通过不代表已修复偶发视频导入故障。日志为忽略目录 `.workspace/crop-white-balance-full.log` 与 `.workspace/white-balance-*`。本项原生验证不是七组全套，也不是后续修改的远程三平台结果。
+
+- **`ca1299b` 三平台与独立 CLI 交付**。[Actions 42099315887](https://github.com/stvlynn/OpenLR/actions/runs/42099315887) 首次执行三平台全部成功；Windows 浏览器 335 通过、8 项可选资源跳过、0 失败，共 343 项。另从该提交的全新受跟踪归档构建 Windows 包，将单文件 CLI 单独复制到项目外目录，实际连接 GUI，独立解码预览与导出像素并验证截图、撤销和原件字节一致；精确范围见[交付记录](delivery-review.md#windows-standalone-package-verification)。这份归档不包含随后的裁剪／白平衡修复。
+
 - **共用屏幕取色（2026-11-06）**。新 `point-sample` 与真实 GUI 点击均在 100% Linear 预览中保存 `#ff0000`，同时既有 `sample-color` 保持缩小读取 `#bc0000`；受控真实缩略图保存期间的旧画面点击，修复前写入过期色样，修复后拒绝且仅保留原定编辑。新增 Chrome 两项及既有 point/range/optics 九项通过；完整运行 **343/343 通过、无跳过**，约 239.2 秒，仍带被动视频诊断 preload。新 Windows MyGo 构建和主原生 smoke 通过实际 CLI 取色 `#5a85b0`、照片保护、选中项、PNG 截图和撤销。另有两帧真实 VP9 暂停视频观察，边界见[取色研究](../research/point-color-selection.md#display-sampling-follow-up-2026-11-06)。初次沙箱浏览器运行被 loopback 网络限制阻止，放行本地验证后执行成功；没有伪称该初次运行通过。日志 `.workspace/point-sampling-*`，该新提交远程三平台结果尚未产生。
 
 - **`ce20ab4` 三平台验收终态**。[Actions 42097263586](https://github.com/stvlynn/OpenLR/actions/runs/42097263586) 首次执行全部成功，Windows 浏览器 333 通过、8 项可选资源跳过、0 失败，共 341 项，三个平台完成原生套件和打包。本项覆盖裁剪原图对比与统一 Grid 放映退出，不包含随后的屏幕取色改动。

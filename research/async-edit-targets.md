@@ -28,3 +28,9 @@ Use the explicit asset guard and GUI-only expected-edit context together. Reuse 
 ## Verification required
 
 Final tests must separately establish successful unchanged-target application, A-to-B rejection, same-photo changed-edit rejection, queue-time validation, visible read/parse errors, same-file retry, unchanged originals and ordinary unguarded CLI behavior. Injection must be labeled as such. Native CLI transport and real screenshots require native acceptance; the browser timing audit does not prove them. Final results belong in [acceptance](../docs/acceptance.md).
+
+## White balance display sampling
+
+The browser audit at `ca1299b` held the callback of the real thumbnail encoder during a queued edit on a generated warm PNG, queued selection of a cool PNG, and clicked the still-visible warm canvas with a trusted pointer. The old handler mapped the click before queuing `white-balance`. The original-coordinate command resolved the active photo later and wrote Temperature 100 and Tint −69 to the cool image. The warm image retained only Exposure −1. The held callback makes the event order deterministic. This result does not measure ordinary save latency.
+
+An asset guard alone prevents cross-photo writes while leaving same-photo clicks tied to outdated geometry. OpenLR uses the published canvas, photo and committed edit identity already used by the Point color sampler. White balance uses that preview to locate a patch on the decoded source and shares the existing 5×5 calculation and edit persistence with the direct original-coordinate command. Sampling rendered pixels would change the color calculation after exposure, grading or other adjustments. The command and verification steps are in [White balance sampling](../docs/agent-cli.md#white-balance-sampling).

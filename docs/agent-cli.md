@@ -134,7 +134,15 @@ With the crop tool open, `state --summary true` exposes the uncommitted rectangl
 
 The command requires the current photo's committed edited preview. It rejects a stale click, an uncommitted adjustment preview, or an optional `photoId` that no longer matches. If clipping warnings are turned on while the eyedropper is active, turn them off before sampling. A successful sample returns the saved point `{id,color,hue,saturation,luminance,range}`, selects it, ends sampling, and adds one undo entry. Each success creates a new sample, including when another point is already selected.
 
-`point-add --color '#406080'` adds an explicit sRGB color. `sample-color --x 0.25 --y 0.5` reads the committed edited image with a 1280-pixel long-edge limit, independent of preview scale or active tool, and returns `{color}`. White balance uses a 5×5 neighborhood from the original in normalized original-image coordinates.
+`point-add --color '#406080'` adds an explicit sRGB color. `sample-color --x 0.25 --y 0.5` reads the committed edited image with a 1280-pixel long-edge limit, independent of preview scale or active tool, and returns `{color}`.
+
+## White balance sampling
+
+Click **White balance sampler**, press **W**, or run `sample-tool` to activate the picker in Detail. Full `state` reports `sampling:"white"`. Click the edited image or run `white-balance-sample --x 0.25 --y 0.5 --photoId PHOTO_ID`. Both accept fractions of the whole displayed canvas, including at zoom, and reverse crop, rotation, flip and optics to find the patch on the decoded original. Transparent points outside the corrected source are rejected. Clipping warnings do not affect the original sample.
+
+The display command requires the current photo's committed preview and rejects a superseded clicked canvas, a draft adjustment preview or an optional `photoId` that no longer matches. `white-balance --x 0.25 --y 0.5 --photoId PHOTO_ID` accepts original-image coordinates directly and works without the picker. Both commands use the same 5×5 original neighborhood, save Temperature and Tint as one undoable edit, end sampling after success and return full state. During video playback the sampler reads the decoded source at execution time. Pause the video first to sample a specific frame.
+
+Run `node --test tests/white-balance.test.js` for actual canvas clicks, transformed coordinates, preview and export pixels, undo/redo, reload, original bytes and controlled stale-click timing. The native main smoke also runs both CLI coordinate paths, captures the workspace and checks changed preview pixels and undo. The reproduced defect and preview ownership decision are recorded in [asynchronous edit targets](../research/async-edit-targets.md#white-balance-display-sampling).
 
 ## Point color selection
 

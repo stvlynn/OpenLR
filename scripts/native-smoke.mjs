@@ -971,6 +971,44 @@ try {
   console.log(
     'Native range color: original versus edited sampling in both processing versions, crop/compare activation, actual capture, selected mask update/undo, stale-photo guard and unchanged original bytes passed.'
   )
+  const whiteBalanceBefore = (await call('state')).photos.find((photo) => photo.id === rangeAsset).edit,
+    whiteBalanceExpected = { ...whiteBalanceBefore, Temperature: 100, Tint: 31 },
+    whiteBalanceBeforePixel = await call('sample-color', '--x', '.25', '--y', '.25')
+  await call('sample-tool')
+  await assert.rejects(
+    () => call('white-balance-sample', '--x', '.25', '--y', '.25', '--photoId', 'stale-photo'),
+    /selected photo changed/i
+  )
+  const whiteBalanced = await call(
+    'white-balance-sample',
+    '--x',
+    '.25',
+    '--y',
+    '.25',
+    '--photoId',
+    rangeAsset,
+    '--capture',
+    path.join(root, 'white-balanced.png')
+  )
+  assert.equal(whiteBalanced.selected, rangeAsset)
+  assert.equal(whiteBalanced.result.sampling, false)
+  assert.deepEqual(
+    whiteBalanced.result.photos.find((photo) => photo.id === rangeAsset).edit,
+    whiteBalanceExpected
+  )
+  assert.equal((await readFile(whiteBalanced.frame.path)).subarray(1, 4).toString(), 'PNG')
+  const balancedPixel = await call('sample-color', '--x', '.25', '--y', '.25')
+  assert.notDeepEqual(balancedPixel, whiteBalanceBeforePixel)
+  await call('undo')
+  assert.deepEqual(await call('sample-color', '--x', '.25', '--y', '.25'), whiteBalanceBeforePixel)
+  const originalBalance = await call('white-balance', '--x', '.25', '--y', '.25', '--photoId', rangeAsset)
+  assert.deepEqual(originalBalance.photos.find((photo) => photo.id === rangeAsset).edit, whiteBalanceExpected)
+  assert.deepEqual(await call('sample-color', '--x', '.25', '--y', '.25'), balancedPixel)
+  const whiteBalanceUndo = await call('undo')
+  assert.deepEqual(whiteBalanceUndo.photos.find((photo) => photo.id === rangeAsset).edit, whiteBalanceBefore)
+  console.log(
+    'Native white balance: display and original coordinates, actual preview pixels and capture, stale-photo guard and undo passed.'
+  )
   const sampledPointBefore = (await call('state')).photos.find((photo) => photo.id === rangeAsset).edit
   await call('point-tool')
   await assert.rejects(

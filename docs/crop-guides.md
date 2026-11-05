@@ -45,6 +45,8 @@ node cli/openlr.mjs crop-guide --type none
 
 实现沿用已有 `pointercancel` 的撤销语义，由同一处理器处理相应 pointerId 的 `lostpointercapture`。依据 [W3C Pointer Events 捕获释放规则](https://www.w3.org/TR/pointerevents3/#implicit-release-of-pointer-capture)，正常 `pointerup` 后也会释放捕获；因此必须先结束已完成的拖拽，再处理丢失事件，不能无条件撤销。本次没有增加另一套裁剪几何算法。
 
+同一真实浏览器回归另通过请求拦截加载 `ca1299b` 的旧裁剪模块，稳定停在恢复断言：原草稿位置 `(0.2, 0.2)` 仍为拖动中的 `(0.26, 0.24)`。这验证测试确实识别旧缺陷；生产文件没有为对照实验改回旧版本。
+
 ```sh
 node --test tests/crop-guides.test.js tests/crop.test.js
 node tests/crop-guide-ablation.mjs

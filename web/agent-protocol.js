@@ -793,7 +793,20 @@ export const definitions = {
   'sample-tool': entry('Toggle white balance sampler'),
   'white-balance': entry(
     'Neutralize a patch at normalized original-image coordinates',
-    { x: number('Horizontal position', 0, 1), y: number('Vertical position', 0, 1) },
+    {
+      x: number('Normalized original-image x, before optics/crop/rotation/flip', 0, 1),
+      y: number('Normalized original-image y, before optics/crop/rotation/flip', 0, 1),
+      photoId: string('Optional current-photo guard')
+    },
+    ['x', 'y']
+  ),
+  'white-balance-sample': entry(
+    'Neutralize a patch from the displayed edited canvas with the white balance sampler',
+    {
+      x: number('Horizontal fraction of the displayed edited canvas', 0, 1),
+      y: number('Vertical fraction of the displayed edited canvas', 0, 1),
+      photoId: string('Optional current-photo guard')
+    },
     ['x', 'y']
   ),
   fullscreen: entry('Toggle the desktop window fullscreen state'),

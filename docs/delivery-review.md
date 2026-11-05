@@ -2,7 +2,24 @@
 
 Reviewed through 2026-11-06 on Windows and WSL Linux. This is delivery evidence, not an overall completeness claim.
 
-## Latest tracked snapshot and public delivery
+## Windows standalone package verification
+
+On Windows build 26200 with WebView2 and Node 24.9.0, the tracked archive of **`ca1299bd2fe5c7beeb43065fda013d991bf5888c`** completed `npm ci` (61 packages, zero reported vulnerabilities) and MyGo 0.7.4 packaging. The ZIP comment identified that revision, and the archive contained no `node_modules`, generated CLI, or release output. The resulting distribution contained `OpenLR.exe`, the NSIS installer, and the single-file CLI. The live check ran the unpacked executable with `OPENLR_EPHEMERAL=1` and a fresh agent session.
+
+The packaged `cli/openlr.mjs` was copied by itself to a new OS temporary directory outside the project. The CLI working directory contained only that file, its ancestors had no `node_modules`, and the process ran with `NODE_PATH` and `NODE_OPTIONS` unset. Before the host started, `schema point-sample` reported required numeric coordinates `x` and `y` and the optional string guard `photoId`. `cli search "point sample"` ranked `point-sample` first. `point-sample --x 0.5 --y 0.5 --photoId fixture --dry-run` returned those numeric coordinates and the guard with `dryRun: true`. A separate esbuild parse found one source file and six final imports, all Node builtins.
+
+| Live command or file | Observed result |
+| --- | --- |
+| `state`, `import` | The initial catalog was empty. Import added one generated 118-byte PNG with zero failures. |
+| `processing --version 2`, `edit --key Exposure --value 1`, `preview`, PNG `export` | Windows GDI+ decoded the baseline preview, edited preview, and rendered export as 40 × 40 PNGs of 507 bytes each. The baseline center RGBA was `[64,96,128,255]`. The edited preview and export both read `[90,133,176,255]` and had identical bytes. |
+| `point-tool`, guarded `point-sample`, full and summary `state` | A stale ID exited 1 with “The selected photo changed” and preserved the recipe. The current ID returned `#5a85b0`. Both state responses reported the new selected point. Full state showed one point color, Exposure 1, processing version 2, and the sampler closed. |
+| `point-sample --capture`, `undo`, original `export` | GDI+ decoded the actual workspace capture as a 1783 × 1154 PNG of 82,823 bytes. Visual inspection showed the generated photo and Exposure 1 in the editor. Undo restored the pre-sample recipe. The original export and the source file both matched the generated input byte for byte. |
+
+Packaged AGPL and third-party notices matched the archived root files byte for byte. The source notice, CLI, and five component-license files matched the archive build's generated resources byte for byte. The harness stopped its own host. Its first sandboxed attempts encountered an access-denied temporary session rename and then a denied loopback connection. The successful run used an ignored workspace directory for the descriptor and authorized local loopback execution while keeping the CLI outside the project.
+
+The harness, build and execution logs, generated images, and notice checks are under ignored `.workspace/delivery-ca1299b-*` paths. This run covers one generated PNG workflow on the unpacked Windows package. Installer execution, the full native/browser suites, Linux, and macOS for this revision remain outside its scope.
+
+## Latest Windows and Linux tracked snapshot and public delivery
 
 Commit **`2753c7a2beddfac1b420f384ba0d32656cd6575b`** was exported with `git archive` into new Windows and Linux directories. Both started without `node_modules` or generated CLI resources; no untracked source, optional models, Python packages or prior application builds were copied. External Node 24.9.0/Go 1.27.3 and existing Go caches were explicitly reused.
 

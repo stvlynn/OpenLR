@@ -77,7 +77,7 @@ import * as migration from './migration.js'
 import { mountMigration } from './migration-ui.js'
 import { LOCAL_COMMANDS, updateLocalTools, localToolAt } from './local-tools.js'
 import { createLocalToolsUI, viewToOriginal } from './local-tools-ui.js'
-import { neutralBalance } from './white-balance.js'
+import { neutralBalance, WHITE_BALANCE_MESSAGES } from './white-balance.js'
 import { analyzeFocus, validEye } from './culling.js'
 import {
   validatePoint,
@@ -401,12 +401,12 @@ function syncTiles(container, items) {
 }
 let paintController = null,
   paintRevision = 0,
-  pointPreview = null
+  samplePreview = null
 function cancelPaint() {
   paintRevision++
   paintController?.abort()
   paintController = null
-  pointPreview = null
+  samplePreview = null
 }
 async function previewStage(image, edit) {
   try {
@@ -465,7 +465,7 @@ async function paintStage(image, edit) {
     mode !== 'detail'
   )
     return
-  pointPreview = null
+  samplePreview = null
   stage.classList.toggle('pair', pair)
   if (pair) stage.replaceChildren(originalPreview, preview)
   else stage.replaceChildren(preview)
@@ -485,8 +485,21 @@ async function paintStage(image, edit) {
   if (clipping) clippingOverlay(preview)
   $('stage').classList.toggle('cropping', cropping)
   $('stage').classList.toggle('zoom', zoom)
-  if (sourceMatchesPhoto && recipe === owner && !cropping && !compare && !pair && !clipping)
-    pointPreview = { canvas: preview, photoId, edit: owner }
+  if (sourceMatchesPhoto && recipe === owner && !cropping && !compare && !pair)
+    samplePreview = { canvas: preview, image, photoId, edit: owner }
+}
+function displayedSamplePreview(photo, clickedCanvas, messages) {
+  if (clickedCanvas !== undefined && clickedCanvas !== samplePreview?.canvas)
+    throw Error(messages.changedPreview)
+  const stage = $('stage')
+  if (
+    samplePreview?.photoId !== photo.id ||
+    samplePreview.edit !== photo.edit ||
+    samplePreview.canvas.parentElement !== stage ||
+    stage.hidden
+  )
+    throw Error(messages.preview)
+  return samplePreview
 }
 async function draw() {
   local.drawNavigation()
@@ -2017,17 +2030,8 @@ async function execute(command, args, context = {}) {
             throw Error(POINT_COLOR_MESSAGES.changedPhoto)
           if (mode !== 'detail' || sampling !== 'point') throw Error(POINT_COLOR_MESSAGES.activateSampler)
           if (clipping) throw Error(POINT_COLOR_MESSAGES.clipping)
-          if (context.pointCanvas !== undefined && context.pointCanvas !== pointPreview?.canvas)
-            throw Error(POINT_COLOR_MESSAGES.changedPreview)
-          const stage = $('stage')
-          if (
-            pointPreview?.photoId !== p.id ||
-            pointPreview.edit !== p.edit ||
-            pointPreview.canvas.parentElement !== stage ||
-            stage.hidden
-          )
-            throw Error(POINT_COLOR_MESSAGES.preview)
-          return execute('point-add', { color: sampleColor(pointPreview.canvas, args.x, args.y) })
+          const { canvas } = displayedSamplePreview(p, context.sampleCanvas, POINT_COLOR_MESSAGES)
+          return execute('point-add', { color: sampleColor(canvas, args.x, args.y) })
         }
         case 'point-add':
         case 'point-update':
@@ -2060,8 +2064,20 @@ async function execute(command, args, context = {}) {
           redo.length = 0
           break
         }
-        case 'white-balance': {
-          const values = neutralBalance(await source(p.id), number(args.x, 0, 1), number(args.y, 0, 1))
+        case 'white-balance':
+        case 'white-balance-sample': {
+          if (args.photoId !== undefined && args.photoId !== p.id)
+            throw Error(WHITE_BALANCE_MESSAGES.changedPhoto)
+          let point = args,
+            image
+          if (command === 'white-balance-sample') {
+            if (mode !== 'detail' || sampling !== 'white') throw Error(WHITE_BALANCE_MESSAGES.activateSampler)
+            const preview = displayedSamplePreview(p, context.sampleCanvas, WHITE_BALANCE_MESSAGES)
+            image = preview.image
+            point = viewToOriginal(args, image, preview.edit)
+            if (!point) throw Error(WHITE_BALANCE_MESSAGES.outsideSource)
+          } else image = await source(p.id)
+          const values = neutralBalance(image, point.x, point.y)
           await replace(p, { edit: { ...p.edit, ...values } })
           rememberEdit(p)
           redo.length = 0
@@ -2325,13 +2341,11 @@ $('stage').onclick = (e) => {
   if (sampling && e.target.tagName === 'CANVAS') {
     const rect = e.target.getBoundingClientRect()
     const point = { x: (e.clientX - rect.left) / rect.width, y: (e.clientY - rect.top) / rect.height }
-    if (sampling === 'point') {
-      act('point-sample', { ...point, photoId: selected }, { pointCanvas: e.target })
-      return
-    }
-    const originalPoint = viewToOriginal(point, bitmap, active().edit)
-    if (originalPoint) act('white-balance', originalPoint)
-    else notice('Choose a point inside the corrected source image')
+    act(
+      sampling === 'point' ? 'point-sample' : 'white-balance-sample',
+      { ...point, photoId: selected },
+      { sampleCanvas: e.target }
+    )
   } else if (!cropping && !pair) act('zoom')
 }
 $('remove-mask').onclick = () => {
