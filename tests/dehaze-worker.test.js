@@ -3,6 +3,63 @@ import assert from 'node:assert/strict'
 import { chromium } from 'playwright-core'
 import { serveWorkspace } from './browser-server.mjs'
 
+test('byte-input analysis transfers only owned bytes and matches scalar preparation and startup fallback', async (t) => {
+  const server = await serveWorkspace()
+  t.after(server.close)
+  const browser = await chromium.launch({ channel: process.env.CHROME_CHANNEL || 'chrome', headless: true })
+  t.after(() => browser.close())
+  const page = await browser.newPage()
+  await page.goto(server.url)
+  const facts = await page.evaluate(async () => {
+    const { analyzeDehazeOwned } = await import('./dehaze-worker-client.js')
+    const { analyzeDehaze } = await import('./dehaze.js')
+    const { rgba8ToLinearFrame } = await import('./pixel-frame.js')
+    const data = Uint8ClampedArray.from({ length: 64 * 48 * 4 }, (_, i) => (i * 17 + Math.floor(i / 4)) % 256)
+    const input = { width: 64, height: 48, data },
+      before = data.slice(),
+      cases = []
+    for (const transmission of [false, true]) {
+      const linear = rgba8ToLinearFrame(input),
+        expected = analyzeDehaze(linear, { transmission })
+      const owned = { ...input, data: data.slice() }
+      const actual = await analyzeDehazeOwned(owned, { encoding: 'rgba8', transmission })
+      cases.push(
+        owned.data.byteLength === 0 &&
+          actual.frame.colorSpace === 'srgb-linear' &&
+          actual.frame.data.every((v, i) => v === linear.data[i]) &&
+          actual.analysis.airlight.every((v, i) => v === expected.airlight[i]) &&
+          (transmission
+            ? actual.analysis.transmission.every((v, i) => v === expected.transmission[i])
+            : actual.analysis.transmission === null)
+      )
+    }
+    const NativeWorker = window.Worker
+    window.Worker = class {
+      constructor() {
+        throw Error('byte-input startup fixture')
+      }
+    }
+    const fallback = await analyzeDehazeOwned(input, { encoding: 'rgba8' })
+    window.Worker = NativeWorker
+    const expected = rgba8ToLinearFrame(input)
+    const failure = await analyzeDehazeOwned(
+      { width: 1, height: 1, data: new Uint8Array(3) },
+      { encoding: 'rgba8' }
+    ).catch((e) => e.message)
+    const retry = await analyzeDehazeOwned({ ...input, data: data.slice() }, { encoding: 'rgba8' })
+    return {
+      cases,
+      preserved: data.every((v, i) => v === before[i]),
+      fallback: fallback.frame.data.every((v, i) => v === expected.data[i]),
+      retry: retry.frame.data.every((v, i) => v === expected.data[i]),
+      failure
+    }
+  })
+  assert.ok(facts.cases.every(Boolean))
+  assert.ok(facts.preserved && facts.fallback && facts.retry)
+  assert.match(facts.failure, /dimensions/)
+})
+
 test('exact dehaze worker returns owned pixels/maps, stays responsive and recovers after active cancellation', async (t) => {
   const server = await serveWorkspace()
   t.after(server.close)

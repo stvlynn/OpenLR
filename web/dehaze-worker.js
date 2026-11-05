@@ -1,8 +1,8 @@
-import { analyzeDehaze } from './dehaze.js'
+import { prepareDehazeAnalysis } from './dehaze-analysis.js'
 
-self.onmessage = ({ data: { frame, transmission } }) => {
+self.onmessage = ({ data: { frame: input, transmission, encoding } }) => {
   try {
-    const analysis = analyzeDehaze(frame, { transmission })
+    const { frame, analysis } = prepareDehazeAnalysis(input, { transmission, encoding })
     const transfers = [frame.data.buffer]
     if (analysis.transmission) transfers.push(analysis.transmission.buffer)
     self.postMessage({ frame, analysis }, transfers)

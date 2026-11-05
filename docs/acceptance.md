@@ -200,3 +200,9 @@ Windows WebView2 和 WSL Ubuntu／WebKitGTK 均重新构建，并通过各自 `n
 2026-11-05 字节源转换优化：24MP 消融发现重复计算 sRGB 转移函数占据主要前置时间。颜色模块现统一拥有 256 项 Float64 精确表，供 RGBA8 转浮点、字节渲染、局部处理、光学校正和输出空间转换复用，删除原有重复表生成。全部字节码、alpha、切片和原件保持检查与标量公式一致；没有改变全分辨率分析、连续浮点／HDR 公式或几何规则。
 
 Windows／Node 24.9／Chrome 156 全量 `OPENLR_TEST_CMS=1 OPENLR_TEST_METADATA=1 npm test` 完成 **312/312，零失败、零跳过**，包含独立 CMS／元数据校验。重新打包后的 Windows WebView2 与 WSL Linux WebKitGTK 各七组原生套件全部通过。单次集成测试首次最大主线程间隔从之前约 1.717s 降到 .657s，但总耗时仍为 8.830s，缓存完成时间本次更慢；完整负面结果及资源数据见[性能记录](dehaze-performance.md)，不声称整体吞吐或所有交互已改善。此前干净快照证据仍明确对应 `afbdcb8`，不冒充本轮新实现的独立快照验收。
+
+2026-11-05 Original 去雾字节转换现由既有分析 worker 执行，主线程只交付独占的校正后 RGBA8。共享组合复用原转换与分析函数，启动兼容回退使用同一实现，已发布的线性缓存不被转移。新增实际 Chrome 测试验证正／负分析模式的全部样本和透射率、原件保持、启动回退、错误和重试。
+
+本轮首次全量为 313 项中 312 通过、1 失败、零跳过：颜色分级手势测试等待条件超时，未启用去雾。原日志保留在忽略的 `.workspace/dehaze-byte-worker-full.log`。独立复跑颜色分级 **3/3** 通过；为共享等待助手加入原调用位置作为错误 cause 后，完整 `OPENLR_TEST_CMS=1 OPENLR_TEST_METADATA=1 npm test` 复跑 **313/313，零失败、零跳过**，约 194.4 秒。没有修改该手势测试、延长等待或削弱断言；首次超时未复现，根因尚未证实，不能把复跑通过称为已修复交互缺陷。复跑记录为 `.workspace/dehaze-byte-worker-full-recheck.log`。
+
+Windows WebView2 与 WSL Ubuntu 24.04／WebKitGTK 2.52.6 均重新构建，七组原生套件分别全部通过，分析和 Original 编码 worker 没有启动回退。24MP 集成首帧约 8.059s、最长主线程间隔 .428s，缓存完成约 1.639/1.744s；[性能记录](dehaze-performance.md)保留资源代价与单次测量限制。仍不声称流畅拖动、当前 macOS 验收或覆盖本轮代码的干净快照交付。

@@ -81,13 +81,16 @@ function correctedBitmap(image, edit, edge) {
 }
 
 function correctedByteFrame(image, edit) {
+  return rgba8ToLinearFrame(correctedBytePixels(image, edit))
+}
+function correctedBytePixels(image, edit) {
   const corrected = correctedBitmap(image, edit, Infinity)
   const full = document.createElement('canvas')
   full.width = corrected.width
   full.height = corrected.height
   const context = full.getContext('2d', { willReadFrequently: true })
   context.drawImage(corrected, 0, 0)
-  return rgba8ToLinearFrame(context.getImageData(0, 0, full.width, full.height))
+  return context.getImageData(0, 0, full.width, full.height)
 }
 async function consumePreparation(entry, signal) {
   if (signal?.aborted) throw canceledPreparation()
@@ -121,7 +124,7 @@ export async function prepareDehaze(image, edit = {}, { signal } = {}) {
   if (!entry || entry.key !== key || entry.controller?.signal.aborted) {
     entry = {
       key,
-      source: isLinearFrame(original) ? correctedFrame(original, edit) : correctedByteFrame(original, edit),
+      source: isLinearFrame(original) ? correctedFrame(original, edit) : correctedBytePixels(original, edit),
       analysis: null,
       consumers: new Set()
     }
@@ -135,6 +138,7 @@ export async function prepareDehaze(image, edit = {}, { signal } = {}) {
       // Upgrade from an owned copy; never detach a published cache snapshot.
       const owned = entry.analysis ? { ...entry.source, data: entry.source.data.slice() } : entry.source
       entry.pending = analyzeDehazeOwned(owned, {
+        encoding: isLinearFrame(owned) ? 'linear' : 'rgba8',
         transmission: edit.Dehaze > 0,
         signal: entry.controller.signal
       })

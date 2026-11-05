@@ -1,16 +1,17 @@
 import { runImageWorker } from './image-worker.js'
-import { analyzeDehaze, createDehazePixel } from './dehaze.js'
+import { createDehazePixel } from './dehaze.js'
+import { prepareDehazeAnalysis } from './dehaze-analysis.js'
 import { linearFrameToRgba8 } from './pixel-frame.js'
 
-// The caller relinquishes an owned corrected frame, never a cached original.
-// Successful completion returns that frame and its map; after handoff failure
+// The caller relinquishes owned corrected linear samples or RGBA8 bytes, never
+// a cached original. Completion returns a linear frame and its map; after failure
 // the caller must recreate the owned copy from its preserved original.
-export function analyzeDehazeOwned(frame, { transmission = true, signal } = {}) {
+export function analyzeDehazeOwned(frame, { transmission = true, encoding = 'linear', signal } = {}) {
   return runImageWorker(
     new URL('./dehaze-worker.js', import.meta.url),
-    { frame, transmission },
+    { frame, transmission, encoding },
     [frame.data.buffer],
-    ({ frame, transmission }) => ({ frame, analysis: analyzeDehaze(frame, { transmission }) }),
+    ({ frame, transmission, encoding }) => prepareDehazeAnalysis(frame, { transmission, encoding }),
     { signal }
   )
 }
