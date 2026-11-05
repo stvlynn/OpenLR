@@ -1,7 +1,7 @@
 import { validateColorGrading } from './color-grading.js'
 import { controls } from './adjustments.js'
 import { geometry, validCrop } from './geometry.js'
-import { validateFill } from './fill.js'
+import { validateFill, validatePostRepairFills } from './fill.js'
 import { validEye } from './culling.js'
 import { validatePoint } from './point-color.js'
 import { validateLocalTool } from './local-tools.js'
@@ -90,6 +90,7 @@ function safeRecipe(recipe) {
     else if (key === 'toneCurves') result.toneCurves = validateToneCurves(value)
     else if (key === 'pointColors') result.pointColors = value.map(validatePoint)
     else if (key === 'fills') result.fills = value.map(validateFill)
+    else if (key === 'postRepairFills') result.postRepairFills = validatePostRepairFills(value)
     else if (key === 'trim') {
       if (
         !Number.isFinite(value?.start) ||
@@ -110,7 +111,7 @@ function safeRecipe(recipe) {
         ['repairs', 'repair'],
         ['masks', 'mask']
       ])
-        tools[group] = (value[group] ?? []).map((item) => validateLocalTool(kind, item))
+        tools[group] = (value[group] ?? []).map((item) => validateLocalTool(kind, item, { stored: true }))
       if (value.depth !== undefined) {
         if (!value.depth || typeof value.depth !== 'object' || Array.isArray(value.depth))
           throw Error('Invalid depth map')

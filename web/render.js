@@ -1,8 +1,8 @@
 import { analyzeDehazeOwned, encodeDehaze, renderDehazeFrame } from './dehaze-worker-client.js'
 import { analyzeDehaze, createDehazePixel } from './dehaze.js'
 import { geometry } from './geometry.js'
-import { sourceBeforeLocalFrame, sourceBeforeLocalBitmap, readSourcePixels } from './source-corrections.js'
-import { renderLocalSource, applyLocalTools } from './local-tools.js'
+import { sourceBeforeMasksFrame, renderLocalBitmap, readSourcePixels } from './source-corrections.js'
+import { applyLocalMasks } from './local-tools.js'
 import { renderOpticsSource, warpOpticsFrame } from './optics.js'
 import { createMixer, spatialEffects, toneCurve } from './color.js'
 import { globalToneParameters, globalToneRgb } from './tone.js'
@@ -21,7 +21,8 @@ function encode(v) {
 // Original decoded frames and ImageBitmaps are immutable. Keep only the latest
 // source-correction revision per source; crop, output size and strength reuse it.
 const dehazeSources = new WeakMap()
-const sourceKey = (edit) => JSON.stringify([edit.fills, edit.redEyes, edit.localTools, edit.optics])
+const sourceKey = (edit) =>
+  JSON.stringify([edit.fills, edit.redEyes, edit.localTools, edit.postRepairFills, edit.optics])
 const cacheableSource = (image) =>
   isLinearFrame(image) || (typeof ImageBitmap !== 'undefined' && image instanceof ImageBitmap)
 const canceledPreparation = () =>
@@ -54,15 +55,16 @@ function correctedFrame(image, edit) {
   if (
     !edit.fills?.length &&
     !edit.redEyes?.length &&
+    !edit.postRepairFills?.length &&
     edit.localTools === undefined &&
     edit.optics === undefined
   )
     return assertLinearFrame(owned)
-  const corrected = applyLocalTools(sourceBeforeLocalFrame(owned, edit), edit.localTools)
+  const corrected = applyLocalMasks(sourceBeforeMasksFrame(owned, edit), edit.localTools)
   return warpOpticsFrame(corrected, edit.optics, image)
 }
 function correctedBitmap(image, edit, edge) {
-  const corrected = renderLocalSource(sourceBeforeLocalBitmap(image, edit, edge), edit.localTools, edge)
+  const corrected = renderLocalBitmap(image, edit, edge)
   return renderOpticsSource(corrected, edit.optics, image, edge)
 }
 

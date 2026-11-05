@@ -89,7 +89,7 @@ export function validateLocalChanges(kind, changes) {
   }
   return changes
 }
-export function validateLocalTool(kind, value, depth = 0) {
+export function validateLocalTool(kind, value, { depth = 0, stored = false } = {}) {
   object(value)
   if (depth > 32) throw Error('Composite mask nesting is too deep')
   const repair = kind === 'repair',
@@ -119,7 +119,8 @@ export function validateLocalTool(kind, value, depth = 0) {
     'enabled',
     'opacity',
     'feather',
-    ...(repair ? ['source', 'points', 'radius'] : ['adjustments', 'invert', ...extra])
+    ...(repair ? ['source', 'points', 'radius'] : ['adjustments', 'invert', ...extra]),
+    ...(repair && stored ? ['afterFillId'] : [])
   ]
   if (Object.keys(value).some((k) => !allowed.includes(k))) throw Error('Unknown local tool property')
   const result = {
@@ -137,8 +138,14 @@ export function validateLocalTool(kind, value, depth = 0) {
     result.points = points(value.points)
     result.radius = scalar(value.radius ?? 0.05, 0.00001, 1, 'radius')
   }
-  if (repair) result.source = point(value.source, 'source')
-  else {
+  if (repair) {
+    result.source = point(value.source, 'source')
+    if (value.afterFillId !== undefined) {
+      if (typeof value.afterFillId !== 'string' || !value.afterFillId)
+        throw Error('Expected a fill ID for the repair')
+      result.afterFillId = value.afterFillId
+    }
+  } else {
     result.invert = value.invert ?? false
     if (typeof result.invert !== 'boolean') throw Error('invert must be boolean')
     result.adjustments = {}
@@ -155,7 +162,9 @@ export function validateLocalTool(kind, value, depth = 0) {
       )
         throw Error('Composite needs an operation and two components')
       result.operation = value.operation
-      result.components = value.components.map((component) => validateLocalTool('mask', component, depth + 1))
+      result.components = value.components.map((component) =>
+        validateLocalTool('mask', component, { depth: depth + 1 })
+      )
     } else if (value.type === 'linear') {
       result.start = point(value.start, 'start')
       result.end = point(value.end, 'end')
@@ -233,6 +242,8 @@ export function updateLocalTools(edit, command, args) {
   } else if (action === 'add') {
     const item = validateLocalTool(kind, args[kind])
     item.id = crypto.randomUUID()
+    const afterFillId = edit.postRepairFills?.at(-1)?.id
+    if (kind === 'repair' && afterFillId) item.afterFillId = afterFillId
     list.push(item)
   } else {
     const index = list.findIndex((item) => item.id === args.id)
@@ -243,11 +254,23 @@ export function updateLocalTools(edit, command, args) {
       if (Object.hasOwn(changes, 'id')) throw Error('A local tool ID cannot be changed')
       const merged = { ...list[index], ...changes }
       if (kind === 'mask') merged.adjustments = { ...list[index].adjustments, ...changes.adjustments }
-      list[index] = validateLocalTool(kind, merged)
+      list[index] = validateLocalTool(kind, merged, { stored: true })
       // Repair recipes have no adjustment fields.
     }
   }
   return { ...edit, localTools: local }
+}
+
+// Selective paste can keep a repair while replacing its fill collection.
+// Treat that repair as following the current last fill.
+export function resolveRepairAnchors(repairs, fills) {
+  const lastFillId = fills?.at(-1)?.id,
+    fillIds = new Set(fills?.map((fill) => fill.id))
+  return repairs.map((repair) => {
+    if (!repair.afterFillId || fillIds.has(repair.afterFillId)) return repair
+    const { afterFillId, ...rest } = repair
+    return lastFillId ? { ...rest, afterFillId: lastFillId } : rest
+  })
 }
 function segmentDistance(x, y, a, b, width, height, short) {
   const ax = (a.x * width) / short,
@@ -379,14 +402,13 @@ export function usesPixelRange(tool) {
   return RANGE_TYPES.includes(tool.type) || tool.components?.some(usesPixelRange)
 }
 
-export function applyLocalTools(pixels, local = {}) {
+export function applyLocalRepairs(pixels, repairs) {
   const { data, width, height } = pixels
   const isLinear = data instanceof Float32Array,
     alphaScale = isLinear ? 1 : 255
-  if (isLinear) assertLinearFrame(pixels)
   // Read the immutable pre-stroke buffer and defer writes to a small destination patch.
   // This avoids clone feedback and avoids a full-frame copy for every repair.
-  for (const tool of local.repairs ?? []) {
+  for (const tool of repairs ?? []) {
     if (tool.enabled === false || !tool.opacity) continue
     const base = data,
       dx = (tool.source.x - tool.points[0].x) * width,
@@ -438,6 +460,11 @@ export function applyLocalTools(pixels, local = {}) {
     for (let y = y0; y < y1; y++)
       data.set(patch.subarray((y - y0) * patchWidth * 4, (y - y0 + 1) * patchWidth * 4), (y * width + x0) * 4)
   }
+  return pixels
+}
+export function applyLocalMasks(pixels, local = {}) {
+  const { data, width, height } = pixels,
+    isLinear = data instanceof Float32Array
   const reference = (local.masks ?? []).some(usesPixelRange) ? data.slice() : null
   applyLensBlur(pixels, local.depth, local.lensBlur)
   for (const tool of local.masks ?? []) {
@@ -465,20 +492,7 @@ export function applyLocalTools(pixels, local = {}) {
   }
   return pixels
 }
-export function renderLocalSource(image, local, maxEdge = Infinity) {
-  if (
-    !local?.lensBlur?.enabled &&
-    ![...(local?.masks ?? []), ...(local?.repairs ?? [])].some(
-      (tool) => tool.enabled !== false && tool.opacity
-    )
-  )
-    return image
-  const canvas = document.createElement('canvas'),
-    scale = Math.min(1, maxEdge / Math.max(image.width, image.height))
-  canvas.width = Math.max(1, Math.round(image.width * scale))
-  canvas.height = Math.max(1, Math.round(image.height * scale))
-  const context = canvas.getContext('2d', { willReadFrequently: true })
-  context.drawImage(image, 0, 0, canvas.width, canvas.height)
-  context.putImageData(applyLocalTools(context.getImageData(0, 0, canvas.width, canvas.height), local), 0, 0)
-  return canvas
+export function applyLocalTools(pixels, local = {}) {
+  if (pixels.data instanceof Float32Array) assertLinearFrame(pixels)
+  return applyLocalMasks(applyLocalRepairs(pixels, local.repairs), local)
 }

@@ -83,7 +83,7 @@ await withNativeWorkspace(process.argv[2], async ({ root, call, initial }) => {
     for (let i = 0; i < 3; i++) await call('undo')
     const removed = recipe(await run('remove-mask', { id, algorithm }))
     assert.equal(removed.localTools.masks.length, 0)
-    const patch = removed.fills[0]
+    const patch = removed.postRepairFills[0]
     assert.deepEqual([patch.x, patch.y, patch.width, patch.height], [70 / width, 30 / height, 3, 3])
     const output = await image()
     const target = pixel(output, 71, 31)
@@ -104,8 +104,44 @@ await withNativeWorkspace(process.argv[2], async ({ root, call, initial }) => {
       transformedSize: [64, 64]
     })
   }
+  await call('reset')
+  const clone = {
+    type: 'clone',
+    source: { x: 71.5 / width, y: 31.5 / height },
+    points: [{ x: 47.5 / width, y: 31.5 / height }],
+    radius: 0.04,
+    feather: 0
+  }
+  const radial = { type: 'radial', center: clone.points[0], rx: 5 / width, ry: 5 / height, feather: 0 }
+  await run('repair.add', { repair: clone })
+  const cloneTarget = pixel(await image(), 47, 31)
+  assert.deepEqual(cloneTarget, [245, 29, 22, 255])
+  await run('mask.add', { mask: radial })
+  const firstRemoval = recipe(await run('remove-mask', { algorithm: 'ns' }))
+  const firstTarget = pixel(await image(), 47, 31)
+  assert.ok(firstTarget.slice(0, 3).every((value) => Math.abs(value - 96) <= 6))
+  const later = recipe(await run('repair.add', { repair: clone }))
+  assert.equal(later.localTools.repairs.at(-1).afterFillId, firstRemoval.postRepairFills[0].id)
+  assert.deepEqual(pixel(await image(), 47, 31), cloneTarget)
+  await run('mask.add', { mask: radial })
+  const beforeSecond = recipe(await call('state'))
+  const secondRemoval = recipe(await run('remove-mask', { algorithm: 'telea' }))
+  assert.equal(secondRemoval.postRepairFills.length, 2)
+  const secondTarget = pixel(await image(), 47, 31)
+  assert.ok(secondTarget.slice(0, 3).every((value) => Math.abs(value - 96) <= 6))
+  assert.deepEqual(recipe(await call('undo')), beforeSecond)
+  assert.deepEqual(pixel(await image(), 47, 31), cloneTarget)
+  await call('redo')
+  assert.deepEqual(pixel(await image(), 47, 31), secondTarget)
   const original = await call('export', '--format', 'original', '--output', path.join(root, 'original.png'))
   assert.deepEqual(await readFile(original.path), bytes)
   assert.deepEqual(await readFile(file), bytes)
-  console.log(JSON.stringify({ nativeMask: 'passed', cases, preservedOriginals: 1 }))
+  console.log(
+    JSON.stringify({
+      nativeMask: 'passed',
+      cases,
+      cloneRemovalSequence: [cloneTarget, firstTarget, cloneTarget, secondTarget],
+      preservedOriginals: 1
+    })
+  )
 })

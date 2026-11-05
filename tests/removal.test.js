@@ -173,7 +173,7 @@ test('mask preview uses the rendered aspect and inpainting excludes red-eye-corr
         // then turning clockwise places the original red patches here.
         transformed: [pixel(transformed, 32, 56), pixel(transformed, 32, 8)],
         transformedPhoto: [pixel(rendered, 32, 56), pixel(rendered, 32, 8)],
-        patch: removed.fills[0],
+        patch: removed.postRepairFills[0],
         maskConsumed: removed.localTools.masks.length === 0,
         target: pixel(output, 71, 31),
         outside,

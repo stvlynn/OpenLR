@@ -29,6 +29,7 @@ for (const [name, ...args] of [
   ['native-smoke'],
   ['native-organization-smoke'],
   ['native-mask-smoke'],
+  ['native-optics-smoke'],
   ['native-navigation-smoke'],
   ['native-video-smoke'],
   ['native-local-smoke'],

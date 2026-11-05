@@ -21,7 +21,7 @@ export const COPY_GROUPS = [
   { id: 'crop', label: 'Crop and rotation', keys: ['crop', 'aspect', 'turn', 'flip'] },
   { id: 'optics', label: 'Optics and geometry', keys: ['optics'] },
   { id: 'local-tools', label: 'Masks, repairs and lens blur', keys: ['localTools'] },
-  { id: 'fill', label: 'Content-aware removal', keys: ['fills'] },
+  { id: 'fill', label: 'Content-aware removal', keys: ['fills', 'postRepairFills'] },
   { id: 'red-eye', label: 'Red-eye correction', keys: ['redEyes'] },
   { id: 'video-trim', label: 'Video trim', keys: ['trim'] },
   { id: 'processing', label: 'Processing version', keys: ['processVersion'] }

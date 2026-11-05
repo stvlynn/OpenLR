@@ -187,7 +187,7 @@ test('linear mask previews select precise pre-mask samples and retain original c
       legacyColor,
       linearLuminance,
       legacyLuminance,
-      removalPatch: removal.fills[0],
+      removalPatch: removal.postRepairFills[0],
       removalBefore,
       removalAfter: Array.from(removalInput.data),
       colorBefore,
