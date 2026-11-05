@@ -1,10 +1,24 @@
 # Range masks, composite masks and depth focus
 
-Open **Masks & local repair**. **Create color range** selects pixels near an sRGB reference color. Enter a color or use **Sample range color** then click the image. Sampling follows the inverse crop, rotation, flip and optics mapping to the original decoded pixel. Tolerance is the accepted RMS RGB distance in 0..1; Softness is its smooth transition width. This original OpenLR distance rule is not a claim to reproduce Adobe's unpublished color metric.
+Open **Masks & local repair**. **Create color range** selects pixels near an sRGB reference color. Enter a color or use **Sample range color** then click the image. Sampling follows the inverse crop, rotation, flip and optics mapping to the original decoded pixel. Activating the sampler uses `local-tool --tool color-sample`, exits crop/comparison/pair/white-balance modes and opens Detail with the actual local-tool interaction surface. The GUI pointer and `range-color` share source sampling and range updates; an optional `photoId` protects a queued operation from selecting another asset. Tolerance is the accepted RMS RGB distance in 0..1; Softness is its smooth transition width. This original OpenLR distance rule is not a claim to reproduce Adobe's unpublished color metric.
 
 **Create luminance range** uses linear-light sRGB relative luminance (`0.2126 R + 0.7152 G + 0.0722 B`). Minimum/maximum are inclusive; softness fades outside that interval. These ranges evaluate the immutable pre-mask pixel buffer, after repairs and before global edits, so earlier exposure masks cannot move the selection. New masks start with zero adjustments; the selected red coverage overlay shows their region before any color change. O toggles coverage without changing exported pixels. Later changes to Range fields refine the selected range mask. Preview, thumbnails and exports evaluate the same recipes in original coordinates.
 
 Choose a mask and **Combine with** another, then **Add mask**, **Subtract mask** or **Intersect mask**. This consumes the second top-level mask into a two-component group. Its coverage participates; its separate adjustments do not. The first mask's adjustments apply once to the combined coverage. Soft union is `a+b−ab`, subtraction `a(1−b)`, intersection `ab`. Components retain their geometry, raster, strength, inversion and enable state. **Component** chooses a nested component for range/geometry/strength edits; **Whole mask** controls the group's adjustments. **Operation** can change an existing group's combination. Nested geometry is editable through the same CLI changes. Remove deletes the selected group.
+
+## Original range-color sampling
+
+`range-color --x 0.25 --y 0.5` samples normalized original-image coordinates before optics, crop, turn and flip. It returns `{color:"#rrggbb"}` and fills the visible Range color field. When the selected local item is a color-range mask or component, it refines that item using the existing shared update/persistence/undo path. Unchanged colors do not add an edit-history entry. `id` and optional zero/one `path` can explicitly target a root/component; `id:""` with an empty path fills only the new-range draft even when another mask is selected. Unknown roots and invalid paths reject before sampling. Without an eligible color-range target, sampling changes no recipe.
+
+```sh
+node cli/openlr.mjs local-tool --tool color-sample
+node cli/openlr.mjs range-color --args '{"x":0.25,"y":0.5,"id":"","path":[]}' --capture sampled.png
+node cli/openlr.mjs range-color --args '{"x":0.25,"y":0.5,"id":"MASK_ID","path":[1]}'
+```
+
+Full and summary `state` expose `rangeColor` (the current field/draft color) and `localTool:"color-sample"` while picking. Sampling stops after success; switching the selected adjustment, tool or photo also stops picking. The pointer captures its asset and target selection before queueing, and clicks on corrected transparent edges do not produce a source point. A sampling click does not also toggle zoom.
+
+This is an 8-bit sRGB reference from the existing decoder display surface, not a sensor-value or unbounded-float probe. Linear processing uses its decoded working frame’s sRGB display conversion; it does not apply the photo's exposure, masks, repairs, watermark or output color space. Existing `sample-color` intentionally continues to sample the edited image in normalized edited-view coordinates. The two operations have different documented meanings. Source files remain untouched; original-versus-edited evidence and the one-pixel extraction experiment are in [range-color sampling research](../research/range-color-sampling.md).
 
 ## Real relative depth
 
@@ -32,3 +46,5 @@ node cli/openlr.mjs lens-blur --enabled false
 ```
 
 An optional `photoId` guards queued UI/CLI operations. The normal undo/redo, persistence and original-file preservation rules apply. `tests/range-masks.test.js` verifies actual UI range/composite/component editing, transformed export pixels and restart persistence; `tests/depth.test.js` verifies real model inference, focused pixels unchanged, defocused pixels changed, depth range, first-use cache/restart and Worker startup fallback. Tests explicitly skip optional-weight inference when its ignored research file has not been downloaded; pure coverage/blur tests always run. `tests/model-cache.test.js` verifies Blob-incompatible writing, legacy Blob/ArrayBuffer reading and atomic replacement of model chunks.
+
+`tests/range-color-sampling.test.js` verifies real GUI pointer activation from crop/compare/pair/white balance, Original/Linear sample values, all quarter turns with crop/flip/optics, selected nested-component update and undo/reload, explicit draft isolation and stale-asset guards. Native smoke checks the actual CLI source/edited values, workspace captures, mask update/undo and original bytes.

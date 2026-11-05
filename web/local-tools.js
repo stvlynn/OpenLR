@@ -172,6 +172,14 @@ export function validateLocalTool(kind, value, depth = 0) {
   }
   return result
 }
+export function localToolAt(edit, id, path = []) {
+  let item = [...(edit.localTools?.masks ?? []), ...(edit.localTools?.repairs ?? [])].find(
+    (tool) => tool.id === id
+  )
+  for (const index of path) item = item?.components?.[index]
+  return item
+}
+
 export function updateLocalTools(edit, command, args) {
   const [kind, action] = command.split('.'),
     collection = kind === 'mask' ? 'masks' : 'repairs'

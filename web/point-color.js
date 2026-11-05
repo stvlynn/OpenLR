@@ -26,6 +26,25 @@ export function sampleColor(canvas, x, y) {
   const rgb = canvas.getContext('2d').getImageData(px, py, 1, 1).data
   return '#' + Array.from(rgb.slice(0, 3), (n) => n.toString(16).padStart(2, '0')).join('')
 }
+// Read the existing decoder display surface without applying the edit recipe.
+export function sampleSourceColor(image, x, y) {
+  const canvas = document.createElement('canvas')
+  canvas.width = canvas.height = 1
+  canvas
+    .getContext('2d', { willReadFrequently: true })
+    .drawImage(
+      image,
+      Math.min(image.width - 1, Math.floor(x * image.width)),
+      Math.min(image.height - 1, Math.floor(y * image.height)),
+      1,
+      1,
+      0,
+      0,
+      1,
+      1
+    )
+  return sampleColor(canvas, 0, 0)
+}
 export function pointPanel(run) {
   const panel = document.createElement('details'),
     summary = document.createElement('summary'),

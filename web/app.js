@@ -63,11 +63,11 @@ import {
 import { mountOptics } from './optics-ui.js'
 import * as migration from './migration.js'
 import { mountMigration } from './migration-ui.js'
-import { LOCAL_COMMANDS, updateLocalTools } from './local-tools.js'
+import { LOCAL_COMMANDS, updateLocalTools, localToolAt } from './local-tools.js'
 import { createLocalToolsUI, viewToOriginal } from './local-tools-ui.js'
 import { neutralBalance } from './white-balance.js'
 import { analyzeFocus, validEye } from './culling.js'
-import { validatePoint, pointPanel, sampleColor, clippingOverlay } from './point-color.js'
+import { validatePoint, pointPanel, sampleColor, sampleSourceColor, clippingOverlay } from './point-color.js'
 import { removeMaskedArea } from './fill.js'
 import { generateAiMask } from './ai-mask.js'
 import { estimateDepth } from './depth.js'
@@ -575,6 +575,7 @@ function snapshot() {
     cropGuide: { ...cropSurface.guide },
     localSelection: localToolsUI?.selection(),
     localTool: localToolsUI?.getMode() ?? 'off',
+    rangeColor: localToolsUI?.rangeColor() ?? '#808080',
     film,
     zoom,
     albums,
@@ -773,6 +774,7 @@ async function execute(command, args, context = {}) {
         cropGuide: { ...cropSurface.guide },
         localSelection: localToolsUI?.selection(),
         localTool: localToolsUI?.getMode() ?? 'off',
+        rangeColor: localToolsUI?.rangeColor() ?? '#808080',
         photo: photo
           ? {
               id: photo.id,
@@ -1212,10 +1214,13 @@ async function execute(command, args, context = {}) {
       break
     case 'local-tool': {
       if (!p) throw Error('Select a photo first')
+      if (args.photoId !== undefined && args.photoId !== p.id) throw Error('The selected photo changed')
       mode = 'detail'
       inspector = true
       pair = sampling = compare = cropping = false
-      localToolsUI.setMode(enumValue(args.tool, ['off', 'brush', 'linear', 'radial', 'clone', 'heal']))
+      localToolsUI.setMode(
+        enumValue(args.tool, ['off', 'brush', 'linear', 'radial', 'clone', 'heal', 'color-sample'])
+      )
       opticsUI?.deactivate()
       break
     }
@@ -1766,6 +1771,25 @@ async function execute(command, args, context = {}) {
         case 'sample-color': {
           const canvas = render(await source(p.id), p.edit, 1280)
           return { color: sampleColor(canvas, number(args.x, 0, 1), number(args.y, 0, 1)) }
+        }
+        case 'range-color': {
+          if (args.photoId !== undefined && args.photoId !== p.id) throw Error('The selected photo changed')
+          const selection =
+            args.id === undefined ? localToolsUI.selection() : { id: args.id, path: args.path ?? [] }
+          const item = localToolAt(p.edit, selection.id, selection.path)
+          if ((selection.id && !item) || (!selection.id && selection.path.length))
+            throw Error('Mask component not found')
+          const color = sampleSourceColor(await source(p.id), number(args.x, 0, 1), number(args.y, 0, 1))
+          if (item?.type === 'color-range' && item.color !== color) {
+            await execute(selection.path.length ? 'mask.component-update' : 'mask.update', {
+              id: selection.id,
+              path: selection.path,
+              changes: { color },
+              photoId: p.id
+            })
+          }
+          localToolsUI.setRangeColor(color)
+          return { color }
         }
         case 'point-add':
         case 'point-update':

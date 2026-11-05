@@ -820,6 +820,77 @@ try {
     dav.closeAllConnections()
     dav.close()
   }
+  const rangePixels = new Uint8Array(40 * 40 * 3)
+  for (let offset = 0; offset < rangePixels.length; offset += 3) rangePixels.set([64, 96, 128], offset)
+  const rangeBytes = Buffer.from(
+      makePng({ width: 40, height: 40, bits: 8, colorType: 2, srgb: 0, data: rangePixels })
+    ),
+    rangeSource = path.join(root, 'range-source.png')
+  await writeFile(rangeSource, rangeBytes)
+  const rangeAsset = (await call('import', rangeSource)).added[0]
+  for (const version of [1, 2]) {
+    await call('processing', '--version', String(version))
+    await call('edit', '--key', 'Exposure', '--value', '1')
+    const before = (await call('state')).photos.find((photo) => photo.id === rangeAsset).edit
+    await call(version === 1 ? 'crop-tool' : 'compare')
+    await call('local-tool', '--tool', 'color-sample', '--photoId', rangeAsset)
+    const activated = await call('state')
+    assert.equal(activated.localTool, 'color-sample')
+    assert.equal(activated.cropping, false)
+    assert.equal(activated.compare, false)
+    const sampled = await call(
+      'range-color',
+      '--x',
+      '.25',
+      '--y',
+      '.25',
+      '--id',
+      '',
+      '--path',
+      '[]',
+      '--photoId',
+      rangeAsset,
+      '--capture',
+      path.join(root, 'range-sample-' + version + '.png')
+    )
+    assert.equal(sampled.result.color, '#406080')
+    assert.equal(sampled.selected, rangeAsset)
+    assert.equal((await readFile(sampled.frame.path)).subarray(1, 4).toString(), 'PNG')
+    assert.equal((await call('state', '--summary', 'true')).rangeColor, '#406080')
+    assert.equal((await call('state')).localTool, 'off')
+    assert.notEqual((await call('sample-color', '--x', '.25', '--y', '.25')).color, '#406080')
+    assert.deepEqual((await call('state')).photos.find((photo) => photo.id === rangeAsset).edit, before)
+  }
+  await call(
+    'mask.add',
+    '--mask',
+    JSON.stringify({ type: 'color-range', color: '#808080', tolerance: 0.05, softness: 0.1 })
+  )
+  const rangeBefore = (await call('state')).photos.find((photo) => photo.id === rangeAsset).edit,
+    rangeMaskId = rangeBefore.localTools.masks[0].id
+  await call('local-select', '--id', rangeMaskId)
+  await call('range-color', '--x', '.25', '--y', '.25', '--photoId', rangeAsset)
+  assert.equal(
+    (await call('state')).photos.find((photo) => photo.id === rangeAsset).edit.localTools.masks[0].color,
+    '#406080'
+  )
+  await call('undo')
+  assert.deepEqual((await call('state')).photos.find((photo) => photo.id === rangeAsset).edit, rangeBefore)
+  await assert.rejects(
+    () => call('range-color', '--x', '.25', '--y', '.25', '--photoId', 'stale-photo'),
+    /changed|selected/i
+  )
+  const rangeOriginal = await call(
+    'export',
+    '--format',
+    'original',
+    '--output',
+    path.join(root, 'range-original.png')
+  )
+  assert.deepEqual(await readFile(rangeOriginal.path), rangeBytes)
+  console.log(
+    'Native range color: original versus edited sampling in both processing versions, crop/compare activation, actual capture, selected mask update/undo, stale-photo guard and unchanged original bytes passed.'
+  )
   const colors = [
     [180, 60, 40],
     [45, 160, 70],

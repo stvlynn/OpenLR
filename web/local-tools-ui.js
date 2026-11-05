@@ -1,5 +1,5 @@
 import { geometry } from './geometry.js'
-import { LOCAL_CONTROLS } from './local-tools.js'
+import { LOCAL_CONTROLS, localToolAt } from './local-tools.js'
 import { compileOptics, renderOpticsSource } from './optics.js'
 import { AI_TARGETS } from './ai-models.js'
 import { maskCoverageSource } from './mask-preview.js'
@@ -152,12 +152,10 @@ export function createLocalToolsUI({ container, run, getActive, notify }) {
   }
   const sampleColor = element('button', { type: 'button' }, 'Sample range color')
   panel.append(sampleColor)
-  sampleColor.onclick = () => {
-    colorPicking = true
-    mode.value = 'off'
-    status.textContent = 'Click the image to sample the original color.'
-    if (mounted) mounted.canvas.style.cursor = 'crosshair'
-  }
+  sampleColor.onclick = () =>
+    run('local-tool', { tool: 'color-sample', photoId: getActive()?.id }).catch((error) =>
+      notify(error.message)
+    )
   for (const [type, label] of [
     ['color-range', 'Create color range'],
     ['luminance-range', 'Create luminance range']
@@ -325,20 +323,18 @@ export function createLocalToolsUI({ container, run, getActive, notify }) {
   let source = null,
     picking = false,
     colorPicking = false,
+    sampledClick = false,
     asset = '',
     mounted,
     cleanup = () => {},
     draft = null
-  const rootItem = () => {
-    const local = getActive()?.edit.localTools
-    return [...(local?.masks ?? []), ...(local?.repairs ?? [])].find((item) => item.id === list.value)
-  }
-  const selectedItem = () => {
-    let item = rootItem()
-    for (const index of component.value ? component.value.split('.').map(Number) : [])
-      item = item?.components?.[index]
-    return item
-  }
+  const rootItem = () => localToolAt(getActive()?.edit ?? {}, list.value)
+  const selectedItem = () =>
+    localToolAt(
+      getActive()?.edit ?? {},
+      list.value,
+      component.value ? component.value.split('.').map(Number) : []
+    )
   const commit = (command, args) => {
     if (command === 'mask.update' && component.value) {
       args = { ...args, id: list.value, path: component.value.split('.').map(Number) }
@@ -365,6 +361,7 @@ export function createLocalToolsUI({ container, run, getActive, notify }) {
       source = null
       draft = null
       colorPicking = false
+      sampledClick = false
     }
     const items = [...(local.masks ?? []), ...(local.repairs ?? [])]
     list.replaceChildren(
@@ -452,7 +449,9 @@ export function createLocalToolsUI({ container, run, getActive, notify }) {
       if (!item) throw Error('Mask component not found')
     }
     list.value = id
+    colorPicking = false
     sync(path.join('.'))
+    if (mounted) mounted.canvas.style.cursor = mode.value === 'off' ? 'zoom-in' : 'crosshair'
     return selection()
   }
   const chooseAdjustment = (path) =>
@@ -615,9 +614,8 @@ export function createLocalToolsUI({ container, run, getActive, notify }) {
     Object.assign(overlay.style, { position: 'fixed', pointerEvents: 'none', zIndex: 5, overflow: 'hidden' })
     document.body.append(overlay)
     mounted = { canvas, overlay, image, edit }
-    canvas.style.cursor = mode.value === 'off' ? 'zoom-in' : 'crosshair'
-    let gesture = null,
-      sampledClick = false
+    canvas.style.cursor = mode.value === 'off' && !colorPicking ? 'zoom-in' : 'crosshair'
+    let gesture = null
     const point = (event) => {
       const r = canvas.getBoundingClientRect()
       return viewToOriginal(
@@ -639,30 +637,10 @@ export function createLocalToolsUI({ container, run, getActive, notify }) {
       }
       if (colorPicking) {
         sampledClick = true
-        const sample = document.createElement('canvas')
-        sample.width = sample.height = 1
-        const ctx = sample.getContext('2d', { willReadFrequently: true })
-        ctx.drawImage(
-          image,
-          Math.min(image.width - 1, Math.floor(p.x * image.width)),
-          Math.min(image.height - 1, Math.floor(p.y * image.height)),
-          1,
-          1,
-          0,
-          0,
-          1,
-          1
+        const { id, path } = selection()
+        run('range-color', { x: p.x, y: p.y, photoId: getActive()?.id, id, path }).catch((error) =>
+          notify(error.message)
         )
-        rangeInputs.color.value =
-          '#' +
-          [...ctx.getImageData(0, 0, 1, 1).data]
-            .slice(0, 3)
-            .map((value) => value.toString(16).padStart(2, '0'))
-            .join('')
-        rangeInputs.color.dispatchEvent(new Event('change'))
-        colorPicking = false
-        canvas.style.cursor = 'zoom-in'
-        status.textContent = 'Original color sampled. Create or refine a color range.'
         return
       }
       if (repair && (picking || event.altKey || !source)) {
@@ -740,7 +718,7 @@ export function createLocalToolsUI({ container, run, getActive, notify }) {
       drawOverlay()
     }
     const click = (event) => {
-      if (mode.value !== 'off' || sampledClick) {
+      if (mode.value !== 'off' || colorPicking || sampledClick) {
         sampledClick = false
         event.stopPropagation()
         event.preventDefault()
@@ -776,16 +754,26 @@ export function createLocalToolsUI({ container, run, getActive, notify }) {
   }
   sync()
   function setMode(value) {
-    mode.value = value
+    const sample = value === 'color-sample'
+    mode.value = sample ? 'off' : value
     picking = false
     draft = null
-    list.value = ''
+    if (!sample) list.value = ''
     sync()
-    status.textContent = ['clone', 'heal'].includes(value)
-      ? 'Alt-click or choose a source, then drag the target.'
-      : 'Drag to create a new ' + mode.options[mode.selectedIndex].text + '.'
+    colorPicking = sample
+    status.textContent = sample
+      ? 'Click the image to sample the original color.'
+      : ['clone', 'heal'].includes(value)
+        ? 'Alt-click or choose a source, then drag the target.'
+        : 'Drag to create a new ' + mode.options[mode.selectedIndex].text + '.'
     if (mounted) mounted.canvas.style.cursor = value === 'off' ? 'zoom-in' : 'crosshair'
     panel.open = value !== 'off'
+  }
+  const setRangeColor = (color) => {
+    rangeInputs.color.value = color
+    colorPicking = false
+    if (mounted) mounted.canvas.style.cursor = mode.value === 'off' ? 'zoom-in' : 'crosshair'
+    status.textContent = 'Original color sampled. Create or refine a color range.'
   }
   const selectMask = (id) => {
     overlayVisible.checked = true
@@ -800,14 +788,16 @@ export function createLocalToolsUI({ container, run, getActive, notify }) {
     sync,
     mount,
     setMode,
-    getMode: () => mode.value,
+    getMode: () => (colorPicking ? 'color-sample' : mode.value),
+    setRangeColor,
+    rangeColor: () => rangeInputs.color.value,
     unmount,
     selectMask,
     setOverlay,
     selection,
     select,
     selectedItem,
-    active: () => mode.value !== 'off',
+    active: () => mode.value !== 'off' || colorPicking,
     deactivate: () => setMode('off'),
     panel
   }

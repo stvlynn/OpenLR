@@ -243,6 +243,23 @@ export const definitions = {
     { x: number('Horizontal position', 0, 1), y: number('Vertical position', 0, 1) },
     ['x', 'y']
   ),
+  'range-color': entry(
+    'Sample the decoded original sRGB display color and fill or refine a color range',
+    {
+      x: number('Normalized original-image x, before optics/crop/rotation/flip', 0, 1),
+      y: number('Normalized original-image y, before optics/crop/rotation/flip', 0, 1),
+      photoId: string('Optional current-photo guard'),
+      id: string(
+        'Mask/repair root ID; omit for current selection or use an empty string for a new range draft'
+      ),
+      path: {
+        type: 'array',
+        items: { type: 'integer', enum: [0, 1] },
+        description: 'Nested component path for an explicit root ID'
+      }
+    },
+    ['x', 'y']
+  ),
   'point-add': entry('Add a point color sample', { color: string('sRGB hex color') }, ['color']),
   'point-update': entry(
     'Adjust pixels near a sampled color',
@@ -758,7 +775,10 @@ export const definitions = {
   ),
   'local-tool': entry(
     'Activate a local editing tool',
-    { tool: string('Tool', { enum: ['off', 'brush', 'linear', 'radial', 'clone', 'heal'] }) },
+    {
+      tool: string('Tool', { enum: ['off', 'brush', 'linear', 'radial', 'clone', 'heal', 'color-sample'] }),
+      photoId: string('Optional current-photo guard')
+    },
     ['tool']
   ),
   screenshot: entry('Capture the visible desktop workspace as a PNG', {}, [], { returns: 'image/png' }),
@@ -962,6 +982,12 @@ export function validateArgs(command, args) {
     if (rule.oneOf && !rule.oneOf.some((choice) => typeof value === choice.type))
       throw new Error('Invalid value for ' + key)
   }
+  if (
+    command === 'range-color' &&
+    args.path !== undefined &&
+    (args.id === undefined || args.path.some((index) => index !== 0 && index !== 1))
+  )
+    throw Error('A component path requires a root ID and zero/one indexes')
   if (command === 'album-rule') validateSmartRule(args.rule)
   if (command === 'export' && args.format !== undefined) {
     validateExportColorSpace(args.format, args.colorSpace)
