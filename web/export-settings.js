@@ -1,6 +1,7 @@
 import { validateArgs } from './agent-protocol.js'
 import { EXPORT_FORMATS } from './formats.js'
 import { exportColorSpaces, validateExportColorSpace } from './export-color.js'
+import { validateExportMetadataPolicy } from './export-metadata.js'
 
 export const EXPORT_SETTINGS_MESSAGES = {
   previous: 'Export again',
@@ -23,6 +24,8 @@ export function normalizeExportSettings(options, media) {
     definition = EXPORT_FORMATS.find((item) => item.value === format),
     colorSpace = validateExportColorSpace(format, options.colorSpace),
     result = { format }
+  const metadata = validateExportMetadataPolicy(format, options.metadata)
+  if (metadata !== 'none') result.metadata = metadata
   if (media === 'photo' && format.startsWith('video/')) throw Error(EXPORT_SETTINGS_MESSAGES.selectVideo)
   if (definition.quality) result.quality = options.quality ?? 0.92
   if (exportColorSpaces(format).length) result.colorSpace = colorSpace

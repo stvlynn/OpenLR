@@ -3,6 +3,25 @@ import { runImageWorker } from './image-worker.js'
 import { validateExportColorSpace } from './export-color.js'
 import { assertLinearFrame, linearFrameToEncoded } from './pixel-frame.js'
 import { makeColorProfile } from './color-spaces.js'
+import { buildExportMetadata, validateExportMetadataPolicy } from './export-metadata.js'
+
+function outputMetadata(pixels, format, colorSpace, options) {
+  const policy = validateExportMetadataPolicy(format, options?.policy)
+  if (policy === 'none') return undefined
+  return buildExportMetadata(options?.source ?? {}, {
+    policy,
+    width: pixels.width,
+    height: pixels.height,
+    colorSpace
+  })
+}
+
+async function tagNativeExport(blob, format, metadata) {
+  if (!metadata) return blob
+  const { embedJpegMetadata, embedPngMetadata } = await import('./color-containers.js')
+  const encode = format === 'image/jpeg' ? embedJpegMetadata : embedPngMetadata
+  return new Blob([encode(await blob.arrayBuffer(), metadata)], { type: format })
+}
 
 async function nativeEncode(canvas, format, quality) {
   const blob = await new Promise((resolve, reject) =>
@@ -25,17 +44,30 @@ async function codec(message) {
   )
 }
 
-export async function encodeFrameTiff(frame, colorSpace = 'srgb') {
+export async function encodeFrameTiff(frame, colorSpace = 'srgb', metadataOptions) {
   validateExportColorSpace('image/tiff', colorSpace)
   assertLinearFrame(frame)
   const pixels = linearFrameToEncoded(frame, colorSpace, 16)
-  const { bytes } = await codec({ operation: 'encode-target', format: 'image/tiff', pixels, colorSpace })
+  const metadata = outputMetadata(pixels, 'image/tiff', colorSpace, metadataOptions)
+  const { bytes } = await codec({
+    operation: 'encode-target',
+    format: 'image/tiff',
+    pixels,
+    colorSpace,
+    metadata
+  })
   return new Blob([bytes], { type: 'image/tiff' })
 }
 
-export async function encodeFrame(frame, format = 'image/jpeg', quality = 0.92, colorSpace = 'srgb') {
+export async function encodeFrame(
+  frame,
+  format = 'image/jpeg',
+  quality = 0.92,
+  colorSpace = 'srgb',
+  metadataOptions
+) {
   validateExportColorSpace(format, colorSpace)
-  if (format === 'image/tiff') return encodeFrameTiff(frame, colorSpace)
+  if (format === 'image/tiff') return encodeFrameTiff(frame, colorSpace, metadataOptions)
   assertLinearFrame(frame)
   let source = frame
   if (format === 'image/jpeg') {
@@ -46,6 +78,7 @@ export async function encodeFrame(frame, format = 'image/jpeg', quality = 0.92, 
     }
   }
   const pixels = linearFrameToEncoded(source, colorSpace, 8)
+  const metadata = outputMetadata(pixels, format, colorSpace, metadataOptions)
   if (format === 'image/jpeg') {
     const canvas = document.createElement('canvas')
     canvas.width = pixels.width
@@ -53,23 +86,31 @@ export async function encodeFrame(frame, format = 'image/jpeg', quality = 0.92, 
     canvas.getContext('2d').putImageData(new ImageData(pixels.data, pixels.width, pixels.height), 0, 0)
     const blob = await nativeEncode(canvas, format, quality)
     const { embedJpegProfile } = await import('./color-containers.js')
-    return new Blob([embedJpegProfile(await blob.arrayBuffer(), makeColorProfile(colorSpace))], {
+    return new Blob([embedJpegProfile(await blob.arrayBuffer(), makeColorProfile(colorSpace), metadata)], {
       type: format
     })
   }
-  const { bytes } = await codec({ operation: 'encode-target', format, pixels, quality, colorSpace })
+  const { bytes } = await codec({ operation: 'encode-target', format, pixels, quality, colorSpace, metadata })
   return new Blob([bytes], { type: format })
 }
 
-export async function encodePhoto(canvas, format = 'image/jpeg', quality = 0.92, colorSpace = 'srgb') {
+export async function encodePhoto(
+  canvas,
+  format = 'image/jpeg',
+  quality = 0.92,
+  colorSpace = 'srgb',
+  metadataOptions
+) {
   validateExportColorSpace(format, colorSpace)
+  const metadata = outputMetadata(canvas, format, colorSpace, metadataOptions)
   if (CODEC_TYPES.includes(format) || (format === 'image/png' && colorSpace !== 'srgb')) {
     const pixels = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height)
-    const { bytes } = await codec({ operation: 'encode', format, pixels, quality, colorSpace })
+    const { bytes } = await codec({ operation: 'encode', format, pixels, quality, colorSpace, metadata })
     return new Blob([bytes], { type: format })
   }
   if (!['image/jpeg', 'image/png'].includes(format)) throw Error('Unsupported export format')
-  if (colorSpace === 'srgb') return nativeEncode(canvas, format, quality)
+  if (colorSpace === 'srgb')
+    return tagNativeExport(await nativeEncode(canvas, format, quality), format, metadata)
   // Flatten JPEG transparency in the existing sRGB rendering space before conversion.
   const output = document.createElement('canvas')
   output.width = canvas.width
@@ -84,5 +125,5 @@ export async function encodePhoto(canvas, format = 'image/jpeg', quality = 0.92,
   ctx.putImageData(new ImageData(new Uint8ClampedArray(bytes), output.width, output.height), 0, 0)
   const blob = await nativeEncode(output, format, quality)
   const { embedJpegProfile } = await import('./color-containers.js')
-  return new Blob([embedJpegProfile(await blob.arrayBuffer(), profile)], { type: format })
+  return new Blob([embedJpegProfile(await blob.arrayBuffer(), profile, metadata)], { type: format })
 }

@@ -20,6 +20,8 @@ The [linear input contract](linear-working-frames.md) owns exact PNG/TIFF layout
 
 ## Worker lifecycle and native compatibility
 
+Rendered JPEG/PNG/TIFF/AVIF/JPEG XL can explicitly include [selected copyright and photo fields](export-metadata.md). The shared EXIF/XMP policy rebuilds output dimensions/orientation and retains the selected target ICC; it does not copy arbitrary source blocks. None remains the existing default. AVIF/JXL encoder bindings use their pinned libraries' metadata APIs and retain the original no-metadata path.
+
 `web/raw-kernel.js` and `web/codec-kernel.js` own the implementations. The Worker files are thin message/transfer adapters. `web/image-worker.js` serializes heavy codec jobs and terminates each normal Worker after success or failure, releasing its WASM heap. An explicit startup handshake happens **before** transferring an encoder's pixel buffer.
 
 Some native custom-scheme hosts cannot construct/load module Workers. If construction throws, or the Worker module fails before the handshake, the runner terminates it and dynamically imports the exact same kernel on the main thread. It does not invent a second decoder, retry processed corrupt inputs, or convert runtime decode failures into success. Normal browser hosts keep the isolated path. `main.go` registers `.js` / `.mjs` as JavaScript and `.wasm` as WebAssembly independent of OS file associations.

@@ -16,6 +16,7 @@ import UTIF from '../web/vendor/codecs/utif.js'
 import { encodeColorTiff } from '../web/color-containers.js'
 import { makeColorProfile, encodeSrgb } from '../web/color-spaces.js'
 import { defaultOptions as avifOptions } from '../web/vendor/codecs/avif/meta.js'
+import { readExifTool } from '../tests/exiftool.mjs'
 
 const executable = process.argv[2]
 if (!executable) throw Error('Pass the path to a built OpenLR executable')
@@ -214,6 +215,206 @@ async function highDepthInputs() {
   })
   return sources
 }
+async function verifyNativeExportMetadata() {
+  const previous = await call('state'),
+    input = await readFile(new URL('../tests/fixtures/export-metadata.png', import.meta.url)),
+    inputPath = path.join(root, 'export-metadata-source.png'),
+    rights = '© 示例 & <rights> 📷 e\u0301',
+    fields = {
+      Make: 'OpenLR Fixture',
+      Model: 'Generated Camera',
+      LensModel: 'Generated 50mm',
+      DateTimeOriginal: '2024-06-07T08:09:10.125+08:00',
+      ExposureTime: 1 / 125,
+      FNumber: 2.8,
+      ISO: 200,
+      FocalLength: 50,
+      Artist: '创作者 Example',
+      Copyright: rights
+    },
+    records = []
+  await writeFile(inputPath, input)
+  try {
+    const imported = await call('import', inputPath)
+    assert.deepEqual(imported.failed, [])
+    assert.equal(imported.added.length, 1)
+    const sourceId = imported.added[0],
+      source = (await call('state')).photos.find((photo) => photo.id === sourceId)
+    assert.deepEqual(
+      source.metadata,
+      fields,
+      'Native input keeps Unicode XMP precedence and all supported capture fields'
+    )
+    assert.deepEqual(
+      [source.width, source.height],
+      [24, 32],
+      'The fixture Orientation 6 is applied before editing'
+    )
+    await call('view', '--mode', 'detail')
+    await call('edit', '--key', 'turn', '--value', '1')
+    await call('edit', '--key', 'crop', '--value', JSON.stringify({ x: 0.125, y: 0.125, w: 0.75, h: 0.75 }))
+    for (const version of [1, 2]) {
+      await call('select', '--id', sourceId)
+      await call('processing', '--version', String(version))
+      const recipe = (await call('state')).photos.find((photo) => photo.id === sourceId).edit
+      for (const [format, extension] of [
+        ['image/jpeg', 'jpg'],
+        ['image/png', 'png'],
+        ['image/tiff', 'tif'],
+        ['image/avif', 'avif'],
+        ['image/jxl', 'jxl']
+      ]) {
+        let baselineColor, baselineWords
+        for (const policy of ['none', 'copyright', 'supported']) {
+          await call('select', '--id', sourceId)
+          const label = `${version}-${extension}-${policy}`,
+            exported = await call(
+              'export',
+              '--format',
+              format,
+              '--metadata',
+              policy,
+              '--quality',
+              '1',
+              '--colorSpace',
+              'display-p3',
+              '--maxSize',
+              '16',
+              '--output',
+              path.join(root, `metadata-${label}.${extension}`)
+            ),
+            bytes = await readFile(exported.path),
+            settings = await call('export-settings')
+          assert.equal(settings.photo.format, format, label)
+          assert.equal(settings.photo.colorSpace, 'display-p3', label)
+          assert.equal(settings.photo.maxSize, 16, label)
+          assert.equal(settings.photo.metadata, policy === 'none' ? undefined : policy, label)
+          const repeated = await call(
+            'export-previous',
+            '--output',
+            path.join(root, `metadata-${label}-previous.${extension}`)
+          )
+          assert.deepEqual(await readFile(repeated.path), bytes, label + ': previous export actual bytes')
+          assert.deepEqual(
+            await call('export-settings'),
+            settings,
+            label + ': previous export metadata acknowledgment'
+          )
+          if (version === 2 && format === 'image/png' && policy === 'copyright') {
+            await assert.rejects(
+              call('export', '--format', 'image/jpeg', '--metadata', 'supported', '--output', repeated.path),
+              /EEXIST/
+            )
+            assert.deepEqual(await readFile(repeated.path), bytes)
+            assert.deepEqual(
+              await call('export-settings'),
+              settings,
+              'A refused output write keeps the previous metadata policy'
+            )
+          }
+          if (format === 'image/tiff' && version === 2) {
+            const decoded = readTiff16(bytes)
+            assert.deepEqual([decoded.width, decoded.height], [16, 12], label)
+            if (policy === 'none') baselineWords = decoded.samples
+            else
+              assert.deepEqual(
+                decoded.samples,
+                baselineWords,
+                label + ': metadata cannot change TIFF16 samples'
+              )
+            assert.ok(
+              decoded.samples.some((value, i) => i % 4 !== 3 && value % 257 !== 0),
+              label + ': genuine 16-bit output words'
+            )
+          }
+          const reimported = await call('import', exported.path)
+          assert.deepEqual(reimported.failed, [], label)
+          assert.equal(reimported.added.length, 1, label)
+          const photo = (await call('state')).photos.find((photo) => photo.id === reimported.added[0]),
+            expected = policy === 'supported' ? fields : policy === 'copyright' ? { Copyright: rights } : {}
+          assert.deepEqual(photo.metadata, expected, label + ': actual native reimport semantics')
+          assert.deepEqual(
+            [photo.width, photo.height],
+            [16, 12],
+            label + ': no stale dimensions or second orientation'
+          )
+          const color = (await call('sample-color', '--x', '.5', '--y', '.5')).color
+          if (policy === 'none') baselineColor = color
+          else assert.equal(color, baselineColor, label + ': metadata cannot change decoded color')
+          records.push({ version, format, policy, path: exported.path, label })
+          assert.deepEqual(
+            (await call('state')).photos.find((photo) => photo.id === sourceId).edit,
+            recipe,
+            label + ': source recipe unchanged'
+          )
+        }
+      }
+      await call('select', '--id', sourceId)
+      const original = await call(
+        'export',
+        '--format',
+        'original',
+        '--output',
+        path.join(root, `metadata-original-v${version}.png`)
+      )
+      assert.deepEqual(await readFile(original.path), input)
+      assert.deepEqual(await readFile(inputPath), input)
+    }
+    const oracle = readExifTool([inputPath, ...records.map((record) => record.path)])
+    if (!oracle) {
+      console.log(
+        'SKIP independent native metadata oracle: ExifTool is not installed; all 30 actual CLI exports/reimports and policy semantics still ran.'
+      )
+    } else {
+      assert.equal(oracle.length, records.length + 1)
+      const [fixture, ...outputs] = oracle
+      assert.equal(fixture['IFD0:Orientation'], 6)
+      assert.equal(fixture['GPS:GPSLatitude'], 1.25)
+      assert.equal(fixture['XMP-crs:Exposure2012'], 3)
+      assert.equal(fixture['XMP-dc:Subject'], 'Private fixture keyword')
+      for (const [i, tags] of outputs.entries()) {
+        const { policy, format, label } = records[i],
+          supported = policy === 'supported'
+        assert.equal(tags['XMP-dc:Rights'], policy === 'none' ? undefined : rights, label)
+        assert.equal(tags['XMP-dc:Creator'], supported ? fields.Artist : undefined, label)
+        assert.equal(tags['IFD0:Make'], supported ? fields.Make : undefined, label)
+        assert.equal(tags['IFD0:Model'], supported ? fields.Model : undefined, label)
+        assert.equal(tags['ExifIFD:LensModel'], supported ? fields.LensModel : undefined, label)
+        for (const key of ['ExposureTime', 'FNumber', 'ISO', 'FocalLength'])
+          assert.equal(tags['ExifIFD:' + key], supported ? fields[key] : undefined, label + ': ' + key)
+        assert.equal(tags['ExifIFD:DateTimeOriginal'], supported ? '2024:06:07 08:09:10' : undefined, label)
+        assert.equal(tags['ExifIFD:OffsetTimeOriginal'], supported ? '+08:00' : undefined, label)
+        if (supported) assert.equal(String(tags['ExifIFD:SubSecTimeOriginal']), '125', label)
+        if (policy !== 'none') {
+          assert.equal(tags['IFD0:Orientation'], 1, label)
+          assert.equal(tags['ExifIFD:ExifImageWidth'], 16, label)
+          assert.equal(tags['ExifIFD:ExifImageHeight'], 12, label)
+        }
+        // ExifTool does not expose the ICC compressed inside JXL's codestream.
+        // Its actual color interpretation is covered by reimport above and the
+        // existing native five-space color checks; do not invent an ICC tag.
+        if (format !== 'image/jxl') assert.match(tags['ICC_Profile:ProfileDescription'], /Display P3/, label)
+        for (const key of Object.keys(tags)) {
+          assert.ok(!key.startsWith('GPS:') && !key.startsWith('XMP-crs:'), label + ': excluded ' + key)
+          assert.ok(
+            !key.endsWith(':Warning') && !key.endsWith(':Error'),
+            label + ': ' + key + ': ' + tags[key]
+          )
+        }
+        assert.equal(tags['XMP-dc:Subject'], undefined, label)
+      }
+      console.log(
+        'Native independent metadata oracle: ExifTool verified 30 output files, Unicode, supported capture fields, normalized dimensions/orientation and excluded GPS/private/edit fields.'
+      )
+    }
+    console.log(
+      'Native photo metadata: five formats × three policies × two processing versions; actual previous-export bytes/acknowledgment, reimport semantics, Linear TIFF16 and unchanged originals passed.'
+    )
+  } finally {
+    if (previous.selected) await call('select', '--id', previous.selected)
+  }
+}
+
 try {
   const end = Date.now() + 45000
   for (;;) {
@@ -761,6 +962,9 @@ try {
       originalPreserved: true
     })
   )
+  // Run last so the extra imported records and remembered settings cannot
+  // affect any pre-existing native smoke baseline.
+  await verifyNativeExportMetadata()
   console.log(
     'Native GUI/CLI passed RAW, editing, PNG preview, original bytes, live observation, workspace capture, person segmentation, TIFF export and WebDAV sync.'
   )

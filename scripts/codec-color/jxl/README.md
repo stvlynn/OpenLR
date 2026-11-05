@@ -12,6 +12,14 @@ The scalar build produces the production `jxl_color_enc` and `jxl_color_dec` mod
 
 The installer requires all production builds before replacing assets. It removes the former published decoder, its JavaScript wrapper and helper. `scripts/vendor-codecs.mjs` preserves the rebuilt decoder during ordinary offline dependency refreshes, retaining the package/component licenses and refreshing the existing provenance inventory. A validation reference copy of the former decoder may be kept only under ignored tooling paths; it is not a second shipped decoder.
 
+## Encoded metadata
+
+The existing eight-argument `encodeColor(pixels,width,height,icc,quality,lossless,effort,inputIsSrgb)` remains unchanged. `encodeColorWithMetadata` adds `exif` and `xmp` byte-array arguments after those eight fields and delegates to the same encoder implementation. Empty payloads retain the former raw-codestream output. The shared JavaScript `encodeProfiled` accepts optional sixth argument `{metadata:{exif?,xmp?}}` and only selects the metadata method when a payload is nonempty.
+
+`exif` starts at the TIFF header without the JPEG prefix. The binding enables `JxlEncoderUseBoxes`, writes an `Exif` box containing four zero offset bytes followed by that TIFF data, and writes UTF-8 XMP in a lowercase `xml ` box. It checks each API result and closes frames/boxes with `JxlEncoderCloseInput`. The lowercase name follows the fixed source's actual container implementation; its old public header comment spells the XML type differently. No bytes are appended to a bare codestream by JavaScript.
+
+The metadata producer must rebuild dimensions and Orientation 1 for already oriented pixels and select the public metadata field policy. The binding only transports those selected serialized payloads. No decoder is changed by this writer extension. Scalar, threaded and threaded-SIMD encoder variants expose the same API.
+
 ## Decode contract
 
 `jxl_decode_core.h` owns one public-libjxl decode loop shared by the production byte and working routes and the native-FLOAT inspector. It requests `JXL_TYPE_FLOAT`, queries the **DATA** ICC/structured encoding separately from ORIGINAL, preserves source bit/exponent and intensity metadata, applies libjxl's default codestream orientation/coalescing, and stops at the first full display image. It does not infer that FLOAT output has a linear transfer function or that ORIGINAL ICC describes the decoded samples.

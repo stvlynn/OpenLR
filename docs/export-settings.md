@@ -4,6 +4,8 @@
 
 Photos and videos have independent settings, retained across restart. Each record contains the effective format, supported quality and color space, and applicable long-edge size and watermark. Reuse renders the current asset and edits; it does not reuse an earlier image. Existing format constraints still apply, including RAW-only DNG output. Exporting a still frame from a video remains supported and updates the video slot.
 
+Rendered exports also remember the selected [photo metadata policy](export-metadata.md). An omitted or `none` policy preserves the prior default; non-default policies re-read the current original's fields rather than reusing another photo's metadata. Cancellation and failed output keep the previous policy with the other settings.
+
 ```sh
 node cli/openlr.mjs export --format image/png --colorSpace display-p3 --maxSize 1600 --output first.png
 node cli/openlr.mjs export-previous --output next.png

@@ -1,7 +1,7 @@
 // Adapted from jSquash b7fa9ac9ec02f224847ad23d19d115f9e296a368,
 // packages/avif/codec/enc/avif_enc.cpp. Copyright Google and Jamie Sinclair.
 // Licensed under Apache-2.0; see LICENSE.jsquash.
-// OpenLR changes: explicit ICC/CICP/range before RGB-to-YUV, input validation.
+// OpenLR changes: ICC/CICP/range, optional Exif/XMP, and input validation.
 #include <emscripten/bind.h>
 #include <emscripten/threading.h>
 #include <emscripten/val.h>
@@ -67,7 +67,8 @@ struct AvifOptions {
 
 thread_local const val Uint8Array = val::global("Uint8Array");
 
-val encode(std::string buffer, int width, int height, AvifOptions options) {
+val encodeImpl(std::string buffer, int width, int height, AvifOptions options,
+               const std::string& exif, const std::string& xmp) {
   avifResult status;  // To check the return status for avif API's
 
   int depth = options.bitDepth;
@@ -120,6 +121,14 @@ val encode(std::string buffer, int width, int height, AvifOptions options) {
   RETURN_NULL_IF(lossless && options.matrixCoefficients > 0);
   status = avifImageSetProfileICC(image.get(), reinterpret_cast<const uint8_t*>(options.icc.data()), options.icc.size());
   RETURN_NULL_IF(status != AVIF_RESULT_OK);
+  if (!exif.empty()) {
+    status = avifImageSetMetadataExif(image.get(), reinterpret_cast<const uint8_t*>(exif.data()), exif.size());
+    RETURN_NULL_IF(status != AVIF_RESULT_OK);
+  }
+  if (!xmp.empty()) {
+    status = avifImageSetMetadataXMP(image.get(), reinterpret_cast<const uint8_t*>(xmp.data()), xmp.size());
+    RETURN_NULL_IF(status != AVIF_RESULT_OK);
+  }
   if (options.matrixCoefficients >= 0) {
     image->matrixCoefficients = static_cast<avifMatrixCoefficients>(options.matrixCoefficients);
   } else if (lossless) {
@@ -193,6 +202,16 @@ val encode(std::string buffer, int width, int height, AvifOptions options) {
 
   avifRWDataFree(&output);
   return js_result;
+}
+
+val encode(std::string buffer, int width, int height, val options) {
+  // Keep the old required options intact. Optional byte payloads are read from
+  // the same JS options object without making existing callers supply fields.
+  const auto metadata = [&options](const char* key) {
+    const val payload = options[key];
+    return payload.isUndefined() || payload.isNull() ? std::string() : payload.as<std::string>();
+  };
+  return encodeImpl(buffer, width, height, options.as<AvifOptions>(), metadata("exif"), metadata("xmp"));
 }
 
 EMSCRIPTEN_BINDINGS(my_module) {

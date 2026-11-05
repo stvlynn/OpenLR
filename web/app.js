@@ -28,6 +28,7 @@ import {
   EXPORT_SETTINGS_MESSAGES
 } from './export-settings.js'
 import { COLOR_SPACES } from './color-spaces.js'
+import { EXPORT_METADATA_MESSAGES, exportMetadataPolicies } from './export-metadata.js'
 import { exportColorSpaces, validateExportColorSpace, EXPORT_COLOR_MESSAGES } from './export-color.js'
 import * as db from './catalog.js'
 import * as local from './local.js'
@@ -1804,20 +1805,39 @@ async function execute(command, args) {
                 ? 1280
                 : Infinity
               : number(args.maxSize, 1, Number.MAX_SAFE_INTEGER)
+          const metadataOptions =
+            command === 'export' && args.metadata && args.metadata !== 'none'
+              ? {
+                  policy: args.metadata,
+                  source: await metadata((await original(p.id)).file, { strict: true })
+                }
+              : undefined
           const image = await source(p.id)
           const recipe = command === 'preview' && compare ? neutralRecipe(p.edit) : p.edit
           if (processingVersion(recipe) === 2) {
             const frame = renderFrame(workingFrame(image), recipe, max)
             if (command === 'export') applyFrameWatermark(frame, args.watermark)
             return finished({
-              blob: await encodeFrame(frame, format, number(args.quality ?? 0.92, 0, 1), colorSpace),
+              blob: await encodeFrame(
+                frame,
+                format,
+                number(args.quality ?? 0.92, 0, 1),
+                colorSpace,
+                metadataOptions
+              ),
               filename: exportFilename(p.name, format)
             })
           }
           const canvas = render(image, recipe, max)
           if (command === 'export') applyWatermark(canvas, args.watermark)
           return finished({
-            blob: await encodePhoto(canvas, format, number(args.quality ?? 0.92, 0, 1), colorSpace),
+            blob: await encodePhoto(
+              canvas,
+              format,
+              number(args.quality ?? 0.92, 0, 1),
+              colorSpace,
+              metadataOptions
+            ),
             filename: exportFilename(p.name, format)
           })
         }
@@ -2119,6 +2139,7 @@ $('export').onclick = () => {
     $('export-size').value = options.maxSize ?? ''
     $('watermark').value = options.watermark ?? ''
     if (options.colorSpace) exportColorSelect.value = options.colorSpace
+    exportMetadataSelect.value = options.metadata ?? 'none'
     $('export-dialog').showModal()
   } catch (error) {
     notice(error.message)
@@ -2152,6 +2173,11 @@ const exportColorLabel = document.createElement('label'),
 exportColorSelect.id = 'export-color-space'
 exportColorLabel.append(EXPORT_COLOR_MESSAGES.label, exportColorSelect)
 $('format').closest('label').after(exportColorLabel)
+const exportMetadataLabel = document.createElement('label'),
+  exportMetadataSelect = document.createElement('select')
+exportMetadataSelect.id = 'export-metadata'
+exportMetadataLabel.append(EXPORT_METADATA_MESSAGES.label, exportMetadataSelect)
+exportColorLabel.after(exportMetadataLabel)
 $('format').onchange = (e) => {
   const spaces = exportColorSpaces(e.target.value),
     previous = exportColorSelect.value
@@ -2159,6 +2185,14 @@ $('format').onchange = (e) => {
   exportColorSelect.value = spaces.includes(previous) ? previous : spaces[0] || ''
   exportColorSelect.disabled = spaces.length < 2
   exportColorLabel.hidden = !spaces.length
+  const metadataPolicies = exportMetadataPolicies(e.target.value),
+    previousMetadata = exportMetadataSelect.value
+  exportMetadataSelect.replaceChildren(
+    ...metadataPolicies.map((id) => option(id, EXPORT_METADATA_MESSAGES.policies[id]))
+  )
+  exportMetadataSelect.value = metadataPolicies.includes(previousMetadata) ? previousMetadata : 'none'
+  exportMetadataSelect.disabled = !metadataPolicies.length
+  exportMetadataLabel.hidden = !metadataPolicies.length
   const usesQuality = EXPORT_FORMATS.find((format) => format.value === e.target.value)?.quality
   $('quality').disabled = !usesQuality
   $('quality').closest('label').hidden = !usesQuality

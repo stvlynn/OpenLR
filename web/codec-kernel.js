@@ -61,7 +61,15 @@ function normalizedAvif(decoded) {
   return { width, height, data: Float32Array.from(data, (value) => value / maximum) }
 }
 
-export async function processCodec({ operation, format, file, pixels, quality, colorSpace = 'srgb' }) {
+export async function processCodec({
+  operation,
+  format,
+  file,
+  pixels,
+  quality,
+  colorSpace = 'srgb',
+  metadata
+}) {
   try {
     if (operation === 'decode' || operation === 'decode-frame') {
       const working = operation === 'decode-frame',
@@ -216,10 +224,10 @@ export async function processCodec({ operation, format, file, pixels, quality, c
       const profile = makeColorProfile(colorSpace)
       let bytes
       if (format === 'image/tiff' || format === 'image/png') {
-        bytes = (format === 'image/tiff' ? encodeColorTiff : encodeColorPng)(converted, profile)
+        bytes = (format === 'image/tiff' ? encodeColorTiff : encodeColorPng)(converted, profile, metadata)
       } else {
         const { encodeProfiled } = await import('./color-codecs.js')
-        bytes = await encodeProfiled(format, converted, profile, quality, colorSpace)
+        bytes = await encodeProfiled(format, converted, profile, quality, colorSpace, { metadata })
       }
       if (!bytes?.byteLength) throw Error('The image encoder returned no data')
       if (ArrayBuffer.isView(bytes))

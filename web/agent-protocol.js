@@ -5,6 +5,7 @@ import { COLOR_SPACES } from './color-spaces.js'
 import { validateExportColorSpace } from './export-color.js'
 import { LOCAL_CONTROLS, validateLocalTool, validateLocalChanges } from './local-tools.js'
 import { EXPORT_TYPES } from './formats.js'
+import { EXPORT_METADATA_POLICIES, validateExportMetadataPolicy } from './export-metadata.js'
 import { AI_TARGETS } from './ai-models.js'
 import { OPTICS_CONTROLS, validateOptics } from './optics.js'
 import { validateDepthChanges } from './depth-effects.js'
@@ -825,6 +826,7 @@ export const definitions = {
         description: 'Longest edge in pixels. Defaults to original size.'
       },
       watermark: string('Optional text at lower right'),
+      metadata: string('Photo metadata to include in rendered output', { enum: EXPORT_METADATA_POLICIES }),
       colorSpace: string('Output RGB encoding for JPEG, PNG, TIFF, AVIF and JPEG XL', {
         enum: Object.keys(COLOR_SPACES)
       }),
@@ -906,8 +908,10 @@ export function validateArgs(command, args) {
     if (rule.oneOf && !rule.oneOf.some((choice) => typeof value === choice.type))
       throw new Error('Invalid value for ' + key)
   }
-  if (command === 'export' && args.format !== undefined)
+  if (command === 'export' && args.format !== undefined) {
     validateExportColorSpace(args.format, args.colorSpace)
+    validateExportMetadataPolicy(args.format, args.metadata)
+  }
   if (command === 'export-settings') {
     if (Object.hasOwn(args, 'media') !== Object.hasOwn(args, 'options'))
       throw Error('Provide media and options together')

@@ -23,20 +23,20 @@
       "sha256": "b899b4879d8f9683feb478eab64f9ebe4dab14121cb7a7bd0f42bb9c348382b1"
     },
     "avif/codec/enc/avif_enc.js": {
-      "bytes": 41925,
-      "sha256": "d4aae1e5498ed262bc2abe77722f5792b6ada6bbd9215556be0442bf3e123234"
+      "bytes": 42376,
+      "sha256": "da5f75c7aeb455b2d5cd11e7b3cb98dd66738a24fcff4bff74637711c237f228"
     },
     "avif/codec/enc/avif_enc.wasm": {
-      "bytes": 3507983,
-      "sha256": "3092ab34fa8b23debdb4395ce67dd293b2b70704dd21867ea183b5a70468c115"
+      "bytes": 3510006,
+      "sha256": "9f50725d4eb2d0c8d0d5ef93e52d4946beb1efee762b5b13f77cf47d8ad05942"
     },
     "avif/codec/enc/avif_enc_mt.js": {
-      "bytes": 59323,
-      "sha256": "99b6a0d3df98812d1d540dc61e9561cfb114c7d3b617ebf2a96b4b389b870bdc"
+      "bytes": 59774,
+      "sha256": "e8643ef676d5682843fc3ffdb0cf46f7a3ecaf836408f97efec2a84384478252"
     },
     "avif/codec/enc/avif_enc_mt.wasm": {
-      "bytes": 3547986,
-      "sha256": "7124259d458774916e5d29eac27174dc80f537009eb74de8128ca3bfb011c6b5"
+      "bytes": 3550024,
+      "sha256": "6eb7f7b76254cb8995422158d71d36f86f980baabdacb944081d420192a0fbc4"
     },
     "avif/meta.js": {
       "bytes": 410,
@@ -55,24 +55,24 @@
       "sha256": "e9920659e14cff9f55a986f23dd77d8104099ca50b1b4351ac54cc24ce6192f7"
     },
     "jxl/codec/enc/jxl_color_enc.wasm": {
-      "bytes": 2069440,
-      "sha256": "836ddacfd092c9f32d421e9633ee62b118653541cc7a4268c72cc9b391d73158"
+      "bytes": 2071169,
+      "sha256": "caea1cc435f7ed66c04ec7e0388bae3f6a44bed1c996cae8bd8f336aa430d040"
     },
     "jxl/codec/enc/jxl_color_enc_mt.js": {
       "bytes": 56793,
-      "sha256": "7807a3093a8446cb814c544b0feac3a5af6ffab07c49c9c1546026174fdde9d0"
+      "sha256": "760a45410562c736cf22b58779a847664db0c0b7d81f07de7405b41638227c48"
     },
     "jxl/codec/enc/jxl_color_enc_mt.wasm": {
-      "bytes": 2139367,
-      "sha256": "10322ab8a0c17def158e14099dcf744971de0e782f73891d654f696b0281e73f"
+      "bytes": 2141100,
+      "sha256": "54e3850e64bd247384291c114ec97bb49ce1d0d010066d307dcc9da93032783c"
     },
     "jxl/codec/enc/jxl_color_enc_mt_simd.js": {
       "bytes": 56808,
-      "sha256": "c6fd8de4fc6c6eb9835c53ad8d123c64dbc9cde829b18713480ddc45b838f51a"
+      "sha256": "52d88e8048c59094b51b068edc89c2d3604f8c497a4137370277438fb68eaeca"
     },
     "jxl/codec/enc/jxl_color_enc_mt_simd.wasm": {
-      "bytes": 2347781,
-      "sha256": "eeadf01398a4ecaad856eacc24c108acaf9e887fba675bfe206a54930bcd1083"
+      "bytes": 2349544,
+      "sha256": "e8fb57f79c34a7d1fa39d09530f81414ca2e3cbc4fc03b34bee974d609460fe5"
     },
     "pako.js": {
       "bytes": 221635,

@@ -23,7 +23,11 @@ async function encoder(format) {
     : load('jxl', () => import('./vendor/codecs/jxl/codec/enc/jxl_color_enc.js'))
 }
 
-export async function encodeProfiled(format, pixels, profile, quality, colorSpace) {
+export async function encodeProfiled(format, pixels, profile, quality, colorSpace, encoderOptions = {}) {
+  const metadata = encoderOptions.metadata ?? {}
+  for (const key of ['exif', 'xmp'])
+    if (metadata[key] !== undefined && !(metadata[key] instanceof Uint8Array))
+      throw new TypeError('Encoded metadata ' + key + ' must be Uint8Array')
   const module = await encoder(format),
     lossless = quality === 1,
     q = Math.round(quality * 100)
@@ -39,19 +43,20 @@ export async function encodeProfiled(format, pixels, profile, quality, colorSpac
       colorPrimaries: 2,
       transferCharacteristics: 2,
       matrixCoefficients: -1,
-      fullRange: true
+      fullRange: true,
+      ...(metadata.exif?.byteLength ? { exif: metadata.exif } : {}),
+      ...(metadata.xmp?.byteLength ? { xmp: metadata.xmp } : {})
     })
   } else {
-    result = module.encodeColor(
-      pixels.data,
-      pixels.width,
-      pixels.height,
-      profile,
-      q,
-      lossless,
-      7,
-      colorSpace === 'srgb'
-    )
+    const args = [pixels.data, pixels.width, pixels.height, profile, q, lossless, 7, colorSpace === 'srgb']
+    result =
+      metadata.exif?.byteLength || metadata.xmp?.byteLength
+        ? module.encodeColorWithMetadata(
+            ...args,
+            metadata.exif ?? new Uint8Array(),
+            metadata.xmp ?? new Uint8Array()
+          )
+        : module.encodeColor(...args)
   }
   if (!result?.byteLength) throw Error('The image encoder returned no data')
   return result

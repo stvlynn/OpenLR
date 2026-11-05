@@ -18,7 +18,8 @@ using emscripten::val;
 
 val encodeColorImpl(const std::string& pixels, int width, int height,
                    const std::string& icc, float quality, bool lossless,
-                   int effort, bool inputIsSrgb, bool modular) {
+                   int effort, bool inputIsSrgb, bool modular,
+                   const std::string& exif = {}, const std::string& xmp = {}) {
   if (width <= 0 || height <= 0 || icc.empty() || !std::isfinite(quality) ||
       quality < 0 || quality > 100 || effort < 1 || effort > 9 ||
       static_cast<size_t>(width) > std::numeric_limits<size_t>::max() /
@@ -33,6 +34,9 @@ val encodeColorImpl(const std::string& pixels, int width, int height,
   std::unique_ptr<JxlEncoder, decltype(&JxlEncoderDestroy)> encoder(
       JxlEncoderCreate(nullptr), JxlEncoderDestroy);
   if (!encoder) return val::null();
+  const bool hasMetadata = !exif.empty() || !xmp.empty();
+  if (hasMetadata && JxlEncoderUseBoxes(encoder.get()) != JXL_ENC_SUCCESS)
+    return val::null();
 #ifdef __EMSCRIPTEN_PTHREADS__
   runner.reset(JxlThreadParallelRunnerCreate(nullptr,
       JxlThreadParallelRunnerDefaultNumWorkerThreads()));
@@ -75,6 +79,20 @@ val encodeColorImpl(const std::string& pixels, int width, int height,
   const JxlPixelFormat format = {4, JXL_TYPE_UINT8, JXL_NATIVE_ENDIAN, 0};
   if (JxlEncoderAddImageFrame(settings, &format, pixels.data(), pixels.size()) !=
       JXL_ENC_SUCCESS) return val::null();
+  if (!exif.empty()) {
+    if (exif.size() > exif.max_size() - 4) return val::null();
+    // Exif box contents start with a big-endian TIFF-header offset, measured
+    // after these four bytes. The supplied payload already starts at TIFF.
+    std::string box(4, '\0');
+    box += exif;
+    if (JxlEncoderAddBox(encoder.get(), "Exif", reinterpret_cast<const uint8_t*>(box.data()),
+            box.size(), JXL_FALSE) != JXL_ENC_SUCCESS) return val::null();
+  }
+  // The pinned tool implementation uses lowercase "xml ", despite the old
+  // public header's uppercase spelling. This is the standard XMP box type.
+  if (!xmp.empty() && JxlEncoderAddBox(encoder.get(), "xml ",
+          reinterpret_cast<const uint8_t*>(xmp.data()), xmp.size(), JXL_FALSE) != JXL_ENC_SUCCESS)
+    return val::null();
   JxlEncoderCloseInput(encoder.get());
   std::vector<uint8_t> output(16384);
   size_t used = 0;
@@ -90,6 +108,13 @@ val encodeColorImpl(const std::string& pixels, int width, int height,
   }
   return val::global("Uint8Array").new_(
       emscripten::typed_memory_view(used, output.data()));
+}
+
+val encodeColorWithMetadata(std::string pixels, int width, int height, std::string icc,
+                            float quality, bool lossless, int effort, bool inputIsSrgb,
+                            std::string exif, std::string xmp) {
+  return encodeColorImpl(pixels, width, height, icc, quality, lossless, effort,
+                         inputIsSrgb, false, exif, xmp);
 }
 
 val encodeColor(std::string pixels, int width, int height, std::string icc,
@@ -125,6 +150,7 @@ val buildFeatures() {
 
 EMSCRIPTEN_BINDINGS(openlr_jxl_color_encoder) {
   emscripten::function("encodeColor", &encodeColor);
+  emscripten::function("encodeColorWithMetadata", &encodeColorWithMetadata);
 #ifdef OPENLR_JXL_EXPERIMENTS
   emscripten::function("encodeColorExperiment", &encodeColorExperiment);
 #endif

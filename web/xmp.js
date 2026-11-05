@@ -9,6 +9,7 @@ import { validateOptics } from './optics.js'
 import { processingVersion, validateProcessVersion } from './process-version.js'
 import { validateSoftMask } from './soft-mask.js'
 import { validateDepthSettings } from './depth-effects.js'
+import { escapeXml } from './xml.js'
 
 const ns = {
   rdf: 'http://www.w3.org/1999/02/22-rdf-syntax-ns#',
@@ -33,8 +34,6 @@ export const CRS_FIELDS = {
 }
 const fields = CRS_FIELDS
 const ranges = Object.assign({}, ...Object.values(controls))
-const escapeXml = (s) =>
-  String(s).replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
 export function exportXmp(p) {
   const edit = p.edit || {},
     attrs = { 'xmp:Rating': p.rating || 0, 'crs:HasSettings': 'True', 'olr:Flag': p.flag || '' }
