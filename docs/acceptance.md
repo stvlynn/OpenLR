@@ -122,3 +122,9 @@ Windows 与 WSL Ubuntu 24.04／WebKitGTK 2.52.6 的最终桌面构建及各七�
 新增三项实际浏览器测试与既有组织／堆栈测试共 **5/5、零跳过**。真实对话框按钮和 Escape 验证目标漂移拒绝、同集合换序成功、取消、共享原件保留与最后引用释放；独立读取存储并重载确认，过期确认没有删除任何照片。相册 A 的改名／删除在 scope B 下仍只作用 A，B 和照片保留。未注入 I/O 延迟、伪造 close 事件或替换生产队列；测试只使用生成图片和隔离目录。
 
 最终 Windows／Node 24.9／Chrome 156 的 `OPENLR_TEST_CMS=1 OPENLR_TEST_METADATA=1 npm test` 为 **275/275、零跳过**，代码格式与实际 CLI dry-run 通过。Windows WebView2 和 WSL Ubuntu 24.04／WebKitGTK 2.52.6 均完成桌面构建及各七组原生套件。新增原生流程使用两个生成原件及一个保留的虚拟副本，验证不匹配集合拒绝、换序集合成功删除、实际 PNG 工作区截图、共享原件逐字节保留与磁盘源文件不变。Linux 使用 Xvfb／D-Bus 运行真实 GTK/WebKit 与 IPC，未证明物理 GPU／显示器或 OS 选择器交互。最新 macOS 仍需对应远程实际验收；前一提交 `89d30d9` 的 [42021424979](https://github.com/stvlynn/OpenLR/actions/runs/42021424979) 因账户付款／限额未执行任何作业步骤，未算作通过。
+
+2026-11-05 选择性复制补充：先在本机 Lightroom 实际打开复制设置窗口和选择菜单后取消，记录可见类别与观察边界，未复制私人照片或 Adobe 资源。OpenLR 的冻结旧版浏览器消融确认完整复制会替换裁剪，已有 `copy-edits keys` 则保留未选参数；新增 Choose edits 对话框复用该命令与原有粘贴、保存、逐照片撤销路径。`localTools` 和 `optics` 保持实际原子边界，未虚构嵌套项独立复制。来源和实验见[选择性复制研究](../research/selective-copy.md)。
+
+新增两项实际 Chrome 测试与组织／处理版本回归共 **5/5、零跳过**。真实复选框、按钮和 Escape 验证空选择禁用、会话选择保留、取消不改剪贴板、换照片后拒绝、同照片确认时取最新编辑、复制后快照独立、缺失项重置、裁剪／版本保持、批量逐照片撤销及原件字节不变。1024×768 实际截图已检查，所有类别和操作可见，无截断或横向溢出。CLI schema dry-run 与生产／测试代码格式检查通过。
+
+最终 Windows／Node 24.9／Chrome 156.0.8078.80 全量 `OPENLR_TEST_CMS=1 OPENLR_TEST_METADATA=1 npm test` 为 **277/277、零跳过**。Windows WebView2 与 WSL Ubuntu 24.04／WebKitGTK 2.52.6 均完成桌面构建及各七组原生套件；新增原生步骤验证来源保护、实际 PNG 工作区截图、选择性粘贴与缺失项重置、目标裁剪／处理版本保持、撤销及原件逐字节一致。首次 Windows 打包因沙箱 DNS 无法下载 NSIS 失败，获得网络权限后完成安装包；首次原生启动早于打包资源复制完成而读到旧 schema、拒绝 `photoId`，完整打包后重跑通过。Linux 使用 Xvfb／D-Bus，未证明物理显示器、GPU 或系统文件选择器交互。本轮 macOS 尚需远程实际运行；前一提交 `aebff7e` 的 [42022718374](https://github.com/stvlynn/OpenLR/actions/runs/42022718374) 因账户付款／限额没有启动任何作业步骤，未计为通过。

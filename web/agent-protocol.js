@@ -715,6 +715,7 @@ export const definitions = {
   delete: entry('Move the selected photo to Deleted without removing its original'),
   restore: entry('Restore the selected photo from Deleted'),
   'copy-edits': entry('Copy active-photo edits for pasting to the selected group', {
+    photoId: string('Optional active-photo guard for the copy source'),
     keys: {
       type: 'array',
       items: { type: 'string' },

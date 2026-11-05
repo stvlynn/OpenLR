@@ -46,6 +46,8 @@ Success prints JSON to standard output. Failures print a JSON error to standard 
 
 See [catalog organization](catalog-organization.md) for multi-selection, batch metadata and pasted edits, album rename/delete, filters, ordering, and named versions. `state.selection` lists selected IDs; `state.selected` identifies the active editor image. Their commands come from the shared schema, so `schema version-save`, `schema filter`, and `schema select-many` work offline without a separate CLI implementation.
 
+`copy-edits --keys '["Exposure","Contrast"]'` copies those recipe keys; selected keys absent from the source are reset on paste, while unselected target keys remain unchanged. Omitting `keys` copies the complete recipe. Optional `--photoId` rejects a changed active photo before replacing the clipboard; it does not select another source. The GUI's Choose edits dialog uses this same guarded command.
+
 [Photo merging](photo-merge.md) adds `merge-hdr`, `merge-panorama`, and `export-hdr`. Merge commands create a new library photo from selected originals and return registration/fusion diagnostics. `export-hdr --output merged.hdr` writes the actual retained scene-linear Radiance file; normal `preview` and `export` use the tone-mapped catalog image.
 
 `export --format image/x-adobe-dng --output camera.dng` preserves an existing DNG or creates a true 16-bit LinearRaw DNG from a decodable camera RAW. See [DNG export](dng-export.md) for the difference, embedded settings, and validation limits. Rendered images are rejected as RAW sources.

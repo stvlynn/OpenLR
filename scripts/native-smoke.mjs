@@ -1033,6 +1033,54 @@ try {
   console.log(
     'Native purge confirmation: changed-set refusal, reordered exact-set deletion, actual workspace capture, shared original retention and unchanged source files passed.'
   )
+  const selectiveCrop = { x: 0.1, y: 0.1, w: 0.8, h: 0.8 }
+  await call('select', '--id', retainedCopy)
+  await call('processing', '--version', '2')
+  await call('edit', '--key', 'crop', '--value', JSON.stringify(selectiveCrop))
+  await call('edit', '--key', 'Contrast', '--value', '20')
+  const selectiveBefore = (await call('state')).photos.find((photo) => photo.id === retainedCopy).edit
+  await call('select', '--id', rangeAsset)
+  const selectiveSource = (await call('state')).photos.find((photo) => photo.id === rangeAsset).edit
+  const selectiveCopied = await call(
+    'copy-edits',
+    '--keys',
+    '["Exposure","Contrast"]',
+    '--photoId',
+    rangeAsset,
+    '--capture',
+    path.join(root, 'selective-copy.png')
+  )
+  assert.equal((await readFile(selectiveCopied.frame.path)).subarray(1, 4).toString(), 'PNG')
+  const selectiveClipboard = (await call('state')).clipboard
+  assert.deepEqual(selectiveClipboard.keys, ['Exposure', 'Contrast'])
+  await assert.rejects(
+    () => call('copy-edits', '--keys', '["crop"]', '--photoId', 'stale-photo'),
+    /changed|selected/i
+  )
+  assert.deepEqual((await call('state')).clipboard, selectiveClipboard)
+  await call('select', '--id', retainedCopy)
+  await call('paste-edits')
+  const selectiveAfter = (await call('state')).photos.find((photo) => photo.id === retainedCopy).edit
+  assert.equal(selectiveAfter.Exposure, selectiveSource.Exposure)
+  assert.equal(selectiveAfter.Contrast, undefined)
+  assert.deepEqual(selectiveAfter.crop, selectiveCrop)
+  assert.equal(selectiveAfter.processVersion, 2)
+  await call('undo')
+  assert.deepEqual(
+    (await call('state')).photos.find((photo) => photo.id === retainedCopy).edit,
+    selectiveBefore
+  )
+  const selectiveOriginal = await call(
+    'export',
+    '--format',
+    'original',
+    '--output',
+    path.join(root, 'selective-original.png')
+  )
+  assert.deepEqual(await readFile(selectiveOriginal.path), rangeBytes)
+  console.log(
+    'Native selective copy: guarded source and actual capture, selected-key paste and absent-value reset, retained crop/process version, undo and unchanged original bytes passed.'
+  )
   const colors = [
     [180, 60, 40],
     [45, 160, 70],

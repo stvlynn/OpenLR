@@ -50,6 +50,7 @@ import { EXPORT_FORMATS } from './formats.js'
 import { Organization, namedVersion, findVersion, PURGE_MESSAGES } from './organization.js'
 import { validateSmartRule, sameSmartRule, SMART_ALBUM_MESSAGES } from './smart-album-rule.js'
 import { mountOrganization } from './organization-ui.js'
+import { COPY_MESSAGES } from './copy-options.js'
 import { mergePhotos } from './merge.js'
 import { mountMerge } from './merge-ui.js'
 import {
@@ -1628,6 +1629,7 @@ async function execute(command, args, context = {}) {
           break
         }
         case 'copy-edits':
+          if (args.photoId !== undefined && args.photoId !== p?.id) throw Error(COPY_MESSAGES.changedPhoto)
           result = organization.copy(p, args.keys)
           break
         case 'paste-edits':

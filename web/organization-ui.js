@@ -4,6 +4,7 @@ import {
   SMART_FLAG_OPTIONS,
   SMART_EDIT_OPTIONS
 } from './smart-album-rule.js'
+import { mountCopyOptions } from './copy-options-ui.js'
 
 export function mountOrganization(run) {
   const element = (tag, props = {}, ...children) => Object.assign(document.createElement(tag), props)
@@ -19,10 +20,11 @@ export function mountOrganization(run) {
   const clear = button('Clear selection', () => run('select-many', { ids: [] }))
   const copy = button('Copy edits', () => run('copy-edits'))
   copy.id = 'copy-edits'
+  const chooseCopy = mountCopyOptions(run, () => current?.selected)
   const paste = button('Paste edits', () => run('paste-edits'))
   paste.id = 'paste-edits'
   const selectedActions = element('div', { className: 'selection-actions' })
-  selectedActions.append(clear, copy, paste)
+  selectedActions.append(clear, copy, chooseCopy, paste)
   const select = (name, options, fn) => {
     const input = element('select')
     input.setAttribute('aria-label', name)
@@ -183,6 +185,7 @@ export function mountOrganization(run) {
     selectAll.disabled = !state.photos.length
     clear.disabled = !state.selection.length
     copy.disabled = !photo
+    chooseCopy.disabled = !photo
     paste.disabled = !state.selection.length || !state.clipboard
     rename.disabled = remove.disabled = !album
     editRules.hidden = !album || !state.albums.find((item) => item.id === state.scope)?.rule

@@ -14,7 +14,33 @@
 }
 .selection-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
+}
+#copy-edits-dialog {
+  width: min(390px, calc(100vw - 40px));
+  max-height: calc(100vh - 40px);
+  overflow: auto;
+}
+#copy-edits-dialog .copy-shortcuts {
+  justify-content: flex-start;
+  margin-bottom: 12px;
+}
+.copy-groups {
+  display: grid;
+  gap: 10px;
+  border: 0;
+  padding: 0;
+  margin: 0;
+}
+.copy-groups label {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 0;
+}
+.copy-groups input {
+  margin: 0;
 }
 #selection-count {
   color: #b9bdc2;
