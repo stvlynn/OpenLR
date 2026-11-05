@@ -147,3 +147,5 @@ Windows／Node 24.9／Chrome 156.0.8078.80 最终 `OPENLR_TEST_CMS=1 OPENLR_TEST
 1024×768 实际面板截图检查通过，无横向溢出。现有公共领域 NASA astronaut 夹具与生成的渐变／原色色块，经实际 dispatcher 在两种处理版本导出 PNG 后制作联系表检查。温和配方下肤色略暖、暗部略冷，未见明显色调突变或细节丢失；渐变最大相邻通道差 2/255，黑色精确保持零。饱和原色表现出预期的输出裁切与原色相变化，因此不声称输出后亮度守恒或感知均匀性。完整配方与数值见[研究](../research/color-grading.md)。未使用私人照片。
 
 最终 Windows WebView2 与 WSL Ubuntu 24.04／WebKitGTK 2.52.6 均重新构建并通过各七组原生套件，Windows 安装包成功生成。新增原生检查通过实际 CLI 与窗口截图读取模式，并独立解码两种处理版本的 TIFF，验证分级亮度增益、过期来源／分级旧值拒绝、撤销和原件逐字节保持。实际 Local 侧车检查同时读回当前分级及命名版本，重启应用／重新打开目录后仍保持。文件夹许可仍由测试夹具预置；Linux 使用 Xvfb／D-Bus，未证明系统选择器、物理显示器或 GPU；相机为模拟器，迁移为合成 schema。macOS 仍需真实远程执行；前一实现提交 `3c50489` 的 [42029595968](https://github.com/stvlynn/OpenLR/actions/runs/42029595968) 因账户付款／额度三个作业均未执行步骤，不能计为通过。
+
+颜色分级提交 `60d21ce` 推送后确认仓库仍为 private。最新 [CI 42032635421](https://github.com/stvlynn/OpenLR/actions/runs/42032635421) 的 Windows、Ubuntu 和 macOS 作业步骤数均为零；macOS check-run `127262648812` 注明账户付款失败或支出限额需要调整。该运行未提供任何平台执行证据，不改变本地两端已通过、当前 macOS 尚未验证的结论。
