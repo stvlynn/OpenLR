@@ -176,3 +176,9 @@ Windows／Node 24.9／Chrome 156.0.8078.80 的完整 `OPENLR_TEST_CMS=1 OPENLR_T
 最终 Windows WebView2 与 WSL Ubuntu 24.04／WebKitGTK 2.52.6 均重新构建并通过各七组原生套件；Windows 安装包生成成功。新增 native smoke 明确检查没有 `dehaze-worker.js` startup fallback，再核验两种处理版本 TIFF、捕获、撤销与原件。Windows 七组运行包含此断言；Linux 在七组完成后使用更新脚本额外运行 native smoke，通过无回退断言。Local 侧车／版本重启保持，其他已有原生工作流继续通过。目录选择器未自动化、相机仍为模拟器、迁移仍是合成 schema；Linux 是 Xvfb／D-Bus 原生 IPC，不扩展为物理 GPU／显示器性能证据。macOS 仍需对应真实执行。
 
 24MP 集成后的浏览器单次测量：Linear 首次 6.061s，10ms 心跳 533 次、最大间隔 .413s，缓存约 .302/.293s；Original 首次 9.079s，心跳 569 次、最大间隔 1.795s，缓存约 1.780/1.659s。分析阶段已后台化，但源图转换和最终重建／编码仍同步，不能声称整条交互链路流畅。完整协议、进程内存与限制见[性能记录](dehaze-performance.md)。未采用已被质量实验否定的降分辨率分析。
+
+2026-11-05 Original 后台重建／编码补充：生产 `renderPrepared` 在既有串行 worker 队列中执行共享去雾像素映射与 sRGB 字节转换。源图和透射图只在任务实际开始时复制，排队取消不分配大图副本，已发布缓存保持可读；返回 RGBA 后仍使用原几何和颜色处理。Linear 浮点路径保持原有重建方式。真实 Chrome 测试验证正负强度、负值／HDR／alpha 输入、裁剪／旋转／曝光后的完整像素一致，活动转换取消、原图与缓存保留、启动回退及重试。既有拖动、换图、Local 目录取消和实际导出检查继续通过。
+
+Windows／Node 24.9／Chrome 156.0.8078.80 全量 `OPENLR_TEST_CMS=1 OPENLR_TEST_METADATA=1 npm test` 完成 **309/309，零失败、零跳过**。Windows WebView2 和 WSL Ubuntu 24.04／WebKitGTK 2.52.6 均完成重新构建及各七组原生套件；Windows 安装包生成成功。更新后的原生断言同时检查分析与 Original 编码 worker 没有启动回退，实际 TIFF 像素、CLI 截图、撤销、侧车重启及原件保持检查通过。Linux 仍使用 Xvfb／D-Bus，物理 GPU、系统选择器、真实相机及真实外部目录的既有限制不变。
+
+集成后 24MP Original 缓存调整耗时仍约 1.683/1.696s，主线程最大心跳间隔降到 81/85ms；首次源转换仍阻塞约 1.717s。单次活动渲染进程峰值从先前约 1.195GB 增至 1.572GB，保留为实际代价，详见[性能记录](dehaze-performance.md)。macOS 本轮未执行；`51508cf` 的 [CI 42043897131](https://github.com/stvlynn/OpenLR/actions/runs/42043897131) 三个作业均为零步骤，macOS 注释明确报告账户付款／额度问题，不记作代码测试失败或验收通过。

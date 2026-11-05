@@ -61,3 +61,17 @@ Measured separately against `a632bc4` on the same Windows/Chrome 156 environment
 All strategies retained the original 384,000,000-byte frame, published corrected frame of the same size, and 96,000,000-byte transmission map attached. Copy/transfer additionally allocates 480,000,000 input bytes and the converter creates 96,000,000 output bytes; these are array sizes, **not measured process peak memory**. The converter returns its output buffer by transfer. No OffscreenCanvas assumption is involved. This supports a responsiveness improvement hypothesis while exposing its allocation cost; it does not establish whole-preview latency, repeated-drag memory behavior or native support. [Research](../research/dehaze-background.md) records the pending scheduler requirement. Production still uses synchronous reconstruction.
 
 The executed ignored harness/result are `.workspace/dehaze-encoding-ablation.mjs` and `.json`. Its initial syntax error was corrected before execution; the sandboxed browser then could not reach localhost. The completed run used the authorized local-server permission and exited zero. No application code changed for this experiment.
+
+## Integrated Original encoding worker
+
+The production integration was measured with the same 24MP Original fixture and 1280×853 `renderPrepared` protocol, separately before builds/native suites. The existing scheduler allocates owned source/map copies only after admission. The worker imports the existing mapper and converter; main-thread canvas upload and geometry retain their existing behavior. Single runs in Chrome 156 on the Windows/Ryzen machine:
+
+| Stage | Total preview | 10ms heartbeat ticks | Maximum gap |
+| --- | ---: | ---: | ---: |
+| First strength 40 | 8.829s | 698 | 1.717s |
+| Cached strength 70 | 1.683s | 156 | .081s |
+| Cached strength 20 | 1.696s | 157 | .085s |
+
+The cached main-thread gap improves substantially versus the earlier 1.780/1.659s blocking measurements; total preview completion remains about 1.7s. The first source correction/byte-to-linear conversion still blocks for about 1.7s, so this does not establish continuously smooth interaction. Source generation took 2.234s and was excluded. Center output probes matched the previous integrated run at all three strengths; complete numerical equivalence is covered separately by small-image full-byte tests, not inferred from those probes.
+
+Active renderer peak working set was 1.572GB, compared with 1.195GB in the earlier analysis-only run; GPU process peak was 1.206GB. These include generated surfaces and caches, are single observations rather than a memory bound, and separate process peaks must not be summed. The higher allocation cost is retained as a tradeoff, not hidden by reducing source resolution. Ignored harness/result: `.workspace/dehaze-encoding-integrated-v1.mjs` and `.json`. Native acceptance and repeated-drag ownership checks remain separate evidence.

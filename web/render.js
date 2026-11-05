@@ -1,4 +1,4 @@
-import { analyzeDehazeOwned } from './dehaze-worker-client.js'
+import { analyzeDehazeOwned, encodeDehaze } from './dehaze-worker-client.js'
 import { analyzeDehaze, createDehazePixel } from './dehaze.js'
 import { geometry } from './geometry.js'
 import { filledSource, filledFrame } from './fill.js'
@@ -161,6 +161,11 @@ export async function prepareDehaze(image, edit = {}, { signal } = {}) {
 export async function renderPrepared(image, edit = {}, maxSize = Infinity, options = {}) {
   const prepared = await prepareDehaze(image, edit, options)
   if (options.signal?.aborted) throw canceledPreparation()
+  if (prepared && processingVersion(edit) !== 2) {
+    const { pixels } = await encodeDehaze(prepared.source, prepared.analysis, edit.Dehaze, options)
+    if (options.signal?.aborted) throw canceledPreparation()
+    return render(image, edit, maxSize, { ...prepared, pixels })
+  }
   return render(image, edit, maxSize, prepared)
 }
 export async function renderFramePrepared(image, edit = {}, maxSize = Infinity, options = {}) {
@@ -195,8 +200,11 @@ export function renderFrame(image, edit = {}, maxSize = Infinity, ready = null) 
 }
 
 export function frameCanvas(frame, readPixel = null) {
-  const pixels = linearFrameToRgba8(frame, readPixel),
-    canvas = document.createElement('canvas')
+  return pixelsCanvas(linearFrameToRgba8(frame, readPixel))
+}
+
+function pixelsCanvas(pixels) {
+  const canvas = document.createElement('canvas')
   canvas.width = pixels.width
   canvas.height = pixels.height
   canvas.getContext('2d').putImageData(new ImageData(pixels.data, pixels.width, pixels.height), 0, 0)
@@ -216,7 +224,9 @@ export function render(image, edit = {}, maxSize = Infinity, ready = null) {
   let localSource
   if (edit.Dehaze) {
     const prepared = ready ?? dehazedSource(image, edit, () => correctedByteFrame(image, edit))
-    localSource = frameCanvas(prepared.source, createDehazePixel(edit.Dehaze, prepared.analysis))
+    localSource = prepared.pixels
+      ? pixelsCanvas(prepared.pixels)
+      : frameCanvas(prepared.source, createDehazePixel(edit.Dehaze, prepared.analysis))
   } else localSource = correctedBitmap(image, edit, sourceEdge)
   const sourceScaleX = localSource.width / image.width,
     sourceScaleY = localSource.height / image.height

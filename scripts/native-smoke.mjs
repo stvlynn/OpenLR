@@ -1312,9 +1312,11 @@ try {
   )
   assert.deepEqual(await readFile(hazeOriginal.path), hazeBytes)
   assert.equal(
-    (await call('state')).codecDiagnostics.filter((item) => item.worker === 'dehaze-worker.js').length,
+    (await call('state')).codecDiagnostics.filter((item) =>
+      ['dehaze-worker.js', 'dehaze-encode-worker.js'].includes(item.worker)
+    ).length,
     0,
-    'Dehaze analysis must execute in the native worker without startup fallback'
+    'Dehaze analysis and Original encoding must execute in native workers without startup fallback'
   )
   console.log(
     'Native Dehaze: background worker without fallback, both process TIFF pixels for removal and added haze, live edit capture, undo and unchanged original bytes passed.'
