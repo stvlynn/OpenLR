@@ -138,3 +138,12 @@ Windows 与 WSL Ubuntu 24.04／WebKitGTK 2.52.6 的最终桌面构建及各七�
 修复后的 Windows／Node 24.9／Chrome 156.0.8078.80 全量 `OPENLR_TEST_CMS=1 OPENLR_TEST_METADATA=1 npm test` 为 **286/286、零跳过**。最终代码格式和 CLI dry-run 通过。Windows 与 Linux 实际 Local 原生检查另行读取生成的 `.openlr.json`，检查当前曲线及命名版本，并重启应用、重新打开目录后验证二者仍在；原件逐字节不变。Linux 这项补充检查在全套运行后以更新后的测试脚本再次独立执行，通过。文件夹许可由夹具预置，未操作系统目录选择器。
 
 最终 Windows WebView2 与 WSL Ubuntu 24.04／WebKitGTK 2.52.6 均已重新构建并通过各七组原生套件，Windows 安装包生成成功。新增 native smoke 对两种处理版本的实际 TIFF 解码检查通道像素，验证来源／通道旧值拒绝、CLI 通道与选点状态、真实 PNG 工作区截图、撤销及原件保持。Linux 仍是 Xvfb／D-Bus 原生 GTK/WebKit 与 IPC 验收，不代表物理 GPU／显示器；相机仍为模拟器、迁移仍为合成 schema。macOS 必须对应实际运行，不能以这两端替代；上一个实现提交 `ecef1f4` 的 [42024891353](https://github.com/stvlynn/OpenLR/actions/runs/42024891353) 因账户付款／额度没有执行任何作业步骤。
+
+
+2026-11-05 颜色分级补充：基于已记录的 REA 资源／控制器常量与本机 Lightroom 三色轮、单区和全局面板观察，结合 Context7／原始项目文档及零亮度色偏／平滑权重消融，独立实现 `colorGrading`。旧配方不变；三色轮、单区／全局、亮度、混合和平衡支持数值、键盘、拖动预览、一次提交／撤销和取消。图形与 CLI 共用 `grading-mode`、`grading-set`，当前照片和旧分级值保护在保存前检查。曲线和分级复用同一带照片／配方关联的临时预览适配器。规则、精度与输出边界见[颜色分级](color-grading.md)和[决策 018](decisions/018-color-grading.md)。
+
+Windows／Node 24.9／Chrome 156.0.8078.80 最终 `OPENLR_TEST_CMS=1 OPENLR_TEST_METADATA=1 npm test` 为 **295/295、零失败、零跳过**。新增四项领域测试、三项实际浏览器工作流和两项复用既有传输测试框架的分级边界检查。覆盖明暗权重／连续性、色偏线性亮度守恒、亮度增益、负值／HDR、alpha／原件保持；拖动时照片像素变化但配方不变、取消／换照片保护、数值／键盘／模式／重置；两种处理版本实际 PNG 像素；预设、命名版本、XMP、选择性复制及重载。真实 IndexedDB 配合注入同步／本地适配器验证无效分级在写入前拒绝，错误侧车不破坏图库／筛选也不能被覆盖；该注入检查不等于物理磁盘验收。
+
+1024×768 实际面板截图检查通过，无横向溢出。现有公共领域 NASA astronaut 夹具与生成的渐变／原色色块，经实际 dispatcher 在两种处理版本导出 PNG 后制作联系表检查。温和配方下肤色略暖、暗部略冷，未见明显色调突变或细节丢失；渐变最大相邻通道差 2/255，黑色精确保持零。饱和原色表现出预期的输出裁切与原色相变化，因此不声称输出后亮度守恒或感知均匀性。完整配方与数值见[研究](../research/color-grading.md)。未使用私人照片。
+
+最终 Windows WebView2 与 WSL Ubuntu 24.04／WebKitGTK 2.52.6 均重新构建并通过各七组原生套件，Windows 安装包成功生成。新增原生检查通过实际 CLI 与窗口截图读取模式，并独立解码两种处理版本的 TIFF，验证分级亮度增益、过期来源／分级旧值拒绝、撤销和原件逐字节保持。实际 Local 侧车检查同时读回当前分级及命名版本，重启应用／重新打开目录后仍保持。文件夹许可仍由测试夹具预置；Linux 使用 Xvfb／D-Bus，未证明系统选择器、物理显示器或 GPU；相机为模拟器，迁移为合成 schema。macOS 仍需真实远程执行；前一实现提交 `3c50489` 的 [42029595968](https://github.com/stvlynn/OpenLR/actions/runs/42029595968) 因账户付款／额度三个作业均未执行步骤，不能计为通过。

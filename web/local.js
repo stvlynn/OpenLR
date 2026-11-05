@@ -1,3 +1,4 @@
+import { validateColorGradingRecipe } from './color-grading.js'
 import { decodeEditSource } from './edit-source.js'
 import { render, toBlob } from './render.js'
 import { whenVisible } from './thumbnail-visibility.js'
@@ -30,9 +31,11 @@ const call = (name, ...args) => {
 function validateVersions(recipe) {
   processingVersion(recipe.edit || {})
   validateToneCurveRecipe(recipe.edit || {})
+  validateColorGradingRecipe(recipe.edit || {})
   for (const version of recipe.versions || []) {
     processingVersion(version.edit || {})
     validateToneCurveRecipe(version.edit || {})
+    validateColorGradingRecipe(version.edit || {})
   }
 }
 export const state = () =>

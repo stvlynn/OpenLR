@@ -12,11 +12,13 @@ Copy edits takes an independent snapshot of the active recipe, including its pro
 
 **Choose edits…** opens a grouped checkbox dialog for selective copying through the same command. All categories are checked initially, and choices remain for the current session. All and None change the checked categories; Copy is disabled when none are checked. Cancel and Escape leave the existing clipboard unchanged. The ordinary Copy edits button and keyboard shortcut continue to copy the complete recipe. The chooser guards the photo that was active when opened: changing the active photo before confirmation rejects the copy visibly, without changing the clipboard. Confirmation snapshots that photo's current recipe, so edits made to the same photo while the chooser is open are included.
 
-Categories cover Light, Color, Curve, Color mixer, Effects, Detail, Point color, Crop and rotation, Optics and geometry, Masks/repairs/lens blur, Content-aware removal, Red-eye correction, Video trim and Processing version. Optics and local tools each copy their complete stored owner, including perspective and depth respectively. Selecting all categories copies these supported keys; complete Copy edits additionally preserves any other stored recipe fields. Ratings, flags, keywords, albums and saved versions are not edit keys.
+Categories cover Light, Color, Curve, Color grading, Color mixer, Effects, Detail, Point color, Crop and rotation, Optics and geometry, Masks/repairs/lens blur, Content-aware removal, Red-eye correction, Video trim and Processing version. Optics and local tools each copy their complete stored owner, including perspective and depth respectively. Selecting all categories copies these supported keys; complete Copy edits additionally preserves any other stored recipe fields. Ratings, flags, keywords, albums and saved versions are not edit keys.
 
 Curve includes the original three sliders and the complete `toneCurves` owner for RGB and channel point curves. Neutral identity knots remain editable but do not alone mark a photo Edited; named versions, presets and full copied recipes preserve them. See [point curves](tone-curves.md).
 
 CLI `copy-edits` optionally accepts `photoId` for the same active-photo guard; omitting it retains execution-time selection behavior. It is not an alternate copy source. Selection choices do not alter the source photo, and Paste retains the existing per-photo undo and original-preservation rules. Supported category boundaries and the full-versus-selective browser experiment are recorded in [selective-copy research](../research/selective-copy.md).
+
+Color grading copies its complete `colorGrading` owner. Dormant hue, balance and blending choices without tint or luminance do not mark a photo Edited. See [color grading](color-grading.md).
 
 ## Undo and redo
 

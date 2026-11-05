@@ -29,3 +29,7 @@ The older [independent delivery review](../docs/delivery-review.md) reproduced a
 ## Subsequent point-curve implementation
 
 The first core gap above is now addressed by the [point-curve contract](../docs/tone-curves.md) and [decision 017](../docs/decisions/017-point-tone-curves.md), with shared graph/render interpolation, explicit CLI commands, live drag preview and existing persistence paths. The implementation refines the research proposal by retaining editable neutral knots without treating them as a color effect. Environment-specific results remain in [acceptance](../docs/acceptance.md). This does not resolve the remaining color-grading, dehaze, final clean-checkout or externally blocked verification items in the original audit.
+
+## Subsequent color-grading implementation
+
+The tonal grading gap is addressed by [color grading](../docs/color-grading.md) and [decision 018](../docs/decisions/018-color-grading.md): three regional wheels plus Global, shared linear rendering, live transient preview, guarded commands and existing storage/transport. Numerical ablations and public-domain-photo/gradient visual inspection are recorded in [research](color-grading.md). Actual test/platform results remain in [acceptance](../docs/acceptance.md). Dehaze, final clean-checkout delivery audit and the external verification limits above remain outstanding; this increment does not complete the overall goal.

@@ -50,6 +50,8 @@ See [catalog organization](catalog-organization.md) for multi-selection, batch m
 
 `curve-channel`, `curve-select` and `curve-set` expose the [point/channel curve editor](tone-curves.md). `curve-set` accepts an explicit channel and ordered normalized points; optional `photoId` and `expectedPoints` reject stale targets. Full and summary state expose `toneCurve:{channel,index}` alongside the persisted `edit.toneCurves`. Preview and export consume the same curve rules as the graph.
 
+`grading-mode` and `grading-set` expose [color grading](color-grading.md). The latter replaces one validated owner with optional `photoId` and `expectedValue` guards. State exposes the selected grading view and the persisted photo recipe.
+
 [Photo merging](photo-merge.md) adds `merge-hdr`, `merge-panorama`, and `export-hdr`. Merge commands create a new library photo from selected originals and return registration/fusion diagnostics. `export-hdr --output merged.hdr` writes the actual retained scene-linear Radiance file; normal `preview` and `export` use the tone-mapped catalog image.
 
 `export --format image/x-adobe-dng --output camera.dng` preserves an existing DNG or creates a true 16-bit LinearRaw DNG from a decodable camera RAW. See [DNG export](dng-export.md) for the difference, embedded settings, and validation limits. Rendered images are rejected as RAW sources.

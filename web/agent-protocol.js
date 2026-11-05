@@ -1,3 +1,4 @@
+import { GRADING_WHEELS, validateColorGrading } from './color-grading.js'
 import { controls } from './adjustments.js'
 import { validCrop } from './geometry.js'
 import { CROP_GUIDES } from './crop-guides.js'
@@ -847,6 +848,26 @@ export const definitions = {
     },
     ['version']
   ),
+  'grading-mode': entry(
+    'Choose the color-grading wheel view',
+    {
+      mode: string('Wheel view', { enum: ['three', ...GRADING_WHEELS] })
+    },
+    ['mode']
+  ),
+  'grading-set': entry(
+    'Replace color grading; an empty value resets grading',
+    {
+      value: {
+        type: 'object',
+        description:
+          'Wheels shadows/midtones/highlights/global (hue 0–360, saturation 0–100, luminance -100–100), balance -100–100, blending 0–100'
+      },
+      photoId: string('Optional selected-photo guard'),
+      expectedValue: { type: 'object', description: 'Optional previous grading value; reject if changed' }
+    },
+    ['value']
+  ),
   'curve-channel': entry(
     'Select the point-curve channel without changing edits',
     {
@@ -1042,6 +1063,10 @@ export function validateArgs(command, args) {
   if (command === 'purge' && args.expectedIds?.some((id) => typeof id !== 'string'))
     throw Error('expectedIds must contain photo IDs')
   if (command === 'album-rule') validateSmartRule(args.rule)
+  if (command === 'grading-set') {
+    validateColorGrading(args.value)
+    if (args.expectedValue !== undefined) validateColorGrading(args.expectedValue)
+  }
   if (command === 'curve-set') {
     validateCurvePoints(args.points)
     if (args.expectedPoints !== undefined) validateCurvePoints(args.expectedPoints)

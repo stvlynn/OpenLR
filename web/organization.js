@@ -1,3 +1,4 @@
+import { hasColorGradingEffect, validateColorGradingRecipe } from './color-grading.js'
 // Catalog rules shared by the GUI dispatcher; no DOM or persistence dependencies.
 import { processingVersion } from './process-version.js'
 import { hasToneCurveEffect, validateToneCurveRecipe } from './tone-curves.js'
@@ -32,7 +33,9 @@ export function matchesCatalogFilters(photo, { rating, flag, edited }) {
           key !== 'processVersion' &&
           (key === 'toneCurves'
             ? Boolean(photo.local?.sidecarError) || hasToneCurveEffect(value)
-            : value !== 0 && value !== false && value !== '' && value !== null)
+            : key === 'colorGrading'
+              ? Boolean(photo.local?.sidecarError) || hasColorGradingEffect(value)
+              : value !== 0 && value !== false && value !== '' && value !== null)
       ) ===
         (edited === 'yes'))
   )
@@ -111,6 +114,7 @@ export class Organization {
       throw new Error('Edit keys must be an array of names')
     processingVersion(photo.edit)
     validateToneCurveRecipe(photo.edit)
+    validateColorGradingRecipe(photo.edit)
     this.clipboard = { source: photo.id, edit: structuredClone(photo.edit), keys: keys ?? null }
     return { source: photo.id, keys: this.clipboard.keys, copied: true }
   }
@@ -119,6 +123,7 @@ export class Organization {
     const { edit, keys } = this.clipboard
     processingVersion(edit)
     validateToneCurveRecipe(edit)
+    validateColorGradingRecipe(edit)
     if (keys === null) return structuredClone(edit)
     const result = structuredClone(photo.edit)
     for (const key of keys) {
@@ -127,6 +132,7 @@ export class Organization {
     }
     processingVersion(result)
     validateToneCurveRecipe(result)
+    validateColorGradingRecipe(result)
     return result
   }
 }
@@ -136,6 +142,7 @@ export function namedVersion(photo, name) {
   if (!name) throw new Error('Enter a version name')
   processingVersion(photo.edit)
   validateToneCurveRecipe(photo.edit)
+  validateColorGradingRecipe(photo.edit)
   return { id: crypto.randomUUID(), name, created: Date.now(), edit: structuredClone(photo.edit) }
 }
 
@@ -144,5 +151,6 @@ export function findVersion(photo, id) {
   if (!version) throw new Error('Version not found on the selected photo')
   processingVersion(version.edit)
   validateToneCurveRecipe(version.edit)
+  validateColorGradingRecipe(version.edit)
   return version
 }

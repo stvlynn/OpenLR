@@ -1,3 +1,4 @@
+import { validateColorGrading } from './color-grading.js'
 import { controls } from './adjustments.js'
 import { geometry, validCrop } from './geometry.js'
 import { validateFill } from './fill.js'
@@ -85,7 +86,8 @@ function safeRecipe(recipe) {
     else if (key === 'redEyes') {
       if (!Array.isArray(value) || !value.every(validEye)) throw Error('Invalid red-eye regions')
       result.redEyes = value
-    } else if (key === 'toneCurves') result.toneCurves = validateToneCurves(value)
+    } else if (key === 'colorGrading') result.colorGrading = validateColorGrading(value)
+    else if (key === 'toneCurves') result.toneCurves = validateToneCurves(value)
     else if (key === 'pointColors') result.pointColors = value.map(validatePoint)
     else if (key === 'fills') result.fills = value.map(validateFill)
     else if (key === 'trim') {

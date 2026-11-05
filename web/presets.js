@@ -1,3 +1,4 @@
+import { validateColorGrading } from './color-grading.js'
 import { all, save, transaction } from './catalog.js'
 import { controls } from './adjustments.js'
 import { processingVersion } from './process-version.js'
@@ -19,6 +20,7 @@ export class Presets {
     const edit = Object.fromEntries(Object.entries(recipe).filter(([key]) => Object.hasOwn(adjustments, key)))
     if (Object.hasOwn(recipe, 'processVersion')) edit.processVersion = recipe.processVersion
     if (Object.hasOwn(recipe, 'toneCurves')) edit.toneCurves = validateToneCurves(recipe.toneCurves)
+    if (Object.hasOwn(recipe, 'colorGrading')) edit.colorGrading = validateColorGrading(recipe.colorGrading)
     const preset = { id: crypto.randomUUID(), name: name.trim(), edit }
     await save('presets', preset)
     this.items.push(preset)
@@ -29,6 +31,7 @@ export class Presets {
     if (!preset) throw Error('Preset not found')
     processingVersion(preset.edit)
     if (preset.edit.toneCurves !== undefined) validateToneCurves(preset.edit.toneCurves)
+    if (preset.edit.colorGrading !== undefined) validateColorGrading(preset.edit.colorGrading)
     return preset
   }
   async remove(id) {

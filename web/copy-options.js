@@ -16,6 +16,7 @@ export const COPY_GROUPS = [
     label,
     keys: [...Object.keys(values), ...(label === 'Curve' ? ['toneCurves'] : [])]
   })),
+  { id: 'color-grading', label: 'Color grading', keys: ['colorGrading'] },
   { id: 'point-colors', label: 'Point color', keys: ['pointColors'] },
   { id: 'crop', label: 'Crop and rotation', keys: ['crop', 'aspect', 'turn', 'flip'] },
   { id: 'optics', label: 'Optics and geometry', keys: ['optics'] },

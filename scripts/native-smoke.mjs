@@ -1176,6 +1176,72 @@ try {
   console.log(
     'Native point curves: channel selection and capture, both process TIFF pixels, stale source/channel refusal, undo and unchanged original bytes passed.'
   )
+  const gradingFile = path.join(root, 'grading-source.png')
+  await writeFile(gradingFile, curveBytes)
+  const gradingAsset = (await call('import', gradingFile)).added[0]
+  const gradingExpected = [64, 96, 128].map((byte) => {
+    const encoded = byte / 255
+    const linear = encoded <= 0.04045 ? encoded / 12.92 : ((encoded + 0.055) / 1.055) ** 2.4
+    return Math.round(255 * encodeSrgb(linear * 2))
+  })
+  for (const version of [1, 2]) {
+    await call('processing', '--version', String(version))
+    await call('grading-set', '--value', '{"global":{"luminance":50}}', '--photoId', gradingAsset)
+    const output = await call(
+      'export',
+      '--format',
+      'image/tiff',
+      '--output',
+      path.join(root, `grading-${version}.tif`)
+    )
+    const bytes = await readFile(output.path)
+    const buffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)
+    const ifd = UTIF.decode(buffer)[0]
+    UTIF.decodeImage(buffer, ifd)
+    const rgba = UTIF.toRGBA8(ifd)
+    gradingExpected.forEach((value, channel) => assert.ok(Math.abs(rgba[channel] - value) <= 1))
+    assert.equal(rgba[3], 255)
+  }
+  const gradingCapture = await call(
+    'grading-mode',
+    '--mode',
+    'global',
+    '--capture',
+    path.join(root, 'color-grading.png')
+  )
+  assert.equal((await readFile(gradingCapture.frame.path)).subarray(1, 4).toString(), 'PNG')
+  assert.equal((await call('state')).colorGrading.mode, 'global')
+  const gradingBefore = (await call('state')).photos.find((photo) => photo.id === gradingAsset).edit
+  await assert.rejects(
+    () => call('grading-set', '--value', '{"balance":10}', '--photoId', 'stale-grading-source'),
+    /changed|selected/i
+  )
+  const gradingStale = { ...gradingBefore.colorGrading, balance: 1 }
+  await assert.rejects(
+    () => call('grading-set', '--value', '{"balance":10}', '--expectedValue', JSON.stringify(gradingStale)),
+    /changed/i
+  )
+  assert.deepEqual(
+    (await call('state')).photos.find((photo) => photo.id === gradingAsset).edit,
+    gradingBefore
+  )
+  await call('grading-set', '--value', '{"global":{"luminance":0}}')
+  await call('undo')
+  assert.deepEqual(
+    (await call('state')).photos.find((photo) => photo.id === gradingAsset).edit,
+    gradingBefore
+  )
+  const gradingOriginal = await call(
+    'export',
+    '--format',
+    'original',
+    '--output',
+    path.join(root, 'grading-original.png')
+  )
+  assert.deepEqual(await readFile(gradingOriginal.path), curveBytes)
+  console.log(
+    'Native color grading: live mode and capture, both process TIFF luminance pixels, stale source/value refusal, undo and unchanged original bytes passed.'
+  )
   const colors = [
     [180, 60, 40],
     [45, 160, 70],

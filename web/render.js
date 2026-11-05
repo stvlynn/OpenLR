@@ -19,6 +19,7 @@ import { workingFrame } from './working-frames.js'
 import { processingVersion, PROCESS_MESSAGES } from './process-version.js'
 import { controls } from './adjustments.js'
 import { createPointCurves, createPointCurveTables } from './tone-curves.js'
+import { createColorGrading } from './color-grading.js'
 export { controls } from './adjustments.js'
 const linear = Float64Array.from({ length: 256 }, (_, i) => {
   const v = i / 255
@@ -47,12 +48,14 @@ export function renderFrame(image, edit = {}, maxSize = Infinity) {
   const tone = createGlobalTone(edit),
     curve = createFloatToneCurve(edit),
     points = createPointCurves(edit),
-    mixer = createFloatMixer(edit)
+    mixer = createFloatMixer(edit),
+    grading = createColorGrading(edit)
   for (let i = 0; i < frame.data.length; i += 4) {
     tone?.(frame.data, i)
     if (curve) for (let c = 0; c < 3; c++) frame.data[i + c] = curve(frame.data[i + c])
     if (points) for (let c = 0; c < 3; c++) frame.data[i + c] = points(frame.data[i + c], c)
     mixer?.(frame.data, i)
+    grading?.(frame.data, i)
   }
   spatialEffectsFloat(frame.data, frame.width, frame.height, edit)
   return assertLinearFrame(frame)
@@ -102,9 +105,11 @@ export function render(image, edit = {}, maxSize = Infinity) {
     width,
     height
   )
-  const pointTables = createPointCurveTables(edit)
+  const pointTables = createPointCurveTables(edit),
+    grading = createColorGrading(edit)
   if (
     !pointTables &&
+    !grading &&
     !edit.pointColors?.length &&
     !Object.values(controls).some((group) => Object.keys(group).some((key) => edit[key]))
   )
@@ -139,6 +144,14 @@ export function render(image, edit = {}, maxSize = Infinity) {
     for (let i = 0; i < data.length; i += 4)
       for (let k = 0; k < 3; k++) data[i + k] = pointTables[k][data[i + k]]
   if (mixer) for (let i = 0; i < data.length; i += 4) mixer(data, i)
+  if (grading) {
+    const pixel = new Float64Array(3)
+    for (let i = 0; i < data.length; i += 4) {
+      for (let c = 0; c < 3; c++) pixel[c] = linear[data[i + c]]
+      grading(pixel)
+      for (let c = 0; c < 3; c++) data[i + c] = encode(pixel[c])
+    }
+  }
   spatialEffects(data, canvas.width, canvas.height, edit)
   ctx.putImageData(pixels, 0, 0)
   return canvas

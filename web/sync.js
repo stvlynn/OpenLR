@@ -1,3 +1,4 @@
+import { validateColorGradingRecipe } from './color-grading.js'
 import { encodeBlob } from './transfer.js'
 import * as db from './catalog.js'
 import { decodeEditSource } from './edit-source.js'
@@ -20,9 +21,11 @@ function requiredManifestVersion(manifest) {
     for (const row of Object.values(manifest[store])) {
       version = Math.max(version, processingVersion(row.edit))
       validateToneCurveRecipe(row.edit)
+      validateColorGradingRecipe(row.edit)
       for (const snapshot of row.versions ?? []) {
         version = Math.max(version, processingVersion(snapshot.edit))
         validateToneCurveRecipe(snapshot.edit)
+        validateColorGradingRecipe(snapshot.edit)
       }
     }
   return version
