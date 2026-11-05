@@ -10,6 +10,8 @@ import { OUTPUT_SHARPENING_LEVELS, validateOutputSharpening } from './export-sha
 import { AI_TARGETS } from './ai-models.js'
 import { OPTICS_CONTROLS, validateOptics } from './optics.js'
 import { validateDepthChanges } from './depth-effects.js'
+import { CATALOG_FLAG_VALUES, CATALOG_EDIT_VALUES } from './organization.js'
+import { validateSmartRule } from './smart-album-rule.js'
 
 const string = (description, extra = {}) => ({ type: 'string', description, ...extra })
 const number = (description, minimum, maximum, extra = {}) => ({
@@ -622,8 +624,8 @@ export const definitions = {
   ),
   filter: entry('Filter the current scope by minimum rating, flag, and edit status', {
     rating: number('Minimum star rating', 0, 5, { type: 'integer' }),
-    flag: string('Flag filter', { enum: ['any', 'pick', 'reject', 'unflagged'] }),
-    edited: string('Edit status filter', { enum: ['any', 'yes', 'no'] })
+    flag: string('Flag filter', { enum: CATALOG_FLAG_VALUES }),
+    edited: string('Edit status filter', { enum: CATALOG_EDIT_VALUES })
   }),
   album: entry(
     'Create an album',
@@ -637,6 +639,25 @@ export const definitions = {
     'id',
     'name'
   ]),
+  'album-rule': entry(
+    'Replace a smart album’s saved criteria without changing the current view filters',
+    {
+      id: string('Smart album ID from state'),
+      rule: {
+        type: 'object',
+        description: 'Complete replacement of the saved search and filter criteria',
+        properties: {
+          text: string('Search text, matched case-insensitively as in the catalog'),
+          rating: number('Minimum star rating', 0, 5, { type: 'integer' }),
+          flag: string('Flag filter', { enum: CATALOG_FLAG_VALUES }),
+          edited: string('Edit status filter', { enum: CATALOG_EDIT_VALUES })
+        },
+        required: ['text', 'rating', 'flag', 'edited'],
+        additionalProperties: false
+      }
+    },
+    ['id', 'rule']
+  ),
   'album-delete': entry(
     'Delete an album while retaining its photos and other memberships',
     { id: string('Album ID') },
@@ -941,6 +962,7 @@ export function validateArgs(command, args) {
     if (rule.oneOf && !rule.oneOf.some((choice) => typeof value === choice.type))
       throw new Error('Invalid value for ' + key)
   }
+  if (command === 'album-rule') validateSmartRule(args.rule)
   if (command === 'export' && args.format !== undefined) {
     validateExportColorSpace(args.format, args.colorSpace)
     validateExportMetadataPolicy(args.format, args.metadata)

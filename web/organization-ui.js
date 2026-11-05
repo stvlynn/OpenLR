@@ -1,3 +1,10 @@
+import {
+  SMART_ALBUM_MESSAGES,
+  SMART_RATING_OPTIONS,
+  SMART_FLAG_OPTIONS,
+  SMART_EDIT_OPTIONS
+} from './smart-album-rule.js'
+
 export function mountOrganization(run) {
   const element = (tag, props = {}, ...children) => Object.assign(document.createElement(tag), props)
   const button = (text, fn) => {
@@ -23,30 +30,11 @@ export function mountOrganization(run) {
     input.onchange = () => fn(input.value)
     return input
   }
-  const rating = select(
-    'Minimum rating',
-    [[0, 'All ratings'], ...[1, 2, 3, 4, 5].map((n) => [n, n + ' stars and up'])],
-    (value) => run('filter', { rating: Number(value) })
+  const rating = select('Minimum rating', SMART_RATING_OPTIONS, (value) =>
+    run('filter', { rating: Number(value) })
   )
-  const flag = select(
-    'Filter flags',
-    [
-      ['any', 'All flags'],
-      ['pick', 'Picked'],
-      ['reject', 'Rejected'],
-      ['unflagged', 'Unflagged']
-    ],
-    (value) => run('filter', { flag: value })
-  )
-  const edited = select(
-    'Filter edits',
-    [
-      ['any', 'All edits'],
-      ['yes', 'Edited'],
-      ['no', 'Unedited']
-    ],
-    (value) => run('filter', { edited: value })
-  )
+  const flag = select('Filter flags', SMART_FLAG_OPTIONS, (value) => run('filter', { flag: value }))
+  const edited = select('Filter edits', SMART_EDIT_OPTIONS, (value) => run('filter', { edited: value }))
   const direction = select(
     'Sort direction',
     [
@@ -116,7 +104,62 @@ export function mountOrganization(run) {
     )
   )
   remove.id = 'delete-album'
-  albumTools.append(rename, remove)
+  const ruleDialog = element('dialog', { id: 'smart-album-dialog' }),
+    ruleForm = element('form', { method: 'dialog' }),
+    ruleHeading = element('h2', { textContent: SMART_ALBUM_MESSAGES.title }),
+    ruleText = element('input', { type: 'search' }),
+    ruleRating = select(SMART_ALBUM_MESSAGES.rating, SMART_RATING_OPTIONS, () => {}),
+    ruleFlag = select(SMART_ALBUM_MESSAGES.flag, SMART_FLAG_OPTIONS, () => {}),
+    ruleEdited = select(SMART_ALBUM_MESSAGES.edited, SMART_EDIT_OPTIONS, () => {})
+  ruleText.setAttribute('aria-label', SMART_ALBUM_MESSAGES.search)
+  ruleForm.append(ruleHeading)
+  for (const [label, input] of [
+    [SMART_ALBUM_MESSAGES.search, ruleText],
+    [SMART_ALBUM_MESSAGES.rating, ruleRating],
+    [SMART_ALBUM_MESSAGES.flag, ruleFlag],
+    [SMART_ALBUM_MESSAGES.edited, ruleEdited]
+  ]) {
+    const field = element('label', { textContent: label })
+    field.append(input)
+    ruleForm.append(field)
+  }
+  const ruleActions = element('div')
+  ruleActions.append(
+    element('button', { value: 'cancel', textContent: SMART_ALBUM_MESSAGES.cancel, formNoValidate: true }),
+    element('button', { value: 'ok', textContent: SMART_ALBUM_MESSAGES.save })
+  )
+  ruleForm.append(ruleActions)
+  ruleDialog.append(ruleForm)
+  document.body.append(ruleDialog)
+  let ruleAlbumId = null
+  const editRules = button(SMART_ALBUM_MESSAGES.edit, () => {
+    const album = current.albums.find((album) => album.id === current.scope)
+    if (!album?.rule || current.local) return
+    ruleAlbumId = album.id
+    ruleText.value = album.rule.text
+    ruleRating.value = album.rule.rating
+    ruleFlag.value = album.rule.flag
+    ruleEdited.value = album.rule.edited
+    ruleDialog.returnValue = ''
+    ruleDialog.showModal()
+  })
+  editRules.id = 'edit-album-rules'
+  ruleDialog.onclose = () => {
+    const id = ruleAlbumId
+    ruleAlbumId = null
+    if (ruleDialog.returnValue === 'ok')
+      run('album-rule', {
+        id,
+        rule: {
+          text: ruleText.value,
+          rating: Number(ruleRating.value),
+          flag: ruleFlag.value,
+          edited: ruleEdited.value
+        }
+      })
+    ruleDialog.returnValue = ''
+  }
+  albumTools.append(editRules, rename, remove)
   document.getElementById('albums').after(albumTools)
 
   const versions = element('details', { id: 'versions' }),
@@ -140,6 +183,7 @@ export function mountOrganization(run) {
     copy.disabled = !photo
     paste.disabled = !state.selection.length || !state.clipboard
     rename.disabled = remove.disabled = !album
+    editRules.hidden = !album || !state.albums.find((item) => item.id === state.scope)?.rule
     albumTools.hidden = !album
     const activeFilters =
       Number(state.filters.rating > 0) +

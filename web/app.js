@@ -48,6 +48,7 @@ import { ExportProgress, EXPORT_PROGRESS_MESSAGES } from './export-progress.js'
 import { getImageWorkerDiagnostics } from './image-worker.js'
 import { EXPORT_FORMATS } from './formats.js'
 import { Organization, namedVersion, findVersion } from './organization.js'
+import { validateSmartRule, sameSmartRule, SMART_ALBUM_MESSAGES } from './smart-album-rule.js'
 import { mountOrganization } from './organization-ui.js'
 import { mergePhotos } from './merge.js'
 import { mountMerge } from './merge-ui.js'
@@ -1305,7 +1306,7 @@ async function execute(command, args, context = {}) {
       const album = {
         id: crypto.randomUUID(),
         name,
-        ...(args.smart ? { rule: { ...organization.filters, text: search } } : {})
+        ...(args.smart ? { rule: validateSmartRule({ ...organization.filters, text: search }) } : {})
       }
       await db.save('albums', album)
       albums.push(album)
@@ -1323,6 +1324,22 @@ async function execute(command, args, context = {}) {
       const next = { ...album, name }
       await db.save('albums', next)
       albums[albums.indexOf(album)] = next
+      break
+    }
+    case 'album-rule': {
+      if (local.state()) throw Error(SMART_ALBUM_MESSAGES.local)
+      const album = albums.find((item) => item.id === args.id)
+      if (!album) throw Error(SMART_ALBUM_MESSAGES.notFound)
+      if (!album.rule) throw Error(SMART_ALBUM_MESSAGES.notSmart)
+      const rule = validateSmartRule(args.rule)
+      if (sameSmartRule(album.rule, rule)) {
+        result = album
+        break
+      }
+      const next = { ...album, rule }
+      await db.save('albums', next)
+      albums[albums.indexOf(album)] = next
+      result = next
       break
     }
     case 'album-delete': {

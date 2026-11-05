@@ -1,6 +1,22 @@
 // Catalog rules shared by the GUI dispatcher; no DOM or persistence dependencies.
 import { processingVersion } from './process-version.js'
 
+export const CATALOG_FLAG_VALUES = ['any', 'pick', 'reject', 'unflagged']
+export const CATALOG_EDIT_VALUES = ['any', 'yes', 'no']
+
+export function validateCatalogFilters(filters) {
+  if (
+    !filters ||
+    !Number.isInteger(filters.rating) ||
+    filters.rating < 0 ||
+    filters.rating > 5 ||
+    !CATALOG_FLAG_VALUES.includes(filters.flag) ||
+    !CATALOG_EDIT_VALUES.includes(filters.edited)
+  )
+    throw new Error('Invalid catalog filter')
+  return { rating: filters.rating, flag: filters.flag, edited: filters.edited }
+}
+
 export function matchesCatalogFilters(photo, { rating, flag, edited }) {
   return (
     photo.rating >= rating &&
@@ -79,16 +95,7 @@ export class Organization {
     return photos.filter((p) => this.selection.has(p.id))
   }
   setFilters(args) {
-    const next = { ...this.filters, ...args }
-    if (
-      !Number.isInteger(next.rating) ||
-      next.rating < 0 ||
-      next.rating > 5 ||
-      !['any', 'pick', 'reject', 'unflagged'].includes(next.flag) ||
-      !['any', 'yes', 'no'].includes(next.edited)
-    )
-      throw new Error('Invalid catalog filter')
-    this.filters = next
+    this.filters = validateCatalogFilters({ ...this.filters, ...args })
     this.resetSelection()
   }
   copy(photo, keys) {

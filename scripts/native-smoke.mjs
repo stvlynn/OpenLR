@@ -619,6 +619,46 @@ try {
   const editedState = await call('state')
   assert.ok(editedState.photos.some((photo) => photo.id === historyTarget))
   assert.ok(!editedState.photos.some((photo) => photo.id === neutralTarget))
+  const changedRule = { text: '', rating: 0, flag: 'any', edited: 'yes' }
+  const ruleCapture = await call(
+    'album-rule',
+    '--id',
+    uneditedAlbum.id,
+    '--rule',
+    JSON.stringify(changedRule),
+    '--capture',
+    path.join(root, 'smart-rule.png')
+  )
+  assert.equal(ruleCapture.result.id, uneditedAlbum.id)
+  assert.equal(ruleCapture.result.name, uneditedAlbum.name)
+  assert.deepEqual(ruleCapture.result.rule, changedRule)
+  assert.equal((await readFile(ruleCapture.frame.path)).subarray(1, 4).toString(), 'PNG')
+  const ruleAfter = await call('state')
+  assert.deepEqual(ruleAfter.filters, editedState.filters)
+  assert.equal(ruleAfter.search, editedState.search)
+  await call('scope', '--id', uneditedAlbum.id)
+  assert.ok((await call('state')).photos.some((photo) => photo.id === historyTarget))
+  assert.ok(!(await call('state')).photos.some((photo) => photo.id === neutralTarget))
+  await call('library-undo')
+  assert.deepEqual(
+    (await call('state')).albums.find((album) => album.id === uneditedAlbum.id).rule,
+    uneditedAlbum.rule
+  )
+  assert.ok((await call('state')).photos.some((photo) => photo.id === neutralTarget))
+  await call('library-redo')
+  await call('album-rule', '--id', uneditedAlbum.id, '--rule', JSON.stringify(changedRule))
+  await call('library-undo')
+  assert.deepEqual(
+    (await call('state')).albums.find((album) => album.id === uneditedAlbum.id).rule,
+    uneditedAlbum.rule
+  )
+  assert.throws(
+    () => call('album-rule', '--id', uneditedAlbum.id, '--rule', '{"edited":"yes"}'),
+    /search|criteria|minimum rating/
+  )
+  console.log(
+    'Native smart album rules: replacement, live membership, preserved view filters, undo/redo, no-op history and real workspace capture passed.'
+  )
   await call('scope', '--id', 'all')
   await call('select', '--id', launch.added[0])
   await call('view', '--mode', 'detail')

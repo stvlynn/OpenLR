@@ -74,11 +74,32 @@ const sidecar = async () => JSON.parse(await readFile(image + '.openlr.json', 'u
 try {
   await launch()
   assert.equal((await call('local-folders'))[0].id, 'fixture-root')
+  const librarySmartAlbum = await call('album', '--name', 'Imported library only', '--smart', 'true')
   const opened = await call('local-open', '--root', 'fixture-root')
   assert.equal(opened.photos, 1)
   assert.equal(opened.warnings.length, 0)
   assert.equal((await selected()).local.sidecarPresent, false)
   assert.deepEqual((await selected()).edit, {})
+  await assert.rejects(
+    () =>
+      call(
+        'album-rule',
+        '--id',
+        librarySmartAlbum.id,
+        '--rule',
+        JSON.stringify({
+          text: '',
+          rating: 0,
+          flag: 'any',
+          edited: 'yes'
+        })
+      ),
+    /switch to Library first/
+  )
+  assert.deepEqual(
+    (await call('state')).albums.find((album) => album.id === librarySmartAlbum.id).rule,
+    librarySmartAlbum.rule
+  )
   await call('view', '--mode', 'detail')
   await call('processing', '--version', '2')
   await call('edit', '--key', 'Exposure', '--value', '.5')

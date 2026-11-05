@@ -9,6 +9,7 @@ const tracked = new Set([
   'membership',
   'album',
   'album-rename',
+  'album-rule',
   'album-delete',
   'stack',
   'stack-cover',

@@ -22,7 +22,7 @@ Albums are lists of imported-library photo IDs, and one photo can belong to mult
 
 Albums belong to the imported library. Local folders retain their own metadata and edits in sidecars, so album navigation and membership are disabled there. Import a local photo into Library to organize that catalog copy in albums.
 
-Choose **Smart album from current filters** in Create album, or run `album --name 'Unedited' --smart true`, to save the current search, minimum rating, flag and edit-status criteria as a live rule. Its members update when matching photo metadata or edits change; they are not manual memberships. The saved criteria persist through restart and use the same matching rules as the ordinary filtered view. In particular, an absent processing version, explicit Original version 1, and Linear version 2 all remain Unedited when the recipe is otherwise neutral. An actual adjustment makes the photo Edited. Rename and delete work for smart albums; their saved criteria currently cannot be edited through the GUI or CLI.
+Choose **Smart album from current filters** in Create album, or run `album --name 'Unedited' --smart true`, to save the current search, minimum rating, flag and edit-status criteria as a live rule. Its members update when matching photo metadata or edits change; they are not manual memberships. The saved criteria persist through restart and use the same matching rules as the ordinary filtered view. In particular, an absent processing version, explicit Original version 1, and Linear version 2 all remain Unedited when the recipe is otherwise neutral. An actual adjustment makes the photo Edited. Choose **Edit rules** on a selected smart album to review and replace its saved search, minimum rating, flag and edit-status criteria. Cancel leaves the saved rule unchanged. CLI `album-rule` accepts the same complete four-field rule. Editing preserves the album ID, name and other metadata; it does not modify photo recipes, original bytes or manual memberships. Current temporary search/filters remain unchanged and continue to intersect with the saved album rule. Selection is reconciled when a photo no longer matches. Rules persist through restart, and library/contextual Grid undo and redo restore the previous rule. Saving an identical rule creates no write or history entry. Ordinary albums and local-folder mode reject this operation. Storage failure leaves both the displayed and stored album unchanged.
 
 ## Named versions
 
@@ -32,7 +32,7 @@ Versions persist with imported catalog records or local sidecars and survive res
 
 ## Filtering and ordering
 
-The current scope, text search, minimum star rating, flag, and edited status combine to determine visible photos. Search matches filenames and keywords. Edited status checks whether the recipe has a non-default stored value, ignoring `processVersion` metadata. Sort by added time, numeric-aware filename, or star rating, with ascending or descending direction. These view settings and selection are session state; photo metadata, recipes, named versions, albums, and memberships are persisted.
+The current scope, text search, minimum star rating, flag, and edited status combine to determine visible photos. Search matches filenames, keywords, camera make/model and lens metadata. Edited status checks whether the recipe has a non-default stored value, ignoring `processVersion` metadata. Sort by added time, numeric-aware filename, or star rating, with ascending or descending direction. These view settings and selection are session state; photo metadata, recipes, named versions, albums, and memberships are persisted.
 
 Named versions and full copied recipes preserve an explicit process version or its absence. Saved adjustment presets retain an explicit version when present; existing and built-in presets without one remain legacy recipes and are not rewritten merely by loading them. OpenLR XMP recipes preserve the version, depth raster and provenance, and lens-blur settings; importing validates the version, normalized raster, and blur settings with the same domain validators used by editing. An absent version means legacy processing; unsupported versions are rejected.
 
@@ -42,6 +42,7 @@ node cli/openlr.mjs select-all
 node cli/openlr.mjs rate --value 4
 node cli/openlr.mjs filter --rating 3 --flag pick
 node cli/openlr.mjs sort --order name --direction asc
+node cli/openlr.mjs album-rule --id ALBUM_ID --rule '{"text":"sunrise","rating":3,"flag":"pick","edited":"any"}'
 node cli/openlr.mjs version-save --name 'First edit'
 node cli/openlr.mjs copy-edits
 node cli/openlr.mjs paste-edits
@@ -56,3 +57,5 @@ node cli/openlr.mjs paste-edits
 `node --test tests/smart-albums.test.js` checks shared rating/flag/edit-status matching and actual browser GUI creation/reload of smart albums, including neutral version 1/version 2 recipes, edited version 2 recipes, live membership changes, and counts through the CLI's shared dispatch path. This browser check does not establish native CLI transport behavior.
 
 `node --test tests/history-workflow.test.js` checks actual Grid keyboard routing, interleaved photo/library undo and redo, active-photo isolation, explicit history commands, Detail scope, failed-command handling, batch per-photo behavior and unchanged original bytes. `scripts/native-smoke.mjs` repeats the shared contextual commands and smart-album membership in the real desktop application.
+
+`tests/smart-album-editing.test.js` verifies the actual dialog, cancellation, non-default session filters, live membership, selection boundaries, restart and original bytes. It injects an IndexedDB write failure to verify memory/storage/history consistency, and checks complete validation, no-op history and undo/redo. Native smoke repeats rule replacement, membership, history and actual CLI workspace capture. Primary-source evidence and the replacement-versus-patch experiment are in [smart album editing research](../research/smart-album-editing.md).
