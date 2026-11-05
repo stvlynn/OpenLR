@@ -2,7 +2,7 @@
 let queue = Promise.resolve()
 const diagnostics = []
 export const getImageWorkerDiagnostics = () => diagnostics.map((item) => ({ ...item }))
-export function runImageWorker(url, message, transfers = [], fallback, { signal } = {}) {
+export function runImageWorker(url, message, transfers = [], fallback, { signal, prepareMessage } = {}) {
   let canceled = false,
     cancelActive = null,
     rejectAbort
@@ -19,6 +19,7 @@ export function runImageWorker(url, message, transfers = [], fallback, { signal 
     message = null
     transfers = []
     fallback = null
+    prepareMessage = null
     rejectAbort(error)
   }
   signal?.addEventListener('abort', cancel, { once: true })
@@ -26,6 +27,26 @@ export function runImageWorker(url, message, transfers = [], fallback, { signal 
 
   const task = queue.then(() => {
     if (canceled) return
+    // Allocate owned input only after admission, not once per queued preview.
+    // Preparation is synchronous: no untracked asynchronous heap may outlive
+    // this queue slot. Failure belongs to preparation, not worker startup.
+    if (prepareMessage) {
+      try {
+        const prepared = prepareMessage(message)
+        if (!prepared || typeof prepared.then === 'function')
+          throw new TypeError('Image worker message preparation must be synchronous')
+        if (canceled) return
+        message = prepared.message
+        transfers = prepared.transfers ?? []
+      } catch (error) {
+        message = null
+        transfers = []
+        fallback = null
+        throw error
+      } finally {
+        prepareMessage = null
+      }
+    }
     return new Promise((resolve, reject) => {
       let worker,
         timer,
