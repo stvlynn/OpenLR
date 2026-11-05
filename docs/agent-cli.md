@@ -104,7 +104,7 @@ Offsets may be fractional at native display scaling, while browser extent measur
 
 For a large catalog use `openlr state --summary true` and `openlr photos --offset 0 --limit 50`. To follow changes made by the person in the GUI or by another agent, run `openlr watch`. It writes newline-delimited JSON after committed changes. `--images <directory>` records actual window PNGs with each observed state, and `--count 2` ends after two records. Fast consecutive edits can coalesce into one observation.
 
-An observer can sample a color, inspect lens profiles or migration reports, and request preview, mask or export bytes without triggering another update. Applying an edit wakes waiting observers.
+An observer can read a color with `sample-color`, inspect lens profiles or migration reports, and request preview, mask or export bytes without triggering another update. Applying an edit wakes waiting observers.
 
 `local-select --id <mask-id> --path "[1,0]"` selects a nested component in the same editor control as the person using the GUI. Omit the path to select the whole mask or repair. Both forms of `state` report `localSelection` with its root ID, component path and overlay visibility. `mask-preview` follows the selected component; an explicit `--id` exports coverage of that whole mask.
 
@@ -128,11 +128,19 @@ With the crop tool open, `state --summary true` exposes the uncommitted rectangl
 
 `local-tool --tool color-sample` activates range sampling through the shared tool transition. `range-color --args '{"x":0.25,"y":0.5,"id":"","path":[]}' --capture sampled.png` samples original-image coordinates into a new-range draft. Omit the target to refine the selected color-range mask/component; explicit `id`/`path` targets are also supported. Full/summary `state` return `rangeColor`; `localTool` reports the active sampler. Existing `sample-color` remains an edited-view color read. See [range tools](range-depth-tools.md).
 
+## Point color sampling
+
+`point-tool` activates the Point color eyedropper in Detail and clears clipping warnings and any pending straighten reference. Click the edited image or run `point-sample --x 0.25 --y 0.5 --photoId PHOTO_ID`. Coordinates are fractions of the whole displayed edited canvas, including at zoom, with `0,0` at the top left and `1,1` at the last pixel. The sample is one 8-bit sRGB canvas pixel after edits and geometry at the current preview scale. Video uses the published frame. Full `state` reports `sampling:"point"` while the eyedropper is active.
+
+The command requires the current photo's committed edited preview. It rejects a stale click, an uncommitted adjustment preview, or an optional `photoId` that no longer matches. If clipping warnings are turned on while the eyedropper is active, turn them off before sampling. A successful sample returns the saved point `{id,color,hue,saturation,luminance,range}`, selects it, ends sampling, and adds one undo entry. Each success creates a new sample, including when another point is already selected.
+
+`point-add --color '#406080'` adds an explicit sRGB color. `sample-color --x 0.25 --y 0.5` reads the committed edited image with a 1280-pixel long-edge limit, independent of preview scale or active tool, and returns `{color}`. White balance uses a 5×5 neighborhood from the original in normalized original-image coordinates.
+
 ## Point color selection
 
 The Point color dropdown and `point-select --id SAMPLE_ID` share session selection. Full and summary `state` expose `selectedPoint`, the ID shown by the panel, or an empty string when the active photo has no samples. Read available IDs from that photo's `edit.pointColors`. Selection returns `{id}`, supports `--capture`, changes no recipe or undo history, and does not rerender photo pixels. Optional `photoId` rejects a queued selection intended for another photo; the GUI supplies it automatically. Unknown sample IDs reject without changing selection.
 
-Adding a sample selects it only after saving succeeds. Removal, undo/redo, reset and recipe replacement retain a valid selection or fall back to the first remaining sample; no samples means empty selection. Changing photos selects the new photo's first sample, even if copied recipes contain the same sample IDs. This is session state, so reopening starts from the first available sample. `point-update` and `point-remove` continue to require explicit IDs and can operate on a sample other than the one shown. Activating the point eyedropper exits a pending straighten reference, including its first point. The eyedropper still adds a new sample from the edited image; selecting an existing point does not turn it into a replacement operation.
+Adding a sample selects it only after saving succeeds. Removal, undo/redo, reset and recipe replacement retain a valid selection or fall back to the first remaining sample. Selection is empty when there are no samples. Changing photos selects the new photo's first sample, even if copied recipes contain the same sample IDs. This is session state, so reopening starts from the first available sample. `point-update` and `point-remove` continue to require explicit IDs and can operate on a sample other than the one shown.
 
 `tests/point-selection.test.js` exercises actual dropdown/sliders, shared command state, history and asset boundaries. Native smoke checks CLI selection, actual workspace capture and unchanged original bytes. Design evidence and the state-ownership comparison are in [point selection research](../research/point-color-selection.md).
 

@@ -79,7 +79,14 @@ import { LOCAL_COMMANDS, updateLocalTools, localToolAt } from './local-tools.js'
 import { createLocalToolsUI, viewToOriginal } from './local-tools-ui.js'
 import { neutralBalance } from './white-balance.js'
 import { analyzeFocus, validEye } from './culling.js'
-import { validatePoint, pointPanel, sampleColor, sampleSourceColor, clippingOverlay } from './point-color.js'
+import {
+  validatePoint,
+  pointPanel,
+  sampleColor,
+  sampleSourceColor,
+  clippingOverlay,
+  POINT_COLOR_MESSAGES
+} from './point-color.js'
 import { removeMaskedArea } from './fill.js'
 import { generateAiMask } from './ai-mask.js'
 import { estimateDepth } from './depth.js'
@@ -393,11 +400,13 @@ function syncTiles(container, items) {
   }
 }
 let paintController = null,
-  paintRevision = 0
+  paintRevision = 0,
+  pointPreview = null
 function cancelPaint() {
   paintRevision++
   paintController?.abort()
   paintController = null
+  pointPreview = null
 }
 async function previewStage(image, edit) {
   try {
@@ -412,7 +421,8 @@ async function paintStage(image, edit) {
   paintController = controller
   const revision = ++paintRevision
   const photoId = selected,
-    owner = active()?.edit
+    owner = active()?.edit,
+    sourceMatchesPhoto = bitmapId === photoId && image === bitmap
 
   const recipe = cropping
     ? { ...edit, crop: null, aspect: '', turn: 0, flip: false }
@@ -455,6 +465,7 @@ async function paintStage(image, edit) {
     mode !== 'detail'
   )
     return
+  pointPreview = null
   stage.classList.toggle('pair', pair)
   if (pair) stage.replaceChildren(originalPreview, preview)
   else stage.replaceChildren(preview)
@@ -474,6 +485,8 @@ async function paintStage(image, edit) {
   if (clipping) clippingOverlay(preview)
   $('stage').classList.toggle('cropping', cropping)
   $('stage').classList.toggle('zoom', zoom)
+  if (sourceMatchesPhoto && recipe === owner && !cropping && !compare && !pair && !clipping)
+    pointPreview = { canvas: preview, photoId, edit: owner }
 }
 async function draw() {
   local.drawNavigation()
@@ -1991,13 +2004,31 @@ async function execute(command, args, context = {}) {
           break
         }
         case 'point-select':
-          if (args.photoId !== undefined && args.photoId !== p.id) throw Error('The selected photo changed')
+          if (args.photoId !== undefined && args.photoId !== p.id)
+            throw Error(POINT_COLOR_MESSAGES.changedPhoto)
           if (!p.edit.pointColors?.some((point) => point.id === args.id))
             throw Error('Color sample not found')
           selectedPoint = args.id
           pointPhoto = p.id
           updatePoints(p.edit.pointColors, selectedPoint, pointPhoto)
           return { id: selectedPoint }
+        case 'point-sample': {
+          if (args.photoId !== undefined && args.photoId !== p.id)
+            throw Error(POINT_COLOR_MESSAGES.changedPhoto)
+          if (mode !== 'detail' || sampling !== 'point') throw Error(POINT_COLOR_MESSAGES.activateSampler)
+          if (clipping) throw Error(POINT_COLOR_MESSAGES.clipping)
+          if (context.pointCanvas !== undefined && context.pointCanvas !== pointPreview?.canvas)
+            throw Error(POINT_COLOR_MESSAGES.changedPreview)
+          const stage = $('stage')
+          if (
+            pointPreview?.photoId !== p.id ||
+            pointPreview.edit !== p.edit ||
+            pointPreview.canvas.parentElement !== stage ||
+            stage.hidden
+          )
+            throw Error(POINT_COLOR_MESSAGES.preview)
+          return execute('point-add', { color: sampleColor(pointPreview.canvas, args.x, args.y) })
+        }
         case 'point-add':
         case 'point-update':
         case 'point-remove': {
@@ -2128,8 +2159,8 @@ function notice(text) {
   $('notice').textContent = text
   noticeTimer = setTimeout(() => ($('notice').textContent = ''), 7000)
 }
-function act(cmd, args) {
-  return run(cmd, args).catch((e) => notice(e.message))
+function act(cmd, args, context) {
+  return run(cmd, args, undefined, context).catch((e) => notice(e.message))
 }
 const processingLabel = document.createElement('label')
 processingLabel.textContent = PROCESS_MESSAGES.label
@@ -2293,22 +2324,13 @@ $('stage').onclick = (e) => {
   if (opticsUI?.consumeClick()) return
   if (sampling && e.target.tagName === 'CANVAS') {
     const rect = e.target.getBoundingClientRect()
+    const point = { x: (e.clientX - rect.left) / rect.width, y: (e.clientY - rect.top) / rect.height }
     if (sampling === 'point') {
-      act('point-add', {
-        color: sampleColor(
-          e.target,
-          (e.clientX - rect.left) / rect.width,
-          (e.clientY - rect.top) / rect.height
-        )
-      })
+      act('point-sample', { ...point, photoId: selected }, { pointCanvas: e.target })
       return
     }
-    const point = viewToOriginal(
-      { x: (e.clientX - rect.left) / rect.width, y: (e.clientY - rect.top) / rect.height },
-      bitmap,
-      active().edit
-    )
-    if (point) act('white-balance', point)
+    const originalPoint = viewToOriginal(point, bitmap, active().edit)
+    if (originalPoint) act('white-balance', originalPoint)
     else notice('Choose a point inside the corrected source image')
   } else if (!cropping && !pair) act('zoom')
 }

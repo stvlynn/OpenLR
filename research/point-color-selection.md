@@ -1,5 +1,25 @@
 # Point-color selection ownership
 
+## Display sampling follow-up (2026-11-06)
+
+At `ce20ab4`, GUI point sampling read the clicked canvas before queueing `point-add`, whereas `sample-color` rendered the committed edited recipe at a maximum edge of 1280. Actual Chrome verified a generated 1536×32 sRGB PNG with red columns 303–304 against black: Linear at 100% zoom showed `[255,0,0,255]` at x=303.5, but the existing capped read returned `#bc0000`. The latter is the correct encoded half-linear-red interpolation at that reduced output location. Replacing the GUI read with that API would alter the visible-pixel interaction; changing `sample-color` would break its existing canonical edited-image contract. Neither change is needed.
+
+The added `point-sample` command reads the mounted committed canvas and reuses the existing point-add operation. It requires the point eyedropper in Detail, validates normalized coordinates and an optional photo guard, and returns the same saved point record. Paint publication records the canvas, photo and committed edit identity. GUI dispatch supplies its actual clicked node through private request context; a superseded clicked canvas is rejected rather than silently sampling a different frame. Clipping-warning pixels and uncommitted adjustment previews are ineligible; the picker remains available for a valid retry. Explicit hex addition, canonical sample-color and original-coordinate neighborhood white balance retain their prior behavior. No second renderer or photo-edit rule is introduced.
+
+Context7 `/mdn/content` confirmed that [`getImageData`](https://github.com/mdn/content/blob/main/files/en-us/web/api/canvasrenderingcontext2d/getimagedata/index.md) reads underlying canvas pixels independently of the context transformation matrix. The existing `sampleColor` owner maps normalized positions to that backing store and clamps inclusive endpoints to its last pixel. Browser pointer coordinates are normalized against the clicked element bounds, so the command does not invent another geometric transform.
+
+The actual source/ownership comparison is:
+
+| Path | Full-resolution visible red pixel | Previous canvas clicked during held edit save |
+| --- | --- | --- |
+| Prior GUI pre-read followed by unguarded point-add | `#ff0000` | Saved stale `#ff0000` after the edit |
+| Existing canonical sample-color | `#bc0000` | Read-only edited-image API, not the GUI save operation |
+| New shared display sampling | `#ff0000` via GUI and CLI | Rejected; only the intended Exposure edit remained |
+
+The stale case holds the completion callback of the real thumbnail encoding, performs a trusted click on the still-mounted canvas, then releases the edit. After Exposure -1, the current canvas sample is `[188,0,0,255]`; accepting the old click would associate a color from the previous recipe with the new recipe. `tests/point-sampling.test.js` reproduces the old behavior and verifies the repaired path, selection, save/undo/redo/reload, original bytes, invalid requests and clipping refusal. Existing point/range/optics tests passed 9/9. A separate ignored `.workspace/point-video-probe.mjs/.log` generated VP9 video and sampled two paused edited frames at .25/.75 seconds: actual stage hex `#8c8c8c`/`#1c46f1` matched both saved point records, and playback stayed paused at the requested times. This is a bounded video observation, not coverage of every codec or playing-frame timing.
+
+The earlier selection investigation follows; its scope and date remain unchanged.
+
 Date: 2026-11-05. This is an OpenLR GUI/CLI interaction correction, not a reconstruction of Adobe's color algorithm.
 
 ## Evidence and product boundary

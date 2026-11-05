@@ -252,6 +252,15 @@ export const definitions = {
   ),
   clipping: entry('Toggle highlight and shadow clipping indicators in the workspace'),
   'point-tool': entry('Activate the point color eyedropper'),
+  'point-sample': entry(
+    'Add a point color sample from the displayed edited canvas with the point color eyedropper',
+    {
+      x: number('Horizontal fraction of the displayed edited canvas', 0, 1),
+      y: number('Vertical fraction of the displayed edited canvas', 0, 1),
+      photoId: string('Optional current-photo guard')
+    },
+    ['x', 'y']
+  ),
   'sample-color': entry(
     'Sample RGB from normalized coordinates of the edited photo',
     { x: number('Horizontal position', 0, 1), y: number('Vertical position', 0, 1) },

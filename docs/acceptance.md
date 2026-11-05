@@ -17,6 +17,12 @@
 
 ## 补充验证
 
+- **共用屏幕取色（2026-11-06）**。新 `point-sample` 与真实 GUI 点击均在 100% Linear 预览中保存 `#ff0000`，同时既有 `sample-color` 保持缩小读取 `#bc0000`；受控真实缩略图保存期间的旧画面点击，修复前写入过期色样，修复后拒绝且仅保留原定编辑。新增 Chrome 两项及既有 point/range/optics 九项通过；完整运行 **343/343 通过、无跳过**，约 239.2 秒，仍带被动视频诊断 preload。新 Windows MyGo 构建和主原生 smoke 通过实际 CLI 取色 `#5a85b0`、照片保护、选中项、PNG 截图和撤销。另有两帧真实 VP9 暂停视频观察，边界见[取色研究](../research/point-color-selection.md#display-sampling-follow-up-2026-11-06)。初次沙箱浏览器运行被 loopback 网络限制阻止，放行本地验证后执行成功；没有伪称该初次运行通过。日志 `.workspace/point-sampling-*`，该新提交远程三平台结果尚未产生。
+
+- **`ce20ab4` 三平台验收终态**。[Actions 42097263586](https://github.com/stvlynn/OpenLR/actions/runs/42097263586) 首次执行全部成功，Windows 浏览器 333 通过、8 项可选资源跳过、0 失败，共 341 项，三个平台完成原生套件和打包。本项覆盖裁剪原图对比与统一 Grid 放映退出，不包含随后的屏幕取色改动。
+
+- **`a84b5b5` 三平台验收终态**。[Actions 42095718221](https://github.com/stvlynn/OpenLR/actions/runs/42095718221) 首次执行全部成功，Windows 浏览器 331 通过、8 项可选资源跳过、0 失败，共 339 项；三个平台完成原生套件和打包。这是颜色分级连续输入修复的远程结果，不覆盖后续裁剪／放映或屏幕取色改动。先前 `a70cb9b` 的失败记录仍用于保留修复前证据。
+
 - **裁剪对比与统一 Grid 放映退出（2026-11-06）**。`tests/compare-crop.test.js` 在旧代码上分别复现 Original／Linear 显示原图时仍出现编辑后的白色像素，修正后两项通过；核对实际 canvas 原始颜色／比例、草稿清除、已保存 crop、处理版本、原件字节、撤销／重做和重启。扩展放映测试先复现布局入口未停止，再验证布局、scope、空搜索及退出后定时器不再切图。完整 Chrome **341/341 通过、无跳过**，保留被动视频诊断 preload；新 Windows 构建及主原生 smoke 通过，包含实际 CLI 裁剪对比和布局退出放映。视频未复现不代表其间歇失败已修复。日志 `.workspace/display-transition-*`、`.workspace/display-transitions-*`；当前提交尚无新的远程三平台结果。
 
 - **颜色分级连续数值输入（2026-11-06）**。原先两个受控保存时序及无关更新测试均复现丢失输入；修复后定向 13/13 通过，最终中性更新清理后再核对 10/10。消融八例确认草稿保护和字段更新缺一不可，见[控制审计](../research/cli-control-audit.md#sequential-grading-input-follow-up)。完整实际 Chrome 运行 **339/339 通过、无跳过**，约 375.5 秒；本次通过忽略目录的被动视频诊断 preload 执行，保持原 bitmap 调用与返回 promise，不能作为未加诊断的性能结果。新 Windows MyGo 构建和主原生 smoke 通过，新增实际 CLI `grading-set --patch`、同字段冲突拒绝和两步撤销检查。日志 `.workspace/grading-input-*`、`.workspace/grading-full-instrumented.log`。其余六组本地原生套件未重跑；该修复的新提交尚无远程三平台结果。

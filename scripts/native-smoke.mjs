@@ -971,6 +971,32 @@ try {
   console.log(
     'Native range color: original versus edited sampling in both processing versions, crop/compare activation, actual capture, selected mask update/undo, stale-photo guard and unchanged original bytes passed.'
   )
+  const sampledPointBefore = (await call('state')).photos.find((photo) => photo.id === rangeAsset).edit
+  await call('point-tool')
+  await assert.rejects(
+    () => call('point-sample', '--x', '0.5', '--y', '0.5', '--photoId', 'stale-photo'),
+    /changed/i
+  )
+  const sampledPoint = await call(
+    'point-sample',
+    '--x',
+    '0.5',
+    '--y',
+    '0.5',
+    '--photoId',
+    rangeAsset,
+    '--capture',
+    path.join(root, 'point-sampled.png')
+  )
+  assert.equal(sampledPoint.result.color, '#5a85b0')
+  assert.equal((await call('state')).selectedPoint, sampledPoint.result.id)
+  assert.equal((await call('state')).sampling, false)
+  assert.equal((await readFile(sampledPoint.frame.path)).subarray(1, 4).toString(), 'PNG')
+  await call('undo')
+  assert.deepEqual(
+    (await call('state')).photos.find((photo) => photo.id === rangeAsset).edit,
+    sampledPointBefore
+  )
   const pointFirst = (await call('point-add', '--color', '#ff0000')).id,
     pointSecond = (await call('point-add', '--color', '#0000ff')).id
   await call('point-update', '--id', pointSecond, '--hue', '45')

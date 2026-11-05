@@ -1,3 +1,11 @@
+export const POINT_COLOR_MESSAGES = {
+  changedPhoto: 'The selected photo changed',
+  activateSampler: 'Activate the Point color eyedropper in Detail first',
+  clipping: 'Turn off clipping warnings to sample a point color',
+  changedPreview: 'The displayed image changed. Sample the color again.',
+  preview: 'Wait for the current edited preview before sampling a point color'
+}
+
 export function validatePoint(point) {
   if (!point || typeof point.id !== 'string' || !/^#[0-9a-f]{6}$/i.test(point.color))
     throw Error('Choose an sRGB sample color')
