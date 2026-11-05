@@ -23,7 +23,7 @@ jobs:
           go-version-file: go.mod
       - run: npm ci
       - if: runner.os == 'Linux'
-        run: sudo apt-get update -qq && sudo apt-get install -y libwebkit2gtk-4.1-0 xvfb
+        run: sudo apt-get update -qq && sudo apt-get install -y libwebkit2gtk-4.1-0 gstreamer1.0-plugins-bad xvfb
       - run: go test ./...
       - if: runner.os == 'Linux'
         run: go test -race ./...

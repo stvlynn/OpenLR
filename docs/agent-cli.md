@@ -24,6 +24,14 @@ The shared queue validates command arguments before executing an action or recor
 
 Full and summary `state` expose `clipping`, the current workspace highlight/shadow warning toggle. The `clipping` command, Histogram button and J shortcut share this state. Warnings affect the displayed canvas, not exported image pixels or edit recipes. Starting a color sampler clears them.
 
+### Histogram
+
+`histogram` and `histogram --source edited` return four arrays of 256 counts, named `red`, `green`, `blue` and `luma`. They measure the selected photo's committed edit even in Grid or while Detail shows the original. `histogram --source display` reads the same published Detail preview that the Histogram panel plots. It follows Show original, the edited pane in Compare side by side, and uncommitted crop or adjustment previews. It requires a published Detail preview for the current photo.
+
+Both sources sample at up to 400 pixels on the long edge, skip fully transparent pixels and count rounded luma from the sRGB byte channels. The display source samples the current preview before clipping warnings are painted, so its sample size can depend on the preview scale. Run `node --test tests/histogram-workflow.test.js` to check the actual plot and both sources through comparison, clipping, a slider preview and Grid.
+
+### Workspace panels
+
 Full and summary `state` expose `panels`, a map from stable panel names to booleans. Use its keys to discover the available names. `photos` controls the Photos sidebar. The other keys use the original disclosure titles, including `Filters` when its displayed title includes a count.
 
 ```powershell

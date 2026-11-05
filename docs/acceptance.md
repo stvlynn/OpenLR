@@ -17,6 +17,14 @@
 
 ## 补充验证
 
+- **预览一致性与原生导航／视频（2026-11-06）**。修复蒙版预览缺失 aspect、Original 色域覆盖漏过红眼校正、移除范围与渲染前蒙版参考不一致，以及双图对比时 Histogram 打开／重绘读取不同画布。共享源校正保持历史填充阶段；`histogram --source display` 返回实际预览的警告前分布，默认仍为已提交编辑。原因、方案边界及定向检查见[研究记录](../research/preview-consistency.md)。完整 Windows／Node 24.9／Chrome 156.0.8078.80 `OPENLR_TEST_CMS=1 OPENLR_TEST_METADATA=1 npm test` **354/354、零失败、零跳过**，约 265.4 秒，保留被动视频诊断。这不宣称已修复历史视频偶发导入错误。
+
+  新 MyGo Windows 包及安装包构建成功，WebView2 156.0.4314.58 **十一组原生套件全部通过**。蒙版独立 PNG 读回在两种处理版本均为 `[0,255]` 覆盖，方形／翻转／旋转后 64×64，NS／Telea 仅改变选区，撤销和原件一致。导航截图胶片缩略图显示／隐藏像素为 5,192／0；双图原图 `[51,82,115]`、编辑 `[73,114,158]` 各有 15,000 像素，三种直方图峰值各 9,600；实际全屏 1783×1154 → 2940×1847 → 1783×1154。Windows 偏好、文件名显示、真实快捷键和独立 profile 重启通过。视频推进 .35 → .527069 秒，导出 VP9／Opus 64×96、容器 1.513 秒／解码音轨 1.5135 秒，两段音调及保存帧一致，27,479 字节原件不变。日志 `.workspace/preview-consistency-{build,native,full}.log`。
+
+  Linux 另用已存在的归档宿主实测，定位缺少 `vp9parse` 后仅注入 Ubuntu 解析插件即通过同一视频流程；声明 Linux base／good／bad 插件依赖，实际核对生成的 Debian 和 Arch 清单。此归档宿主不等于本次最新代码的 Linux 验收；macOS 新套件也仍待对应提交运行。[视频研究](../research/native-video.md)保留实验及物理音频输出边界。相机仍为模拟器，迁移仍为合成 schema，原生系统选择器与最终干净快照另行验证。
+
+- **`b06a522` 三平台终态**。[Actions 42108409050](https://github.com/stvlynn/OpenLR/actions/runs/42108409050) 首次执行 Windows、Linux、macOS Intel 全部成功，三端构建及八组原生套件完成。此结果包含整理／堆叠读回修复与启动诊断，不包含下文之后新增的导航、蒙版和视频检查，也不证明历史启动超时或视频偶发错误已修复。GitHub 仓库公开状态另已核实为 `PUBLIC`。
+
 - **原生整理与堆叠状态（2026-11-06）**。新 `native-organization-smoke` 接入标准原生套件，实际 CLI 验证搜索／分页／选择反转、标签与关键词／时间／重命名、相册与版本重命名／删除、删除／恢复、预设 CRUD、手动堆叠／封面／展开／解除和时间／相似性自动堆叠。该检查发现展开后解除堆叠会残留公开 ID；现在只报告当前完整目录存在的堆叠，保留会话偏好以支持撤销恢复，过滤不会清除偏好。真实 Chrome 覆盖解除、撤销／重做、软删除及最终成员永久删除。Windows 独立 WebView2 profile、适配器配置及 MyGo socket 中重启后读回实际记录，预设像素由 `#465265` 变为 `#57657c`，两种自动堆叠均为一组两张，三张原件逐字节一致。其他平台该脚本使用临时会话，不声称其重启持久性。缩短临时前缀以适应标准 macOS socket 路径，最终脚本在 Windows 再次通过。
 
   新 Windows MyGo 包及安装包构建成功，八组原生套件全部通过，包含独立 ExifTool 校验、真实外部编辑器进程、相机模拟器、审阅服务、迁移与合并／RAW 集成；各自既有边界保持不变。完整 `OPENLR_TEST_CMS=1 OPENLR_TEST_METADATA=1 npm test` **351/351、零失败、零跳过**，约 251.1 秒，使用被动视频诊断。新增启动失败诊断的 4 项受控 HTTP 测试另复核通过；保留错误、隔离进程和清理行为见[启动记录](../research/native-startup.md)。日志为忽略目录 `.workspace/organization-state-*`、`.workspace/native-organization-final.log`。本次新代码的远程三平台验证另行跟进。

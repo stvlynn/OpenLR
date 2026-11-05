@@ -12,6 +12,7 @@ test('linear mask previews select precise pre-mask samples and retain original c
   await page.goto(server.url)
   const results = await page.evaluate(async () => {
     const { maskCoverageSource, renderMaskPreview } = await import('./mask-preview.js')
+    const { removeMaskedArea } = await import('./remove-mask.js')
     const { bindWorkingFrame } = await import('./working-frames.js')
     const { frameCanvas } = await import('./render.js')
     const { validateLocalTool } = await import('./local-tools.js')
@@ -52,6 +53,25 @@ test('linear mask previews select precise pre-mask samples and retain original c
       luminanceInput = gray([-0.2, 0.01, 0.5, 2]),
       linearLuminance = values(coverage(luminanceInput, { processVersion: 2 }, range(0, 1))),
       legacyLuminance = values(coverage(luminanceInput, {}, range(0, 1)))
+
+    // Both center samples encode to the same display byte. Only the first is
+    // inside the Linear range. Sending its coverage reference to the worker
+    // must preserve the separately owned decoded source.
+    const removalInput = frame(
+        Array.from({ length: 25 }, (_, i) => {
+          const value = i === 12 ? exact : i === 13 ? nearby : 0.1
+          return [value, value, value, 1]
+        }).flat(),
+        5
+      ),
+      removalBefore = Array.from(removalInput.data),
+      removal = await removeMaskedArea(
+        surface(removalInput),
+        { processVersion: 2, localTools: { masks: [color] } },
+        color,
+        'ns',
+        3
+      )
 
     // The red fill becomes black after red-eye correction, then clone copies
     // that corrected result. All three stages must precede the range snapshot.
@@ -167,6 +187,9 @@ test('linear mask previews select precise pre-mask samples and retain original c
       legacyColor,
       linearLuminance,
       legacyLuminance,
+      removalPatch: removal.fills[0],
+      removalBefore,
+      removalAfter: Array.from(removalInput.data),
       colorBefore,
       colorAfter: Array.from(colorInput.data),
       staged,
@@ -191,6 +214,11 @@ test('linear mask previews select precise pre-mask samples and retain original c
     assert.deepEqual(results.linearLuminance, [0, 255, 255, 0])
     assert.deepEqual(results.legacyLuminance, [255, 255, 255, 255])
     assert.deepEqual(results.rgba, [255, 0, 0, 255, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
+  })
+  await t.test('inpainting uses float coverage without detaching the decoded source', () => {
+    const { x, y, width, height } = results.removalPatch
+    assert.deepEqual([x, y, width, height], [0.4, 0.4, 1, 1])
+    assert.deepEqual(results.removalAfter, results.removalBefore)
   })
   await t.test('fill, red-eye and repairs precede the immutable range reference', () => {
     assert.deepEqual(results.staged, [255, 0, 0, 255, 0])

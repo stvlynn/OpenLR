@@ -1,8 +1,7 @@
 import { analyzeDehazeOwned, encodeDehaze, renderDehazeFrame } from './dehaze-worker-client.js'
 import { analyzeDehaze, createDehazePixel } from './dehaze.js'
 import { geometry } from './geometry.js'
-import { filledSource, filledFrame } from './fill.js'
-import { correctEyes, correctEyesFrame } from './culling.js'
+import { sourceBeforeLocalFrame, sourceBeforeLocalBitmap, readSourcePixels } from './source-corrections.js'
 import { renderLocalSource, applyLocalTools } from './local-tools.js'
 import { renderOpticsSource, warpOpticsFrame } from './optics.js'
 import { createMixer, spatialEffects, toneCurve } from './color.js'
@@ -19,12 +18,6 @@ export { controls } from './adjustments.js'
 function encode(v) {
   return 255 * (v <= 0.0031308 ? 12.92 * v : 1.055 * v ** (1 / 2.4) - 0.055)
 }
-function sourceStages(image, edit, stages) {
-  let result = image
-  for (const name of ['fill', 'eyes', 'local', 'optics']) result = stages[name](result, edit)
-  return result
-}
-
 // Original decoded frames and ImageBitmaps are immutable. Keep only the latest
 // source-correction revision per source; crop, output size and strength reuse it.
 const dehazeSources = new WeakMap()
@@ -65,33 +58,19 @@ function correctedFrame(image, edit) {
     edit.optics === undefined
   )
     return assertLinearFrame(owned)
-  return sourceStages(owned, edit, {
-    fill: (input) => filledFrame(input, edit.fills),
-    eyes: (input) => correctEyesFrame(input, edit.redEyes),
-    local: (input) => applyLocalTools(input, edit.localTools),
-    optics: (input) => warpOpticsFrame(input, edit.optics, image)
-  })
+  const corrected = applyLocalTools(sourceBeforeLocalFrame(owned, edit), edit.localTools)
+  return warpOpticsFrame(corrected, edit.optics, image)
 }
 function correctedBitmap(image, edit, edge) {
-  return sourceStages(image, edit, {
-    fill: (input) => filledSource(input, edit.fills, edge),
-    eyes: (input) => correctEyes(input, edit.redEyes, edge),
-    local: (input) => renderLocalSource(input, edit.localTools, edge),
-    optics: (input) => renderOpticsSource(input, edit.optics, image, edge)
-  })
+  const corrected = renderLocalSource(sourceBeforeLocalBitmap(image, edit, edge), edit.localTools, edge)
+  return renderOpticsSource(corrected, edit.optics, image, edge)
 }
 
 function correctedByteFrame(image, edit) {
   return rgba8ToLinearFrame(correctedBytePixels(image, edit))
 }
 function correctedBytePixels(image, edit) {
-  const corrected = correctedBitmap(image, edit, Infinity)
-  const full = document.createElement('canvas')
-  full.width = corrected.width
-  full.height = corrected.height
-  const context = full.getContext('2d', { willReadFrequently: true })
-  context.drawImage(corrected, 0, 0)
-  return context.getImageData(0, 0, full.width, full.height)
+  return readSourcePixels(correctedBitmap(image, edit, Infinity))
 }
 async function consumePreparation(entry, signal) {
   if (signal?.aborted) throw canceledPreparation()

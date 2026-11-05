@@ -28,6 +28,9 @@ run(go, ['build', '-o', share, './cmd/openlr-share'])
 for (const [name, ...args] of [
   ['native-smoke'],
   ['native-organization-smoke'],
+  ['native-mask-smoke'],
+  ['native-navigation-smoke'],
+  ['native-video-smoke'],
   ['native-local-smoke'],
   ['native-migration-smoke'],
   ['native-external-smoke', editor],

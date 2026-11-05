@@ -1,7 +1,7 @@
 import { openCV } from './cv-runtime.js'
 import { localWeight } from './local-tools.js'
 import { deflateSync } from './vendor/fflate/browser.js'
-export async function makeFill({ pixels, mask, algorithm = 'telea', radius = 3 }) {
+export async function makeFill({ pixels, reference = pixels, mask, algorithm = 'telea', radius = 3 }) {
   const cv = await openCV(),
     { width, height, data } = pixels
   const rgb = new cv.Mat(height, width, cv.CV_8UC3),
@@ -17,9 +17,18 @@ export async function makeFill({ pixels, mask, algorithm = 'telea', radius = 3 }
     for (let y = 0; y < height; y++)
       for (let x = 0; x < width; x++) {
         const i = y * width + x
-        const color = data.subarray(i * 4, i * 4 + 3)
-        rgb.data.set(color, i * 3)
-        const weight = localWeight(mask, (x + 0.5) / width, (y + 0.5) / height, width, height, color)
+        const start = i * 4,
+          end = start + 3
+        rgb.data.set(data.subarray(start, end), i * 3)
+        const weight = localWeight(
+          mask,
+          (x + 0.5) / width,
+          (y + 0.5) / height,
+          width,
+          height,
+          reference?.data.subarray(start, end),
+          reference?.colorSpace
+        )
         opacity[i] = weight * 255
         selection.data[i] = opacity[i] ? 255 : 0
         if (opacity[i]) {

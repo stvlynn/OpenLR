@@ -375,6 +375,10 @@ function sample(data, width, height, x, y, alphaScale) {
   out[3] *= alphaScale
   return out
 }
+export function usesPixelRange(tool) {
+  return RANGE_TYPES.includes(tool.type) || tool.components?.some(usesPixelRange)
+}
+
 export function applyLocalTools(pixels, local = {}) {
   const { data, width, height } = pixels
   const isLinear = data instanceof Float32Array,
@@ -434,8 +438,7 @@ export function applyLocalTools(pixels, local = {}) {
     for (let y = y0; y < y1; y++)
       data.set(patch.subarray((y - y0) * patchWidth * 4, (y - y0 + 1) * patchWidth * 4), (y * width + x0) * 4)
   }
-  const hasRange = (tool) => RANGE_TYPES.includes(tool.type) || tool.components?.some(hasRange)
-  const reference = (local.masks ?? []).some(hasRange) ? data.slice() : null
+  const reference = (local.masks ?? []).some(usesPixelRange) ? data.slice() : null
   applyLensBlur(pixels, local.depth, local.lensBlur)
   for (const tool of local.masks ?? []) {
     if (tool.enabled === false || !tool.opacity) continue

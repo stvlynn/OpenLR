@@ -1,9 +1,7 @@
-import { localWeight, applyLocalTools } from './local-tools.js'
-import { filledSource, filledFrame } from './fill.js'
-import { correctEyesFrame } from './culling.js'
+import { localWeight } from './local-tools.js'
+import { maskReference } from './source-corrections.js'
 import { render } from './render.js'
-import { processingVersion, PROCESS_MESSAGES } from './process-version.js'
-import { workingFrame } from './working-frames.js'
+import { processingVersion } from './process-version.js'
 
 export function maskCoverageSource(image, edit, tool, { maxEdge = Infinity, style = 'rgba' } = {}) {
   if (!['gray', 'rgba'].includes(style)) throw Error('Expected gray or rgba mask preview')
@@ -19,20 +17,7 @@ export function maskCoverageSource(image, edit, tool, { maxEdge = Infinity, styl
     ctx.drawImage(maskCoverageSource(image, edit, tool, { style }), 0, 0, canvas.width, canvas.height)
     return canvas
   }
-  let reference
-  if (isLinear) {
-    const source = workingFrame(image)
-    if (!source) throw new Error(PROCESS_MESSAGES.missingSource)
-    // Match the renderer's pre-mask snapshot at original coordinates.
-    const filled = filledFrame({ ...source, data: source.data.slice() }, edit.fills),
-      corrected = correctEyesFrame(filled, edit.redEyes)
-    reference = applyLocalTools(corrected, { repairs: edit.localTools?.repairs ?? [] })
-  } else {
-    ctx.drawImage(filledSource(image, edit.fills, maxEdge), 0, 0, canvas.width, canvas.height)
-    reference = applyLocalTools(ctx.getImageData(0, 0, canvas.width, canvas.height), {
-      repairs: edit.localTools?.repairs ?? []
-    })
-  }
+  const reference = maskReference(image, edit, maxEdge, canvas)
   const pixels = ctx.createImageData(canvas.width, canvas.height)
   for (let i = 0; i < canvas.width * canvas.height; i++) {
     const value = Math.round(
@@ -61,6 +46,7 @@ export function renderMaskPreview(image, edit, tool, { maxSize = Infinity, style
     coverage,
     {
       crop: edit.crop,
+      aspect: edit.aspect,
       turn: edit.turn,
       flip: edit.flip,
       optics: { ...edit.optics, profileTCA: false, redScale: 0, blueScale: 0 }

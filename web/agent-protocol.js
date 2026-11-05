@@ -844,7 +844,14 @@ export const definitions = {
   ]),
   'preset-apply': entry('Apply a preset to the selected photo', { id: string('Preset ID') }, ['id']),
   'preset-delete': entry('Delete a saved preset', { id: string('Preset ID') }, ['id']),
-  histogram: entry('Return RGB and luminance bin counts sampled from the current edited image'),
+  histogram: entry('Return RGB and luminance bins from the edited image or displayed photo preview', {
+    source: {
+      type: 'string',
+      enum: ['edited', 'display'],
+      description:
+        'Default edited: committed image. Display: visible photo preview before clipping warnings, including comparison or adjustment drafts'
+    }
+  }),
   'auto-tone': entry('Set exposure using the median luminance of the original'),
   'crop-tool': entry('Open the crop rectangle tool, or commit a drawn rectangle'),
   'crop-guide': entry(

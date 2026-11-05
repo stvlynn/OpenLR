@@ -13,6 +13,8 @@ The CLI embeds `web/` without a frontend build step. Packaged output goes to `bu
 
 Windows 10 needs the [WebView2 runtime](https://developer.microsoft.com/microsoft-edge/webview2/); Windows 11 includes it. Linux needs GTK 3 and WebKitGTK 4.1 (`libwebkit2gtk-4.1-0` on Debian/Ubuntu). macOS 12+ uses the system WKWebView. There is no Android/iOS host in this project. Signed public releases require the publisher's own signing configuration.
 
+WebM export on Linux uses WebKitGTK's GStreamer plugins for Opus, VP9 and its parser. The Debian package declares `gstreamer1.0-plugins-base`, `gstreamer1.0-plugins-good`, and `gstreamer1.0-plugins-bad`. The Arch PKGBUILD declares the corresponding `gst-plugins-base`, `gst-plugins-good`, and `gst-plugins-bad` packages. Install these runtime packages when running directly from the archive. [Ubuntu parser package](https://packages.ubuntu.com/noble/gstreamer1.0-plugins-bad) · [Arch parser package](https://archlinux.org/packages/extra/x86_64/gst-plugins-bad-libs/files/)
+
 ## Native boundary
 
 Native adapters for [Local folders](local-folders.md), [external editor roundtrips](external-editors.md), [tethered capture](tethered-capture.md) and [shared album publication](shared-albums.md) all route through the same GUI command dispatcher and agent transport. Their separate documentation records filesystem/network boundaries and their actual validation scope.
@@ -22,6 +24,8 @@ Native adapters for [Local folders](local-folders.md), [external editor roundtri
 The host's local agent endpoint is recorded in `os.UserConfigDir()/OpenLR/agent.json` (on Windows `%APPDATA%/OpenLR/agent.json`), or the path in `OPENLR_AGENT_FILE`. Its JSON fields are `version`, `url`, `token` and `pid`. Requests must send `Authorization: Bearer <token>`; the endpoint listens only on a random loopback port. `GET /health` returns availability. `POST /command` accepts `{command,args}`, waits for `web/agent.js` to run the command on live application state, and returns that bridge's JSON response. A pending request ends when the GUI replies, the client disconnects, or the app closes. Connection data is local machine state and must not be committed or shared.
 
 ## Verification scope
+
+`npm run test:native -- /path/to/OpenLR` runs eleven sequential workflows against the built application: core editing, catalog organization, mask coverage/removal, navigation, video, local folders, migration, external editing, camera simulation, shared review, and integration. Organization, mask, navigation and video share a private-process lifecycle with isolated adapter files and a short temporary MyGo socket path. Windows organization/navigation additionally reopen their private WebView2 profile. Navigation enables loopback debugging only for its disposable Windows child to inspect the actual fullscreen viewport, filename labels and trusted keyboard input. Other platforms do not inherit those Windows-only persistence/window assertions. The video workflow uses Chrome as its fixture encoder and independent output decoder; [its evidence](../research/native-video.md) distinguishes decoded audio from physical playback.
 
 If the native main smoke fails during startup, it reports bounded, read-only broker/control diagnostics before cleanup and rethrows the original failure. Session publication is distinct from renderer and catalog readiness. The probes do not retry the failed command or extend its deadline; see [startup evidence and interpretation](../research/native-startup.md). Their transport checks run with `node --test tests/native-startup-diagnostics.test.js` and are not GUI acceptance.
 
@@ -33,11 +37,11 @@ Official packages include the single-file Node CLI under cli/openlr.mjs in the n
 
 ## Local Linux acceptance
 
-Use a Linux checkout with Linux-installed `node_modules`, Go 1.27.3+ and Node 24. When running under WSL, keep the checkout and Go caches in a persistent Linux directory; do not reuse Windows native npm binaries or assume `/tmp` survives separate WSL invocations. The complete suite also needs Chrome for the shared-album visitor browser, in addition to the application's WebKitGTK runtime.
+Use a Linux checkout with Linux-installed `node_modules`, Go 1.27.3+ and Node 24. When running under WSL, keep the checkout and Go caches in a persistent Linux directory; do not reuse Windows native npm binaries or assume `/tmp` survives separate WSL invocations. The complete suite also needs Chrome for the shared-album visitor and to generate the video fixture and decode its exported media independently of the application's WebKitGTK runtime.
 
 ```sh
 sudo apt-get update
-sudo apt-get install -y libwebkit2gtk-4.1-0 xvfb
+sudo apt-get install -y libwebkit2gtk-4.1-0 gstreamer1.0-plugins-bad xvfb
 npm ci
 google-chrome --version
 go test ./...

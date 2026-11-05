@@ -1,6 +1,5 @@
 import { inflateSync } from './vendor/fflate/browser.js'
 import { validCrop } from './geometry.js'
-import { runImageWorker } from './image-worker.js'
 import { assertLinearFrame, rgba8ToLinearFrame, sampleLinearRgba } from './pixel-frame.js'
 const patchCanvases = new WeakMap()
 const patchFrames = new WeakMap()
@@ -96,23 +95,4 @@ export function filledSource(image, fills, size = Infinity) {
       p.h * canvas.height
     )
   return canvas
-}
-export async function removeMaskedArea(image, recipe, mask, algorithm, radius) {
-  const canvas = document.createElement('canvas')
-  canvas.width = image.width
-  canvas.height = image.height
-  const ctx = canvas.getContext('2d', { willReadFrequently: true })
-  ctx.drawImage(filledSource(image, recipe.fills), 0, 0)
-  const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height)
-  const result = await runImageWorker(
-    new URL('./inpaint-worker.js', import.meta.url),
-    { pixels, mask, algorithm, radius },
-    [pixels.data.buffer],
-    async (args) => (await import('./inpaint-kernel.js')).makeFill(args)
-  )
-  return {
-    ...recipe,
-    fills: [...(recipe.fills || []), result.patch],
-    localTools: { ...recipe.localTools, masks: recipe.localTools.masks.filter((m) => m.id !== mask.id) }
-  }
 }

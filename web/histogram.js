@@ -1,3 +1,7 @@
+export const HISTOGRAM_MESSAGES = {
+  display: 'Wait for the photo preview in Detail before reading its histogram'
+}
+
 export function histogram(canvas) {
   const sample = document.createElement('canvas'),
     scale = Math.min(1, 400 / Math.max(canvas.width, canvas.height))

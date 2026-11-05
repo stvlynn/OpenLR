@@ -48,7 +48,7 @@ import * as sharing from './sharing.js'
 import { geometry, validCrop } from './geometry.js'
 import { CropSurface } from './crop-surface.js'
 import { CROP_GUIDES, CROP_GUIDE_MESSAGES } from './crop-guides.js'
-import { drawHistogram, histogram, autoExposure } from './histogram.js'
+import { drawHistogram, histogram, autoExposure, HISTOGRAM_MESSAGES } from './histogram.js'
 import { controls, renderPrepared as render, renderFramePrepared as renderFrame, toBlob } from './render.js'
 import { saveExport, beginExportFolder } from './desktop.js'
 import { preparePhotoExport } from './photo-export.js'
@@ -87,7 +87,7 @@ import {
   clippingOverlay,
   POINT_COLOR_MESSAGES
 } from './point-color.js'
-import { removeMaskedArea } from './fill.js'
+import { removeMaskedArea } from './remove-mask.js'
 import { generateAiMask } from './ai-mask.js'
 import { estimateDepth } from './depth.js'
 import { validateDepthSettings } from './depth-effects.js'
@@ -401,12 +401,25 @@ function syncTiles(container, items) {
 }
 let paintController = null,
   paintRevision = 0,
-  samplePreview = null
+  samplePreview = null,
+  histogramPreview = null
 function cancelPaint() {
   paintRevision++
   paintController?.abort()
   paintController = null
   samplePreview = null
+  histogramPreview = null
+}
+function displayedHistogram() {
+  const preview = histogramPreview
+  if (
+    mode !== 'detail' ||
+    preview?.photoId !== selected ||
+    preview.canvas.parentElement !== $('stage') ||
+    $('stage').hidden
+  )
+    return null
+  return (preview.bins ??= histogram(preview.canvas))
 }
 async function previewStage(image, edit) {
   try {
@@ -481,7 +494,10 @@ async function paintStage(image, edit) {
     edit: recipe,
     available: !playingMedia && !cropping && !compare && !sampling && !pair
   })
-  if ($('histogram-panel').open) drawHistogram($('histogram'), histogram(preview))
+  // Warnings paint into the preview canvas; retain its photo bins first.
+  // An unopened histogram needs no readback when warnings are off.
+  histogramPreview = { photoId, canvas: preview, bins: clipping ? histogram(preview) : null }
+  if ($('histogram-panel').open) drawHistogram($('histogram'), displayedHistogram())
   if (clipping) clippingOverlay(preview)
   $('stage').classList.toggle('cropping', cropping)
   $('stage').classList.toggle('zoom', zoom)
@@ -1941,6 +1957,11 @@ async function execute(command, args, context = {}) {
           break
         }
         case 'histogram':
+          if (args.source === 'display') {
+            const bins = displayedHistogram()
+            if (!bins) throw Error(HISTOGRAM_MESSAGES.display)
+            return structuredClone(bins)
+          }
           return histogram(await render(await source(p.id), p.edit, 400))
         case 'auto-tone': {
           const exposure = autoExposure(
@@ -2410,8 +2431,9 @@ $('preset-save').onclick = async () => {
 $('preset-delete').onclick = () => act('preset-delete', { id: $('preset-list').value })
 $('auto-tone').onclick = () => act('auto-tone')
 $('histogram-panel').ontoggle = () => {
-  const canvas = $('stage').querySelector('canvas')
-  if ($('histogram-panel').open && canvas) drawHistogram($('histogram'), histogram(canvas))
+  if (!$('histogram-panel').open) return
+  const bins = displayedHistogram()
+  if (bins) drawHistogram($('histogram'), bins)
 }
 $('reset').onclick = () => act('reset')
 for (const [id, delta] of [
