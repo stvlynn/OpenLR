@@ -45,6 +45,8 @@ RGBA8-to-float decoding uses the exact 256-entry `SRGB8_LINEAR` Float64 table fr
 
 ## Verification
 
+The inverse display boundary, `linearFrameToRgba8`, uses a separate lazy 20-bit-prefix table over Float32 bit patterns. Only constant quantized sRGB-byte buckets use a direct byte; boundary buckets retain the scalar transfer and ties-to-even clamped assignment. This preserves reader Float32 rounding and source alpha. It does not replace continuous color calculations or the target-space 8/16-bit export encoder. Numerical and performance evidence is in [byte encoding](../research/srgb-byte-encoding.md); run `node --test tests/srgb-byte-encoding.test.js tests/dehaze-encoding.test.js` for the boundary and actual worker checks.
+
 ```sh
 node --test tests/float-color.test.js tests/float-local.test.js tests/float-geometry.test.js tests/float-render.test.js tests/float-tiff.test.js tests/float-raw.test.js tests/float-mask-preview.test.js
 node --test tests/jxl-input.test.js tests/jxl-workflow.test.js

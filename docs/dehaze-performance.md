@@ -1,6 +1,23 @@
 # Dehaze performance and image acceptance
 
-The subsequent [sRGB byte-encoding experiment](../research/srgb-byte-encoding.md) investigates the remaining Original source-sized conversion. A routed 20-bit bucket prototype matched tested output bytes and reduced cached 24MP completion to about .72–.73s versus 1.74–1.84s for the scalar control in one controlled run. Saturation alone did not reproduce the gain. First latency and main-thread gaps remain variable. This is research only: no production converter has been replaced and no new platform acceptance is claimed.
+The subsequent [sRGB byte-encoding experiment](../research/srgb-byte-encoding.md) investigated the remaining Original source-sized conversion. Its routed 20-bit bucket prototype matched tested output bytes; saturation alone did not reproduce the cached gain. The production integration and its separate measurements are recorded here. First latency and main-thread gaps remain variable; platform acceptance is recorded separately.
+
+## Production byte encoding (2026-11-06)
+
+The shared `linearFrameToRgba8` now uses `srgb-byte-encode.js` with the chosen 20-bit prefix table and scalar fallback at quantization boundaries. An independent scalar test exercises all 255 byte transitions and neighboring Float32 values, plus source-alpha, rounding, view-offset and validation contracts. Real Chrome encoding-worker bytes are compared before resizing, alongside cancellation and deliberate startup fallback. This does not change analysis resolution, floating reconstruction or profile-aware export encoding.
+
+The 6000×4000 haze scene defined below was generated as a Float32 frame. `frameCanvas` created the display bitmap; Linear additionally associated that bitmap with its float source. Generation/display setup was excluded, so the main-realm table was already initialized, while each encoding worker still constructed its own table. Fresh Chrome 156 instances compared the `67e0a41` scalar converter against the actual production module, scalar first for each process version, with identical module-routing conditions. All 4,367,360 final RGBA samples per strength/version matched; no worker startup fallback was reported.
+
+| Process / implementation | First 40 elapsed / max gap ms | Cached 70 elapsed / max gap ms | Cached 20 elapsed / max gap ms |
+| --- | --- | --- | --- |
+| Original scalar | 8131.9 / 541.2 | 1794.6 / 123.3 | 2070.0 / 118.2 |
+| Original production | 6342.0 / 700.5 | 638.4 / 67.5 | 658.0 / 76.5 |
+| Linear scalar | 6308.8 / 467.1 | 304.8 / 94.3 | 308.8 / 88.4 |
+| Linear production | 5992.0 / 610.4 | 308.1 / 89.5 | 327.5 / 80.3 |
+
+Original cached completion improved in this observation. Linear total latency did not show a clear improvement, and both first-operation maximum gaps worsened. This is neither a latency distribution nor a claim of smooth large-image dragging; first source preparation, copying, canvas work and memory costs remain. Process peak memory was not measured here. Each table is 520,194 bytes per initialized realm, not a measured process-memory delta. Ignored evidence: `.workspace/srgb-production-integrated.mjs/.json/.log`. Earlier observations below retain their original implementation and fixture boundaries.
+
+## Original measurement environment
 
 Measured on 2026-11-05, Windows x64, AMD Ryzen 7 7840U (16 logical processors), 30.84 GB installed RAM, Node v24.9.0 and headless Chrome 156.0.8078.80. This is a bounded local measurement, not a cross-platform performance guarantee. [Dehaze](dehaze.md) owns the behavior; [research](../research/dehaze.md) owns the algorithm and prior limitations.
 

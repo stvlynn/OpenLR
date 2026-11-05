@@ -1,5 +1,7 @@
 # Float32 to sRGB byte encoding experiment
 
+Subsequent implementation: the chosen 20-bit candidate is now integrated into `linearFrameToRgba8` through `srgb-byte-encode.js`; scalar `encodeSrgb` and `linearFrameToEncoded` retain their existing owners and behavior. The historical prototype results below remain separate from production measurements and acceptance. New tests import the actual converter and use an independent scalar formula at all 255 byte transitions, all 256 bin centers, the transfer join, signed/HDR/subnormal values, offset/sentinel storage, reader Float32 rounding, nonfinite reader RGB and source-only alpha. Existing no-reader validation remains exercised. The actual browser encoding-worker output is compared in full before canvas scaling, with explicit successful worker results and no initial startup fallback; cancellation and deliberate startup fallback still run. The observer initially rejected a cancellation fixture's Blob URL because it assumed a URL object; handling string URLs corrected that test harness, without changing production worker behavior.
+
 Investigated on 2026-11-06 against `9e623b5`, Windows x64, Chrome 156 and Node 24.9.0. This is a prototype experiment; no production rendering code was changed. The remaining Original dehaze latency includes encoding a full corrected source before the existing canvas geometry path, as recorded in [performance](../docs/dehaze-performance.md).
 
 ## Contract and candidate

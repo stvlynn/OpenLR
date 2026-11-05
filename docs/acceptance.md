@@ -17,6 +17,8 @@
 
 ## 补充验证
 
+- **实际 sRGB 字节编码器（2026-11-06）**。消融选定的 20 位 Float32 索引方案已接入共享 `linearFrameToRgba8`，量化边界仍调用原标量曲线；未修改浮点渲染、目标色彩空间导出或源 alpha。独立标量测试覆盖全部 255 个字节分界及相邻 Float32、256 个区间中心、符号／HDR／次正规数、读取器舍入与非有限值、切片哨兵及既有验证错误。Chrome 实际编码 Worker 的全部源分辨率字节与标量结果相等，取消／重试／显式启动回退也通过；观察器首次不兼容 Blob URL 导致测试交接观察失败，修正测试后定向 5/5。完整浏览器 **321/321 通过，无跳过**，约 238.7 秒；新 Windows MyGo 构建通过主原生 smoke。Original／Linear 的实际 24MP 渲染对照全像素一致，具体延迟与首次阻塞恶化见[性能记录](dehaze-performance.md#production-byte-encoding-2026-11-06)。本项不声称尚未运行的新提交远程三平台验收，也不将 Chrome 延迟推广到其他引擎。日志为忽略目录 `.workspace/srgb-production-*`。
+
 - **`9e623b5` 三平台验收终态**。[Actions 42083004415](https://github.com/stvlynn/OpenLR/actions/runs/42083004415) 首次执行全部成功：Windows 浏览器 310 通过、8 项可选资源跳过、0 失败，共 318 项；Windows、macOS Intel、Linux 完成打包、七组原生套件和产物上传。Linux 曾长时间停留在系统依赖安装，之后在同一作业继续执行并成功；没有因观察等待重启任务。该结果覆盖局部创建完成状态一致性修正，不包括尚未进入生产的 [sRGB 编码实验](../research/srgb-byte-encoding.md)。
 
 - **局部创建完成状态一致性（2026-11-06）**。`tests/local-postcommit.test.js` 先复现直接 `repair.add` 返回未选中新修复，再复现直接 `ai-mask` 保留 Brush 模式。修正后定向五项通过；完整浏览器 **318/318 通过、无跳过**，约 237.7 秒。新测试检查命令返回、变更事件发生瞬间的下拉控件、真实鼠标修复、GUI／直接命令调用的 Person 模型推理、模式／选中项／覆盖层／面板／光标一致性。Windows MyGo 新构建的主原生 smoke 通过，新增实际 CLI 断言确认 AI 从 Brush 转到 Off、修复创建立即选中新对象、撤销恢复原配方。忽略日志为 `.workspace/local-postcommit-*`；其他平台和其他六组原生套件未在本地重复执行，本项不沿用 `a05a501` 的远程成功结论。

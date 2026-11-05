@@ -28,4 +28,6 @@ Analysis still consumes source-sized working planes. Synchronous rendering remai
 
 ## Verification
 
+The shared Float32-to-RGBA8 boundary uses a lazy 20-bit-prefix sRGB byte table. Only buckets whose endpoint values quantize to the same byte bypass the scalar transfer; boundary-crossing buckets retain the scalar formula and clamped ties-to-even rounding. Source alpha and Float32 reader rounding are preserved. This optimizes Original's full-source dehaze encoding and Linear's terminal display conversion without changing analysis resolution, floating rendering, target-profile export encoding or the public scalar transfer function. Each worker realm owns its 520,194-byte table and releases it when terminated. [Encoding research](../research/srgb-byte-encoding.md) records the alternatives and bounded exactness/performance evidence.
+
 Run `node --test tests/dehaze.test.js tests/dehaze-workflow.test.js` and the full suite, then the native suite on each actual target OS. Check independent synthetic recovery, the bright-object counterexample, alpha contamination, signed/HDR and negative haze, source immutability, source-cache invalidation, crop/size agreement, existing slider/history/storage and decoded exports. Test entry points alone do not establish platform success. [Decision 019](decisions/019-dehaze.md) records the alternatives.

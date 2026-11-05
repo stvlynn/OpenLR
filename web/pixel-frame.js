@@ -1,4 +1,5 @@
-import { SRGB8_LINEAR, encodeSrgb, convertLinearSrgbColor } from './color-spaces.js'
+import { SRGB8_LINEAR, convertLinearSrgbColor } from './color-spaces.js'
+import { createSrgbByteReader } from './srgb-byte-encode.js'
 
 // Straight alpha, signed and unbounded linear sRGB. Storage owns its samples.
 export function isLinearFrame(frame) {
@@ -45,9 +46,10 @@ export function linearFrameToRgba8(frame, readPixel = null) {
   if (!readPixel) assertLinearFrame(frame)
   const data = new Uint8ClampedArray(frame.data.length)
   const pixel = readPixel ? new Float32Array(4) : null
+  const encodeByte = createSrgbByteReader(pixel ?? frame.data)
   for (let i = 0; i < data.length; i += 4) {
     if (readPixel) readPixel(frame.data, i, pixel, 0)
-    for (let c = 0; c < 3; c++) data[i + c] = 255 * encodeSrgb(readPixel ? pixel[c] : frame.data[i + c])
+    for (let c = 0; c < 3; c++) data[i + c] = encodeByte(readPixel ? c : i + c)
     data[i + 3] = 255 * frame.data[i + 3]
   }
   return { width: frame.width, height: frame.height, data }

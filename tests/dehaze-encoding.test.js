@@ -15,6 +15,36 @@ test('background dehaze encoding preserves shared snapshots, exact previews, can
     const { analyzeDehaze, createDehazePixel } = await import('./dehaze.js')
     const { linearFrameToRgba8 } = await import('./pixel-frame.js')
     const { render, renderPrepared } = await import('./render.js')
+    const { getImageWorkerDiagnostics } = await import('./image-worker.js')
+    const SystemWorker = window.Worker,
+      completed = []
+    window.Worker = class extends SystemWorker {
+      constructor(url, options) {
+        super(url, options)
+        if (String(url).endsWith('dehaze-encode-worker.js'))
+          this.addEventListener('message', ({ data }) => {
+            if (data.pixels) completed.push(data.pixels.data.length)
+          })
+      }
+    }
+    const scalarBytes = (source, reader) => {
+      const data = new Uint8ClampedArray(source.data.length),
+        pixel = new Float32Array(4)
+      for (let i = 0; i < data.length; i += 4) {
+        reader(source.data, i, pixel, 0)
+        for (let c = 0; c < 3; c++) {
+          const value = pixel[c],
+            magnitude = Math.abs(value)
+          data[i + c] =
+            255 *
+            (magnitude <= 0.0031308
+              ? value * 12.92
+              : Math.sign(value) * (1.055 * magnitude ** (1 / 2.4) - 0.055))
+        }
+        data[i + 3] = 255 * source.data[i + 3]
+      }
+      return { width: source.width, height: source.height, data }
+    }
     const frame = {
       width: 97,
       height: 61,
@@ -29,12 +59,16 @@ test('background dehaze encoding preserves shared snapshots, exact previews, can
       const analysis = analyzeDehaze(frame, { transmission: amount > 0 })
       const map = analysis.transmission?.slice()
       const actual = (await encodeDehaze(frame, analysis, amount)).pixels
-      const expected = linearFrameToRgba8(frame, createDehazePixel(amount, analysis))
+      const expected = scalarBytes(frame, createDehazePixel(amount, analysis))
       comparisons.push(
         actual.data.every((v, i) => v === expected.data[i]) &&
           (!map || analysis.transmission.every((v, i) => v === map[i]))
       )
     }
+    const actualWorkers = completed.length === 3 && completed.every((length) => length === frame.data.length)
+    const noStartupFallback = !getImageWorkerDiagnostics().some(
+      (item) => item.worker === 'dehaze-encode-worker.js'
+    )
     const canvas = document.createElement('canvas')
     canvas.width = 97
     canvas.height = 61
@@ -97,7 +131,7 @@ test('background dehaze encoding preserves shared snapshots, exact previews, can
     const fallback = (await encodeDehaze(frame, analysis, 50)).pixels
     window.Worker = NativeWorker
     const retry = (await encodeDehaze(frame, analysis, 50)).pixels
-    const expected = linearFrameToRgba8(frame, createDehazePixel(50, analysis))
+    const expected = scalarBytes(frame, createDehazePixel(50, analysis))
     comparisons.push(
       fallback.data.every((v, i) => v === expected.data[i]),
       retry.data.every((v, i) => v === expected.data[i])
@@ -105,10 +139,13 @@ test('background dehaze encoding preserves shared snapshots, exact previews, can
     const preserved = frame.data.every((v, i) => v === before[i]) && analysis.transmission.length === 97 * 61
     bitmap.close()
     urls.forEach(URL.revokeObjectURL)
-    return { comparisons, preserved, abortResult, terminated }
+    window.Worker = SystemWorker
+    return { comparisons, preserved, abortResult, terminated, actualWorkers, noStartupFallback }
   })
   assert.ok(result.comparisons.every(Boolean), JSON.stringify(result))
   assert.equal(result.preserved, true)
   assert.equal(result.abortResult, 'AbortError')
   assert.equal(result.terminated, true)
+  assert.equal(result.actualWorkers, true)
+  assert.equal(result.noStartupFallback, true)
 })
