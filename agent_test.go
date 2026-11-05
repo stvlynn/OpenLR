@@ -5,9 +5,44 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
+
+func TestSessionReplacementKeepsExistingReadersComplete(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "agent.json")
+	old := []byte(`{"version":1,"token":"previous"}`)
+	if err := publishAgentSession(path, old); err != nil {
+		t.Fatal(err)
+	}
+	reader, err := os.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reader.Close()
+	next := []byte(`{"version":1,"token":"next"}`)
+	publishErr := publishAgentSession(path, next)
+	previous := make([]byte, len(old))
+	if _, err := reader.Read(previous); err != nil || string(previous) != string(old) {
+		t.Fatalf("existing reader lost its complete session: %q, %v", previous, err)
+	}
+	reader.Close()
+	if publishErr != nil {
+		current, err := os.ReadFile(path)
+		if err != nil || string(current) != string(old) {
+			t.Fatalf("failed replacement damaged the session: %q, %v", current, err)
+		}
+		if err := publishAgentSession(path, next); err != nil {
+			t.Fatal(err)
+		}
+	}
+	current, err := os.ReadFile(path)
+	if err != nil || string(current) != string(next) {
+		t.Fatalf("new reader did not get the published session: %q, %v", current, err)
+	}
+}
 
 func TestAgentRequiresSecretAndReturnsLiveReply(t *testing.T) {
 	b := &agentBroker{queue: make(chan *AgentCommand, 1), done: make(chan struct{}), pending: make(map[string]chan json.RawMessage), token: "test-secret"}

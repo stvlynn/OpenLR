@@ -61,13 +61,29 @@ func startAgent() (*agentBroker, error) {
 		return nil, err
 	}
 	info, _ := json.Marshal(map[string]any{"version": 1, "url": "http://" + listener.Addr().String(), "token": b.token, "pid": os.Getpid()})
-	if err := os.WriteFile(b.file, info, 0o600); err != nil {
+	if err := publishAgentSession(b.file, info); err != nil {
 		listener.Close()
 		return nil, err
 	}
 	b.server = &http.Server{Handler: http.HandlerFunc(b.serveHTTP), ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 30 * time.Second}
 	go b.server.Serve(listener)
 	return b, nil
+}
+
+func publishAgentSession(path string, data []byte) error {
+	file, err := os.CreateTemp(filepath.Dir(path), ".agent-*")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(file.Name())
+	if _, err = file.Write(data); err != nil {
+		file.Close()
+		return err
+	}
+	if err = file.Close(); err != nil {
+		return err
+	}
+	return os.Rename(file.Name(), path)
 }
 
 func (b *agentBroker) serveHTTP(w http.ResponseWriter, r *http.Request) {

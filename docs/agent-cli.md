@@ -60,6 +60,8 @@ The CLI sends `POST /command` with `{command,args}` to that authenticated loopba
 
 The native command must reach the actual loaded window to succeed. A listening host alone does not prove the GUI bridge is ready. A client may specify a deadline in seconds with --timeout. Do not retry state-changing commands blindly after a transport timeout: inspect `state` first, because the original command may already have completed.
 
+The host writes a complete session descriptor to a temporary sibling before replacing `agent.json`. A CLI connecting during application startup or restart therefore cannot observe a partially written JSON document.
+
 In a browser, `window.openlr.run(command,args)` exposes the same functions and returns native `Blob` results for images; `window.openlr.dispatch(command,args)` returns the serialized envelope. `window.openlr.commands`, `.schema(name)`, and `.search(query)` provide discovery. This browser API is useful for browser testing; the native CLI session belongs to the native window.
 
 Use `openlr screenshot --output window.png` for the actual desktop viewport. On a data-returning command, `--capture path.png` returns its JSON result and a path to the captured window before the next queued edit runs. For example, `openlr edit --key Exposure --value 0.5 --capture edit.png`. File-returning commands already produce a separate image. Use `OPENLR_DAV_PASSWORD` for WebDAV credentials in unattended sync commands.
