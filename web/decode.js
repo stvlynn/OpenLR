@@ -99,7 +99,7 @@ export async function decodePhotoFrame(file) {
     return frame
   }
   const format = photoFormat(file)
-  if (CODEC_TYPES.includes(format)) {
+  if (CODEC_TYPES.includes(format) || format === 'image/png') {
     const { frame } = await runImageWorker(
       new URL('./codec-worker.js', import.meta.url),
       { operation: 'decode-frame', format, file },

@@ -90,6 +90,23 @@ function validatePayload(view, tag) {
  * checks only: success is not CMS conformance, renderability, or host support.
  */
 export function validateRgbProfile(input) {
+  return validateProfile(input, 'RGB ')
+}
+
+/** Structural validation only: GRAY interpretation is a separate CMS capability.
+ * Keeps malformed gray PNG profiles distinct from valid unsupported profiles.
+ */
+export function validateGrayProfile(input) {
+  try {
+    return validateProfile(input, 'GRAY')
+  } catch (error) {
+    throw Error(error.message.replace(/^Invalid RGB ICC profile:/, 'Invalid GRAY ICC profile:'), {
+      cause: error
+    })
+  }
+}
+
+function validateProfile(input, deviceSpace) {
   let bytes
   if (input instanceof ArrayBuffer) bytes = new Uint8Array(input)
   else if (input instanceof Uint8Array || input instanceof Uint8ClampedArray)
@@ -100,7 +117,7 @@ export function validateRgbProfile(input) {
     size = view.getUint32(0)
   if (size < 132 || size > bytes.length || size % 4 !== 0) invalid('header size')
   if (signature(view, 36) !== 'acsp') invalid('header signature')
-  if (signature(view, 16) !== 'RGB ') invalid('unsupported device color space')
+  if (signature(view, 16) !== deviceSpace) invalid('unsupported device color space')
   if (!['XYZ ', 'Lab '].includes(signature(view, 20))) invalid('unsupported profile connection space')
   if (![2, 4].includes(view.getUint8(8))) invalid('unsupported ICC version')
   const count = view.getUint32(128),

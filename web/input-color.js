@@ -4,10 +4,13 @@ import { assertLinearFrame } from './pixel-frame.js'
 
 // The decoder owns these normalized encoded samples. Transform in place so
 // high-depth input does not require an extra full-size float scratch image.
-export function convertInputPixels(pixels, { profile, sourceSpace = 'srgb', provenance = {} } = {}) {
-  const transform = profile?.length
-    ? createProfileToLinearSrgb(profile)
-    : createNamedInputTransform(sourceSpace)
+export function convertInputPixels(
+  pixels,
+  { profile, sourceSpace = 'srgb', transform: suppliedTransform, provenance = {} } = {}
+) {
+  const transform =
+    suppliedTransform ??
+    (profile?.length ? createProfileToLinearSrgb(profile) : createNamedInputTransform(sourceSpace))
   if (transform.reason) return { reason: transform.reason }
   const { width, height, data } = pixels
   if (
@@ -33,20 +36,28 @@ export function convertInputPixels(pixels, { profile, sourceSpace = 'srgb', prov
       height,
       data,
       colorSpace: 'srgb-linear',
-      provenance: { ...provenance, colorTransform: profile?.length ? 'icc-matrix-trc' : sourceSpace }
+      provenance: { colorTransform: profile?.length ? 'icc-matrix-trc' : sourceSpace, ...provenance }
     })
   }
 }
 
 export const INPUT_PRECISION_MESSAGES = {
   label: 'Decoded precision',
-  compatibility: '8-bit compatibility decode'
+  compatibility: '8-bit compatibility decode',
+  damagedPixels: 'Some pixels could not be recovered.'
 }
 
 export function inputPrecisionDescription(provenance) {
   if (!provenance) return ''
-  if (provenance.precision === 'rgba8-display')
-    return `${INPUT_PRECISION_MESSAGES.label}: ${INPUT_PRECISION_MESSAGES.compatibility}`
-  const bits = provenance.sourceBits ?? provenance.outputBits
-  return bits ? `${INPUT_PRECISION_MESSAGES.label}: ${bits}-bit` : ''
+  const bits = provenance.sourceBits ?? provenance.outputBits,
+    precision =
+      provenance.precision === 'rgba8-display'
+        ? INPUT_PRECISION_MESSAGES.compatibility
+        : bits
+          ? `${bits}-bit`
+          : '',
+    description = precision ? `${INPUT_PRECISION_MESSAGES.label}: ${precision}` : ''
+  return provenance.colorWarnings?.includes('png-palette-index')
+    ? [description, INPUT_PRECISION_MESSAGES.damagedPixels].filter(Boolean).join('\n')
+    : description
 }

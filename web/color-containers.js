@@ -1,4 +1,5 @@
 import pako from './vendor/codecs/pako.js'
+import { pngChunk } from './png-container.js'
 
 const text = new TextEncoder()
 const align = (value, boundary) => Math.ceil(value / boundary) * boundary
@@ -45,23 +46,6 @@ function concatenate(parts) {
     result.set(part, offset)
     offset += part.length
   }
-  return result
-}
-
-const crcTable = Uint32Array.from({ length: 256 }, (_, value) => {
-  for (let bit = 0; bit < 8; bit++) value = (value >>> 1) ^ (value & 1 ? 0xedb88320 : 0)
-  return value >>> 0
-})
-
-function pngChunk(type, payload) {
-  const result = new Uint8Array(payload.length + 12),
-    view = new DataView(result.buffer)
-  view.setUint32(0, payload.length)
-  result.set(text.encode(type), 4)
-  result.set(payload, 8)
-  let crc = 0xffffffff
-  for (let i = 4; i < result.length - 4; i++) crc = (crc >>> 8) ^ crcTable[(crc ^ result[i]) & 255]
-  view.setUint32(result.length - 4, (crc ^ 0xffffffff) >>> 0)
   return result
 }
 

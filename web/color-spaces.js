@@ -154,8 +154,43 @@ export function matrixToLinearSrgb(sourceToXyzD50) {
  * a CICP Rec.2020 primary code alone does not identify our gamma-2.4 space.
  */
 export function createNamedInputTransform(source = 'srgb') {
-  const definition = definitionOf(source),
-    matrix = TRANSFORMS[source].srgb
+  return inputTransform(definitionOf(source), TRANSFORMS[source].srgb)
+}
+
+/** Encoded RGB characterized by explicit xy primaries/white and a canonical
+ * decode exponent -> linear sRGB. An omitted exponent selects the sRGB curve;
+ * the caller owns and records that assumption for incompletely tagged inputs.
+ * Reuses the same native-white colorants, Bradford adaptation and target matrix
+ * as the named-space owner. PNG gAMA is the reciprocal of this decode exponent.
+ */
+export function createChromaticInputTransform({ chromaticities, gamma } = {}) {
+  if (gamma !== undefined && (!Number.isFinite(gamma) || gamma <= 0))
+    throw new TypeError('RGB decode gamma must be finite and positive')
+  const definition = gamma === undefined ? { curve: 'srgb' } : { gamma }
+  if (!chromaticities) return inputTransform(definition, IDENTITY)
+  const points = ['white', 'red', 'green', 'blue'].map((id) => chromaticities[id])
+  if (
+    !points.every(
+      (point) =>
+        point?.length === 2 &&
+        point.every(Number.isFinite) &&
+        point[0] >= 0 &&
+        point[1] > 0 &&
+        point[0] + point[1] <= 1
+    )
+  )
+    throw new TypeError('Invalid RGB primary or white chromaticity')
+  const [whiteXY, ...primaries] = points,
+    [x, y] = whiteXY,
+    white = [x / y, 1, (1 - x - y) / y],
+    source = colorants(primaries, white)
+  if (!source.every(Number.isFinite)) throw new TypeError('Invalid or singular RGB chromaticities')
+  const matrix = matrixToLinearSrgb(product(adaptation(white), source))
+  if (!matrix.every(Number.isFinite)) throw new TypeError('Invalid or singular RGB chromaticities')
+  return inputTransform(definition, matrix)
+}
+
+function inputTransform(definition, matrix) {
   return {
     convert(r, g, b, out, offset = 0) {
       if (

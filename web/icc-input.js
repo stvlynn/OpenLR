@@ -1,6 +1,6 @@
 // Narrow ICC input interpretation; capability and independent measurements:
 // research/float-input-color.md. LUT/CMYK/general CMS work is intentionally separate.
-import { evaluateParametricCurve, validateRgbProfile } from './color-profile.js'
+import { evaluateParametricCurve, validateRgbProfile, validateGrayProfile } from './color-profile.js'
 import { matrixToLinearSrgb } from './color-spaces.js'
 
 const FLOAT32_MAX = 3.4028234663852886e38
@@ -32,6 +32,48 @@ function curve(view, at, size) {
   }
 }
 
+function profileStructure(bytes) {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength),
+    tags = new Map()
+  for (let i = 0; i < view.getUint32(128); i++) {
+    const entry = 132 + i * 12
+    tags.set(signature(view, entry), { at: view.getUint32(entry + 4), size: view.getUint32(entry + 8) })
+  }
+  return { view, tags }
+}
+
+function unsupportedProfile(view, tags) {
+  if (signature(view, 20) !== 'XYZ ') return { reason: 'profile-pcs' }
+  if (!['scnr', 'mntr'].includes(signature(view, 12))) return { reason: 'profile-class' }
+  if ([...tags.keys()].some((id) => /^(A2B[012]|D2B[0123])$/.test(id))) return { reason: 'profile-lut' }
+  // These can change a profile's interpretation beyond this matrix/TRC subset.
+  if (['cicp', 'arts'].some((id) => tags.has(id))) return { reason: 'profile-interpretation' }
+  return null
+}
+
+function validatePixel(r, g, b, out, offset) {
+  if (
+    !Number.isFinite(r) ||
+    r < 0 ||
+    r > 1 ||
+    !Number.isFinite(g) ||
+    g < 0 ||
+    g > 1 ||
+    !Number.isFinite(b) ||
+    b < 0 ||
+    b > 1
+  )
+    throw new RangeError('ICC input components must be finite normalized values in [0,1]')
+  if (
+    !out ||
+    !Number.isSafeInteger(offset) ||
+    offset < 0 ||
+    offset + 3 > out.length ||
+    !(Array.isArray(out) || out instanceof Float32Array || out instanceof Float64Array)
+  )
+    throw new TypeError('ICC conversion requires float-capable RGB output storage')
+}
+
 /** Compile the supported RGB ICC matrix/TRC subset into an input transform.
  * Malformed profiles throw; valid containers outside this interpreter's subset
  * return a stable technical reason for the decode adapter's visible fallback.
@@ -40,18 +82,9 @@ function curve(view, at, size) {
  * output. Alpha and source sample normalization belong to the codec adapter.
  */
 export function createProfileToLinearSrgb(input) {
-  const bytes = validateRgbProfile(input),
-    view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength),
-    tags = new Map()
-  for (let i = 0; i < view.getUint32(128); i++) {
-    const entry = 132 + i * 12
-    tags.set(signature(view, entry), { at: view.getUint32(entry + 4), size: view.getUint32(entry + 8) })
-  }
-  if (signature(view, 20) !== 'XYZ ') return { reason: 'profile-pcs' }
-  if (!['scnr', 'mntr'].includes(signature(view, 12))) return { reason: 'profile-class' }
-  if ([...tags.keys()].some((id) => /^(A2B[012]|D2B[0123])$/.test(id))) return { reason: 'profile-lut' }
-  // These can change a profile's interpretation beyond this matrix/TRC subset.
-  if (['cicp', 'arts'].some((id) => tags.has(id))) return { reason: 'profile-interpretation' }
+  const { view, tags } = profileStructure(validateRgbProfile(input)),
+    unsupported = unsupportedProfile(view, tags)
+  if (unsupported) return unsupported
   if (![...MATRIX_TAGS, ...CURVE_TAGS].every((id) => tags.has(id)))
     return { reason: 'profile-matrix-trc-missing' }
   if (view.getUint8(8) === 2 && CURVE_TAGS.some((id) => signature(view, tags.get(id).at) === 'para'))
@@ -72,26 +105,7 @@ export function createProfileToLinearSrgb(input) {
   return {
     kind: 'matrix-trc',
     convert(r, g, b, out, offset = 0) {
-      if (
-        !Number.isFinite(r) ||
-        r < 0 ||
-        r > 1 ||
-        !Number.isFinite(g) ||
-        g < 0 ||
-        g > 1 ||
-        !Number.isFinite(b) ||
-        b < 0 ||
-        b > 1
-      )
-        throw new RangeError('ICC input components must be finite normalized values in [0,1]')
-      if (
-        !out ||
-        !Number.isSafeInteger(offset) ||
-        offset < 0 ||
-        offset + 3 > out.length ||
-        !(Array.isArray(out) || out instanceof Float32Array || out instanceof Float64Array)
-      )
-        throw new TypeError('ICC conversion requires float-capable RGB output storage')
+      validatePixel(r, g, b, out, offset)
       const x = curves[0](r),
         y = curves[1](g),
         z = curves[2](b),
@@ -103,6 +117,33 @@ export function createProfileToLinearSrgb(input) {
       out[offset] = red
       out[offset + 1] = green
       out[offset + 2] = blue
+      return out
+    }
+  }
+}
+
+/** ICC.1:2022 F.2: forward grayTRC is the achromatic PCS coordinate.
+ * XYZ PCS gray is curve(gray) times D50 white, which maps to neutral linear
+ * sRGB under the existing relative-white convention. No media-white/chad is
+ * applied twice. The shared RGBA adapter supplies identical gray RGB channels.
+ */
+export function createGrayProfileToLinearSrgb(input) {
+  const { view, tags } = profileStructure(validateGrayProfile(input)),
+    unsupported = unsupportedProfile(view, tags)
+  if (unsupported) return unsupported
+  const tag = tags.get('kTRC')
+  if (!tag) return { reason: 'profile-gray-trc-missing' }
+  if (view.getUint8(8) === 2 && signature(view, tag.at) === 'para') return { reason: 'profile-v2-parametric' }
+  const decode = curve(view, tag.at, tag.size)
+  return {
+    kind: 'gray-trc',
+    convert(r, g, b, out, offset = 0) {
+      validatePixel(r, g, b, out, offset)
+      if (r !== g || r !== b) throw new TypeError('Gray ICC conversion requires identical gray channels')
+      const value = decode(r)
+      if (!Number.isFinite(value) || Math.abs(value) > FLOAT32_MAX)
+        throw Error('Invalid GRAY ICC profile: conversion exceeds finite Float32 range')
+      out[offset] = out[offset + 1] = out[offset + 2] = value
       return out
     }
   }

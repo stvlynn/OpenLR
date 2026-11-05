@@ -53,3 +53,12 @@ export function rebuildIcc(replacements = {}, { source = makeColorProfile(), maj
 export function withIccCurve(payload, options = {}) {
   return rebuildIcc(Object.fromEntries(['rTRC', 'gTRC', 'bTRC'].map((id) => [id, payload])), options)
 }
+
+export function makeGrayProfile(payload = iccCurve(0, [2.2]), options = {}) {
+  const bytes = rebuildIcc(
+    { rXYZ: null, gXYZ: null, bXYZ: null, rTRC: null, gTRC: null, bTRC: null, chad: null, kTRC: payload },
+    options
+  )
+  bytes.set(new TextEncoder().encode('GRAY'), 16)
+  return bytes
+}

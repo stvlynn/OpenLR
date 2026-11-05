@@ -8,6 +8,8 @@ import { setTimeout as delay } from 'node:timers/promises'
 import { execute, parse, watch } from '../cli/openlr.mjs'
 import { makeDng } from '../tests/fixtures/dng.mjs'
 import { makeTiff } from '../tests/fixtures/tiff.mjs'
+import { makePng, makePngFixture } from '../tests/fixtures/png.mjs'
+import { deflateSync } from 'node:zlib'
 import { png as fixturePng } from '../tests/fixtures/merge-scene.js'
 import UTIF from '../web/vendor/codecs/utif.js'
 import { encodeColorTiff } from '../web/color-containers.js'
@@ -90,6 +92,76 @@ async function highDepthInputs() {
     encoderUrl = new URL('../web/vendor/codecs/avif/codec/enc/avif_enc.js', import.meta.url),
     { default: createEncoder } = await import(encoderUrl),
     encoder = await createEncoder({ wasmBinary: await readFile(new URL('avif_enc.wasm', encoderUrl)) })
+  sources.push({
+    name: 'input16.png',
+    bits: 16,
+    precision: 'uint16-source',
+    pixels: tiff,
+    bytes: makePng({
+      width,
+      height,
+      bits: 16,
+      colorType: 6,
+      data: tiff.data,
+      srgb: 0,
+      interlace: 1,
+      filter: [0, 1, 2, 3, 4]
+    })
+  })
+  const exif = new Uint8Array(26),
+    exifView = new DataView(exif.buffer),
+    rotated = new Uint16Array(tiff.data.length)
+  exif.set([73, 73, 42, 0, 8, 0, 0, 0])
+  exifView.setUint16(8, 1, true)
+  exifView.setUint16(10, 274, true)
+  exifView.setUint16(12, 3, true)
+  exifView.setUint32(14, 1, true)
+  exifView.setUint16(18, 6, true)
+  for (let y = 0; y < height; y++)
+    for (let x = 0; x < width; x++)
+      rotated.set(
+        tiff.data.subarray((y * width + x) * 4, (y * width + x) * 4 + 4),
+        (x * height + height - 1 - y) * 4
+      )
+  sources.push({
+    name: 'oriented16.png',
+    bits: 16,
+    precision: 'uint16-source',
+    pixels: { width: height, height: width, data: rotated },
+    bytes: makePng({ width, height, bits: 16, colorType: 6, data: tiff.data, srgb: 0, exif })
+  })
+  const animation = new Uint8Array(8),
+    frameControl = new Uint8Array(26),
+    control = new DataView(frameControl.buffer),
+    scanlines = makePngFixture({ width, height, bits: 16, colorType: 6, data: tiff.data }).scanlines,
+    compressedFrame = deflateSync(scanlines),
+    frameData = new Uint8Array(compressedFrame.length + 4)
+  new DataView(animation.buffer).setUint32(0, 1)
+  control.setUint32(4, width)
+  control.setUint32(8, height)
+  control.setUint16(20, 1)
+  control.setUint16(22, 10)
+  new DataView(frameData.buffer).setUint32(0, 1)
+  frameData.set(compressedFrame, 4)
+  sources.push({
+    name: 'animation-first16.png',
+    bits: 16,
+    precision: 'uint16-source',
+    pixels: tiff,
+    bytes: makePng({
+      width,
+      height,
+      bits: 16,
+      colorType: 6,
+      data: Uint16Array.from(tiff.data, (_, i) => (i % 4 === 0 || i % 4 === 3 ? 65535 : 0)),
+      srgb: 0,
+      beforeIdat: [['acTL', animation]],
+      afterIdat: [
+        ['fcTL', frameControl],
+        ['fdAT', frameData]
+      ]
+    })
+  })
   const colorMap = new Uint16Array(256 * 3),
     indices = Uint8Array.from({ length: width * height }, (_, i) => i % width),
     palettePixels = new Uint16Array(width * height * 4)

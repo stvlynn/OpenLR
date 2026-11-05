@@ -6,6 +6,7 @@ import { validateRgbProfile } from './color-profile.js'
 import { readTiff, tiffEncodedPixels, orientTiffPixels } from './tiff.js'
 import { convertInputPixels } from './input-color.js'
 import { rgba8ToLinearFrame } from './pixel-frame.js'
+import { orientPixels } from './pixel-orientation.js'
 
 async function managedRgb(pixels, profile) {
   // Reuse the host CMS for native RGB samples from both TIFF and AVIF.
@@ -67,7 +68,28 @@ export async function processCodec({ operation, format, file, pixels, quality, c
         bytes = await file.arrayBuffer()
       let result,
         provenance = { decoder: format, compatibilityReason: 'display-decoder' }
-      if (format === 'image/tiff') {
+      if (format === 'image/png') {
+        if (working) {
+          const { readPng } = await import('./png.js'),
+            { convertPngPixels } = await import('./png-color.js'),
+            encoded = readPng(bytes),
+            converted = convertPngPixels(encoded)
+          if (converted.frame) {
+            const orientation = encoded.metadata.exif
+              ? await (await import('./vendor/exifr/exifr.js')).orientation(encoded.metadata.exif)
+              : 1
+            return { frame: orientPixels(converted.frame, orientation) }
+          }
+          provenance = {
+            decoder: 'png',
+            sourceBits: encoded.sourceBits,
+            ...converted.provenance,
+            compatibilityReason: converted.reason
+          }
+        }
+        const bitmap = await createImageBitmap(file)
+        return working ? { frame: await displayFrame(bitmap, provenance) } : { bitmap }
+      } else if (format === 'image/tiff') {
         const image = readTiff(bytes),
           interpretation = image.t262?.[0] ?? 2
         if (working) {
