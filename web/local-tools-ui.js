@@ -85,14 +85,12 @@ export function createLocalToolsUI({ container, run, getActive, notify }) {
     status.textContent =
       aiTarget.value === 'sky' ? 'Preparing sky model and selection…' : 'Generating selection…'
     try {
-      await run('ai-mask', { target: aiTarget.value, photoId: getActive()?.id, adjustments: {} })
-      const item = getActive()?.edit.localTools?.masks?.at(-1)
-      if (item) {
-        list.value = item.id
-        mode.value = 'off'
-        sync()
-        status.textContent = 'Generated ' + aiTarget.value + ' selection. Adjust, invert or disable it below.'
-      }
+      const result = await run('ai-mask', {
+        target: aiTarget.value,
+        photoId: getActive()?.id,
+        adjustments: {}
+      })
+      status.textContent = 'Generated ' + result.target + ' selection. Adjust, invert or disable it below.'
     } catch (error) {
       status.textContent = error.message
       notify(error.message)
@@ -341,15 +339,9 @@ export function createLocalToolsUI({ container, run, getActive, notify }) {
       args = { ...args, id: list.value, path: component.value.split('.').map(Number) }
       command = 'mask.component-update'
     }
-    return run(command, { ...args, photoId: args.photoId ?? getActive()?.id })
-      .then(() => {
-        if (command.endsWith('.add')) {
-          const group = command.startsWith('mask') ? 'masks' : 'repairs'
-          list.value = getActive()?.edit.localTools?.[group]?.at(-1)?.id ?? ''
-          sync()
-        }
-      })
-      .catch((error) => notify(error.message))
+    return run(command, { ...args, photoId: args.photoId ?? getActive()?.id }).catch((error) =>
+      notify(error.message)
+    )
   }
   function sync(requestedPath) {
     const photo = getActive(),
@@ -787,7 +779,12 @@ export function createLocalToolsUI({ container, run, getActive, notify }) {
     if (mounted) mounted.canvas.style.cursor = mode.value === 'off' ? 'zoom-in' : 'crosshair'
     status.textContent = 'Original color sampled. Create or refine a color range.'
   }
-  const selectMask = (id) => {
+  const selectMask = (id, { finishDrawing = false } = {}) => {
+    if (finishDrawing) {
+      cancelGesture()
+      mode.value = 'off'
+      picking = false
+    }
     overlayVisible.checked = true
     select(id)
   }

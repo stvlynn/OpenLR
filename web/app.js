@@ -1492,6 +1492,7 @@ async function execute(command, args, context = {}) {
         await draw()
         if (command === 'mask.add' || command === 'mask.combine')
           localToolsUI.selectMask(command === 'mask.add' ? edit.localTools.masks.at(-1).id : args.id)
+        else if (command === 'repair.add') localToolsUI.select(edit.localTools.repairs.at(-1).id)
         return snapshot()
       }
       switch (command) {
@@ -1611,7 +1612,7 @@ async function execute(command, args, context = {}) {
           redo.length = 0
           compare = cropping = false
           await draw()
-          localToolsUI.selectMask(edit.localTools.masks.at(-1).id)
+          localToolsUI.selectMask(edit.localTools.masks.at(-1).id, { finishDrawing: true })
           return { id: edit.localTools.masks.at(-1).id, target: args.target, metrics: result.metrics }
         }
         case 'rate':

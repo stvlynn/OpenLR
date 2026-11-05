@@ -13,6 +13,8 @@ These are real model outputs, not color thresholds or hardcoded silhouettes. Sub
 
 ## Runtime and storage
 
+Successful `ai-mask` generation finishes any local drawing gesture, switches the local tool to Navigate (`off`) and selects the generated mask with its overlay visible before notifying observers. GUI and CLI share this transition. The local panel's open state is preserved, so generating from its button leaves adjustments accessible; the cursor agrees with the finished tool mode. A failed generation does not perform this success transition.
+
 `ai-models.js` owns fixed model versions/contracts. `ai-runtime.js` uses ONNX Runtime Web 1.31.1, WASM CPU, one thread. Only its matching WASM entry, loader and 14,848,852-byte WASM binary are bundled. No remote inference service, runtime CDN or unmeasured GPU acceleration is used.
 
 `ai-kernel.js` / `sky-kernel.js` are shared by the Worker and native-host startup fallback. Normal jobs terminate their Workers and release sessions/heaps. Main-thread fallback can retain a reusable session and block the UI; see [codec lifecycle](image-codecs.md). UI and CLI use the same application queue and photo/edit identity guards.

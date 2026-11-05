@@ -17,6 +17,10 @@
 
 ## 补充验证
 
+- **局部创建完成状态一致性（2026-11-06）**。`tests/local-postcommit.test.js` 先复现直接 `repair.add` 返回未选中新修复，再复现直接 `ai-mask` 保留 Brush 模式。修正后定向五项通过；完整浏览器 **318/318 通过、无跳过**，约 237.7 秒。新测试检查命令返回、变更事件发生瞬间的下拉控件、真实鼠标修复、GUI／直接命令调用的 Person 模型推理、模式／选中项／覆盖层／面板／光标一致性。Windows MyGo 新构建的主原生 smoke 通过，新增实际 CLI 断言确认 AI 从 Brush 转到 Off、修复创建立即选中新对象、撤销恢复原配方。忽略日志为 `.workspace/local-postcommit-*`；其他平台和其他六组原生套件未在本地重复执行，本项不沿用 `a05a501` 的远程成功结论。
+
+- **修复源三平台验收终态**。`a05a501` 的 [Actions 42080915924](https://github.com/stvlynn/OpenLR/actions/runs/42080915924) 首次执行全部成功：Windows 浏览器 309 通过、8 项可选资源跳过、0 失败，共 317 项；Windows／Linux／macOS Intel 完成打包和七组原生套件。Windows 日志明确包含修复源状态、照片守卫、取消、PNG 截图与配方不变断言。该结果不覆盖之后的创建完成状态一致性修正。
+
 - **修复源会话（2026-11-06）**。新增 `repair-source` 将 Clone/Heal 的源点、选择源按钮和 Alt 点击接入共享分发器，完整／摘要状态均可读取。`tests/repair-source-session.test.js` 实际验证通知与只读查询、GUI／CLI／输入焦点下 Escape 取消、过期照片／无效坐标拒绝、修改源点取消未完成笔画、克隆配方和红色目标像素、撤销及视图／照片切换清理。首次全量测试发现新命令缺少嵌套坐标校验；已复用 `validateLocalChanges`，并将互斥参数校验放入协议层。修正后完整浏览器 **317/317 通过，无跳过**，约 258.6 秒。Windows MyGo 明确输出至 `build/release/windows-amd64` 后，主原生 smoke 通过实际源点／选择器状态、拒绝过期照片、取消、PNG 截图及配方不变。第一次修正后原生测试误用异步异常断言处理 CLI 同步校验错误；改为同步断言后同一产物通过，未修改应用行为。日志为忽略目录 `.workspace/repair-source-*`；本项不把前一提交的三平台结果转记为当前提交验收。
 
 - **`38f35af` 远程验收终态**。[同一次 Actions](https://github.com/stvlynn/OpenLR/actions/runs/42073613235) 第二次尝试已全部成功：Windows 浏览器 308 通过、8 项可选资源跳过、0 失败，共 316 项；Windows、Linux、macOS Intel 均完成打包、七组原生套件及产物上传，包含新增拉直 CLI 状态／取消验证。首次视频导入失败与本地 125 次未复现实验见[调查记录](../research/video-poster-failure.md)。未修改应用代码、测试断言或超时后仅重跑失败 Windows 作业；成功重跑不代表视频问题根因已确定。以下进度段保留首轮证据，已由本终态更新。

@@ -737,9 +737,11 @@ try {
   const personPath = new URL('../tests/fixtures/ai/astronaut.png', import.meta.url)
   const { fileURLToPath } = await import('node:url')
   await call('import', fileURLToPath(personPath))
+  await call('local-tool', '--tool', 'brush')
   const mask = await call('ai-mask', '--target', 'person')
   assert.ok(mask?.id || (await call('state')).photos.some((p) => p.edit?.localTools?.masks?.length))
   const { localSelection } = await call('state', '--summary', 'true')
+  assert.equal((await call('state', '--summary', 'true')).localTool, 'off')
   assert.ok(localSelection.id)
   await call('local-select', '--args', JSON.stringify({ id: '' }))
   const selectedMask = await call(
@@ -803,6 +805,27 @@ try {
   const repairState = await call('state')
   assert.deepEqual(repairState.repairSource, { point: repairPoint, picking: false })
   assert.deepEqual(repairState.photos.find((photo) => photo.id === repairState.selected).edit, beforeToolEdit)
+  const addedRepair = await call(
+    'repair.add',
+    '--repair',
+    JSON.stringify({
+      type: 'clone',
+      source: repairPoint,
+      points: [{ x: 0.7, y: 0.6 }],
+      radius: 0.03,
+      feather: 0.5
+    })
+  )
+  const addedRepairId = addedRepair.photos
+    .find((photo) => photo.id === addedRepair.selected)
+    .edit.localTools.repairs.at(-1).id
+  assert.equal(addedRepair.localSelection.id, addedRepairId)
+  assert.equal((await call('state', '--summary', 'true')).localSelection.id, addedRepairId)
+  await call('undo')
+  assert.deepEqual(
+    (await call('state')).photos.find((photo) => photo.id === repairState.selected).edit,
+    beforeToolEdit
+  )
   await call('local-tool', '--tool', 'off')
   console.log(
     'Native repair source: shared source/picker state, guard, cancellation, actual capture and unchanged recipe passed.'
