@@ -205,6 +205,17 @@ test('legacy RAW thumbnails regenerate on visibility without changing originals 
         const { run } = await import('./app.js')
         return (await run('state')).photos.find((p) => p.id === id)?.rawPreviewVersion === 1
       }, id)
+      // Catalog persistence and the lazy <img> request complete separately.
+      // decode() alone may refer to the old 16x16 request during src replacement.
+      await page.waitForFunction((id) => {
+        const image = document.querySelector(`[data-photo="${id}"] img`)
+        return (
+          image?.complete &&
+          image.currentSrc === image.src &&
+          image.naturalWidth === 128 &&
+          image.naturalHeight === 96
+        )
+      }, id)
       const result = await page.evaluate(async (id) => {
         const { run } = await import('./app.js'),
           db = await import('./catalog.js')
