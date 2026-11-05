@@ -47,3 +47,5 @@ node tests/crop-guide-ablation.mjs
 渲染候选的实测、来源与限制见[研究记录](../research/crop-guides.md)和[架构决定](decisions/005-crop-composition-guides.md)。
 
 随后 Windows 完整 `npm test` 53 项全部通过。官方 MyGo CLI 构建的 Windows/amd64 包通过 `node scripts/native-smoke.mjs build/release/windows-amd64/OpenLR.exe`：真实原生命令设置黄金螺线及水平镜像、返回截图和相同实时状态，保持裁剪草稿不变，切换前后的 PNG 导出逐字节一致。
+
+JPEG XL 增量的 Windows CI 暴露了构图测试的缩放等待竞态：`setViewportSize` 后，旧 SVG 的非零 viewBox 已满足原等待条件，但 `ResizeObserver` 尚未按新 canvas 尺寸重绘。测试现等待裁剪框的位置和尺寸匹配新 canvas，再执行原有的像素坐标断言；不增加固定延时，也不放宽坐标误差。应用裁剪行为未因此修改。

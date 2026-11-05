@@ -183,7 +183,18 @@ test('composition guide UI and shared agent command preserve draft, pixels and e
   }
   await checkCoordinates()
   await page.setViewportSize({ width: 1100, height: 780 })
-  await page.waitForFunction(() => document.querySelector('.crop-guide').viewBox.baseVal.width > 0)
+  // A nonzero viewBox can still describe the old viewport. Wait for the
+  // ResizeObserver redraw to match the resized canvas before measuring it.
+  await page.waitForFunction((r) => {
+    const frame = document.querySelector('.crop-surface').getBoundingClientRect(),
+      canvas = document.querySelector('#stage canvas').getBoundingClientRect()
+    return (
+      Math.abs(frame.x - canvas.x - r.x * canvas.width) < 1 &&
+      Math.abs(frame.y - canvas.y - r.y * canvas.height) < 1 &&
+      Math.abs(frame.width - r.w * canvas.width) < 1 &&
+      Math.abs(frame.height - r.h * canvas.height) < 1
+    )
+  }, before.state.cropDraft)
   await checkCoordinates()
   // The SVG must not intercept moving a draft through one of its visible lines.
   const frame = await page.locator('.crop-surface').boundingBox()
