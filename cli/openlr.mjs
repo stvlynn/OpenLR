@@ -24,8 +24,8 @@ const localCommands = {
     usage: 'openlr open [--app executable] [--session file] [--dry-run]'
   },
   watch: {
-    summary: 'Observe live workspace revisions as JSON, optionally saving screenshots.',
-    usage: 'openlr watch [--session file] [--images directory] [--count n]',
+    summary: 'Observe live workspace or export progress revisions as JSON, optionally saving screenshots.',
+    usage: 'openlr watch [--command state|export-status] [--session file] [--images directory] [--count n]',
     output: 'One JSON record per observed revision. Fast consecutive changes may be coalesced.'
   }
 }
@@ -106,15 +106,17 @@ export function parse(argv) {
       const key = tokens.shift()
       if (key === '--help' || key === '-h') return { local: localCommands[command] }
       const value = tokens.shift()
-      if (!value || !['--session', '--count', '--images'].includes(key))
-        throw Error('Expected --session, --count or --images followed by its value')
-      options[key.slice(2)] = value
+      if (!value || !['--session', '--count', '--images', '--command'].includes(key))
+        throw Error('Expected --session, --count, --images or --command followed by its value')
+      options[key === '--command' ? 'observe' : key.slice(2)] = value
     }
     if (options.count !== undefined) {
       options.count = Number(options.count)
       if (!Number.isSafeInteger(options.count) || options.count < 1)
         throw Error('Count must be a positive integer')
     }
+    if (options.observe !== undefined && !['state', 'export-status'].includes(options.observe))
+      throw Error('Watch command must be state or export-status')
     return options
   }
   const definition = schema(command)
@@ -433,6 +435,9 @@ async function writeImage(result, output, force) {
 }
 
 export async function watch(request, onUpdate) {
+  const command = request.observe ?? 'state'
+  if (!['state', 'export-status'].includes(command))
+    throw Error('Watch command must be state or export-status')
   const connection = await connect(request.session)
   if (request.images) await mkdir(request.images, { recursive: true })
   let after = -1
@@ -448,12 +453,12 @@ export async function watch(request, onUpdate) {
       ? path.resolve(request.images, revision + '-' + crypto.randomUUID().slice(0, 8) + '.png')
       : null
     const state = await execute({
-      command: 'state',
-      args: { summary: true },
+      command,
+      args: command === 'state' ? { summary: true } : {},
       session: request.session,
       capture
     })
-    await onUpdate({ revision, ...state })
+    await onUpdate({ revision, ...(command === 'export-status' && !capture ? { result: state } : state) })
   }
 }
 export async function main(argv = process.argv.slice(2)) {

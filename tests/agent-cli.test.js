@@ -5,7 +5,7 @@ import { mkdtemp, writeFile, readFile, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { spawn } from 'node:child_process'
-import { parse, execute } from '../cli/openlr.mjs'
+import { parse, execute, watch } from '../cli/openlr.mjs'
 
 test('offline discovery and dry runs validate real command arguments', async () => {
   assert.equal(
@@ -47,6 +47,71 @@ test('offline discovery and dry runs validate real command arguments', async () 
   assert.throws(() => parse(['edit', '--key', 'Exposure', '--value', '6']), /between/)
   assert.throws(() => parse(['select']), /Missing argument/)
   assert.throws(() => parse(['state', '--unexpected', 'true']), /Unknown option/)
+})
+
+test('watch observes only read-only state or export progress and preserves null/results/capture', async (t) => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'openlr-export-watch-'))
+  t.after(() => rm(directory, { recursive: true, force: true }))
+  const requests = [],
+    image = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])
+  let revision = 0,
+    current = null
+  const server = createServer(async (req, res) => {
+    assert.equal(req.headers.authorization, 'Bearer observer')
+    res.setHeader('Content-Type', 'application/json')
+    if (req.url.startsWith('/changes?')) {
+      res.end(JSON.stringify({ revision: revision++ }))
+      return
+    }
+    const chunks = []
+    for await (const chunk of req) chunks.push(chunk)
+    const request = JSON.parse(Buffer.concat(chunks))
+    requests.push(request)
+    res.end(
+      JSON.stringify({
+        ok: true,
+        result: request.command === 'state' ? { selected: 'photo' } : current,
+        ...(request.capture
+          ? {
+              selected: 'photo',
+              frame: {
+                kind: 'file',
+                filename: 'workspace.png',
+                mimeType: 'image/png',
+                bytes: image.length,
+                base64: image.toString('base64')
+              }
+            }
+          : {})
+      })
+    )
+  })
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+  t.after(() => new Promise((resolve) => server.close(resolve)))
+  const session = path.join(directory, 'agent.json')
+  await writeFile(
+    session,
+    JSON.stringify({ version: 1, url: 'http://127.0.0.1:' + server.address().port, token: 'observer' })
+  )
+  const updates = [],
+    base = ['watch', '--session', session, '--count', '1']
+  assert.throws(() => parse([...base, '--command', 'edit']), /state or export-status/)
+  assert.equal(parse([...base, '--command', 'export-status']).command, 'watch')
+  await watch(parse(base), (value) => updates.push(value))
+  assert.equal(updates.at(-1).selected, 'photo')
+  assert.deepEqual(requests.at(-1).args, { summary: true })
+  await watch(parse([...base, '--command', 'export-status']), (value) => updates.push(value))
+  assert.deepEqual(updates.at(-1), { revision: 1, result: null })
+  assert.equal(requests.at(-1).command, 'export-status')
+  assert.deepEqual(requests.at(-1).args, {})
+  current = { id: 'job-1', status: 'running', completed: 1, total: 3 }
+  await watch(
+    parse([...base, '--command', 'export-status', '--images', path.join(directory, 'frames')]),
+    (value) => updates.push(value)
+  )
+  assert.deepEqual(updates.at(-1).result, current)
+  assert.deepEqual(await readFile(updates.at(-1).frame.path), image)
+  assert.equal(updates.at(-1).selected, 'photo')
 })
 
 test('batch CLI passes one folder request and preserves exact partial-completion errors', async (t) => {

@@ -29,6 +29,7 @@ type agentBroker struct {
 	revision int64
 	changed  chan struct{}
 	queue    chan *AgentCommand
+	controls chan *AgentCommand
 	done     chan struct{}
 	mu       sync.Mutex
 	pending  map[string]chan json.RawMessage
@@ -46,7 +47,7 @@ func startAgent() (*agentBroker, error) {
 	if err != nil {
 		return nil, err
 	}
-	b := &agentBroker{changed: make(chan struct{}), queue: make(chan *AgentCommand, 32), done: make(chan struct{}), pending: make(map[string]chan json.RawMessage), token: hex.EncodeToString(secret[:])}
+	b := &agentBroker{changed: make(chan struct{}), queue: make(chan *AgentCommand, 32), controls: make(chan *AgentCommand, 32), done: make(chan struct{}), pending: make(map[string]chan json.RawMessage), token: hex.EncodeToString(secret[:])}
 	b.file = os.Getenv("OPENLR_AGENT_FILE")
 	if b.file == "" {
 		config, err := os.UserConfigDir()
@@ -145,8 +146,14 @@ func (b *agentBroker) serveHTTP(w http.ResponseWriter, r *http.Request) {
 	b.mu.Unlock()
 	defer func() { b.mu.Lock(); delete(b.pending, command.ID); b.mu.Unlock() }()
 	ctx := r.Context()
+	queue := b.queue
+	// Only operation inspection and cancellation bypass ordinary command delivery.
+	// The frontend still validates and executes both through its central dispatcher.
+	if command.Command == "export-status" || command.Command == "export-cancel" {
+		queue = b.controls
+	}
 	select {
-	case b.queue <- &command:
+	case queue <- &command:
 	case <-ctx.Done():
 		http.Error(w, `{"error":"command request closed"}`, http.StatusGatewayTimeout)
 		return
@@ -184,14 +191,26 @@ func (d *Desktop) AgentPoll(ctx context.Context) *AgentCommand {
 	if d.agent == nil {
 		return nil
 	}
+	return d.agent.poll(ctx, d.agent.queue)
+}
+
+// AgentPollControl remains available while the ordinary dispatcher awaits export.
+func (d *Desktop) AgentPollControl(ctx context.Context) *AgentCommand {
+	if d.agent == nil {
+		return nil
+	}
+	return d.agent.poll(ctx, d.agent.controls)
+}
+
+func (b *agentBroker) poll(ctx context.Context, queue <-chan *AgentCommand) *AgentCommand {
 	timer := time.NewTimer(20 * time.Second)
 	defer timer.Stop()
 	for {
 		select {
-		case command := <-d.agent.queue:
-			d.agent.mu.Lock()
-			_, live := d.agent.pending[command.ID]
-			d.agent.mu.Unlock()
+		case command := <-queue:
+			b.mu.Lock()
+			_, live := b.pending[command.ID]
+			b.mu.Unlock()
 			if live {
 				return command
 			}
@@ -199,7 +218,7 @@ func (d *Desktop) AgentPoll(ctx context.Context) *AgentCommand {
 			return nil
 		case <-ctx.Done():
 			return nil
-		case <-d.agent.done:
+		case <-b.done:
 			return nil
 		}
 	}

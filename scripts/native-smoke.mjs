@@ -1261,6 +1261,108 @@ try {
   console.log(
     'Native batch export: actual folder files, collision preservation, mixed processing versions, TIFF pixels, previous settings, unchanged selection/preview/recipes and original bytes passed.'
   )
+  const controlDirectory = path.join(root, 'controlled-exports'),
+    controlIds = []
+  await mkdir(controlDirectory)
+  const controlPng = Buffer.from(
+    makePng({
+      width: 32,
+      height: 24,
+      bits: 8,
+      colorType: 2,
+      srgb: 0,
+      data: new Uint8Array(32 * 24 * 3).fill(95)
+    })
+  )
+  // Trailing original bytes are opaque to PNG display decoding. The generated
+  // 64 MiB payload gives actual IPC chunks to observe without a runtime test hook.
+  for (const name of ['control-a.png', 'control-b.png', 'control-c.png']) {
+    const input = path.join(root, name)
+    await writeFile(
+      input,
+      name === 'control-b.png' ? Buffer.concat([controlPng, Buffer.alloc(64 * 1024 * 1024, 73)]) : controlPng
+    )
+    const imported = await call('import', input)
+    assert.deepEqual(imported.failed, [])
+    controlIds.push(imported.added[0])
+  }
+  await call('sort', '--order', 'name', '--direction', 'asc')
+  await call('select-many', '--ids', JSON.stringify(controlIds))
+  const controlBefore = await call('state'),
+    controlSettings = await call('export-settings')
+  let batchSettled = false,
+    editSettled = false
+  const controlledBatch = call('export-selection', '--format', 'original', '--output-dir', controlDirectory)
+  controlledBatch.then(
+    () => {
+      batchSettled = true
+    },
+    () => {
+      batchSettled = true
+    }
+  )
+  let liveExport
+  const controlDeadline = Date.now() + 30000
+  while (Date.now() < controlDeadline) {
+    liveExport = await call('export-status')
+    if (
+      liveExport?.status === 'running' &&
+      liveExport.phase === 'writing' &&
+      liveExport.current?.id === controlIds[1]
+    )
+      break
+    assert.equal(batchSettled, false, 'Export must still be live while observing its generated chunk payload')
+    await delay(10)
+  }
+  assert.equal(liveExport?.phase, 'writing')
+  assert.equal(liveExport.current.id, controlIds[1])
+  assert.equal(liveExport.completed, 1)
+  const queuedControlEdit = call('edit', '--key', 'Exposure', '--value', '0.7')
+  queuedControlEdit.then(
+    () => {
+      editSettled = true
+    },
+    () => {
+      editSettled = true
+    }
+  )
+  let liveCapture
+  await watch(
+    { session, observe: 'export-status', count: 1, images: path.join(root, 'export-live') },
+    (update) => {
+      liveCapture = update
+    }
+  )
+  assert.ok(Number.isSafeInteger(liveCapture.revision))
+  assert.equal(liveCapture.result.id, liveExport.id)
+  assert.equal(liveCapture.result.status, 'running')
+  assert.equal(liveCapture.result.completed, 1)
+  assert.equal(editSettled, false, 'Ordinary editing stays serialized behind the live export')
+  assert.equal((await readFile(liveCapture.frame.path)).subarray(1, 4).toString(), 'PNG')
+  assert.equal(liveCapture.selected, controlBefore.selected)
+  const requestedCancel = await call('export-cancel', '--id', liveExport.id)
+  assert.equal(requestedCancel.id, liveExport.id)
+  assert.ok(['cancelling', 'cancelled'].includes(requestedCancel.status))
+  const cancelledBatch = await controlledBatch
+  await queuedControlEdit
+  assert.equal(cancelledBatch.cancelled, true)
+  assert.equal(cancelledBatch.jobId, liveExport.id)
+  assert.equal(cancelledBatch.files.length, 1)
+  assert.deepEqual(await readFile(cancelledBatch.files[0].path), controlPng)
+  assert.deepEqual(await readdir(controlDirectory), ['control-a.png'])
+  const terminalExport = await call('export-status'),
+    controlAfter = await call('state')
+  assert.equal(terminalExport.status, 'cancelled')
+  assert.equal(terminalExport.completed, 1)
+  assert.equal((await call('export-cancel', '--id', liveExport.id)).status, 'cancelled')
+  await assert.rejects(() => call('export-cancel', '--id', 'stale-export-id'), /not found/)
+  assert.deepEqual(await call('export-settings'), controlSettings)
+  assert.deepEqual(controlAfter.selection, controlBefore.selection)
+  assert.equal(controlAfter.selected, controlBefore.selected)
+  assert.equal(controlAfter.photos.find((photo) => photo.id === controlAfter.selected).edit.Exposure, 0.7)
+  console.log(
+    'Native export controls: actual live chunk progress and screenshot, queued edit isolation, cancellation, completed-file preservation, temporary cleanup and unchanged export settings passed.'
+  )
   console.log(
     'Native GUI/CLI passed RAW, editing, PNG preview, original bytes, live observation, workspace capture, person segmentation, TIFF export and WebDAV sync.'
   )

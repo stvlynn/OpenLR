@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -170,5 +171,76 @@ func TestCanceledExportPreservesDestination(t *testing.T) {
 	}
 	if err := d.FinishExport(id); err == nil {
 		t.Fatal("canceled transfer remained active")
+	}
+}
+
+func TestExportCleanupFailureIsReportedAndRemainsTracked(t *testing.T) {
+	for _, finish := range []bool{false, true} {
+		t.Run(map[bool]string{false: "cancel", true: "finish-failure"}[finish], func(t *testing.T) {
+			d := &Desktop{}
+			root := t.TempDir()
+			folder, err := d.BeginExportFolder(context.Background(), root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			transfer, err := d.BeginFolderExport(folder.ID, "output.png")
+			if err != nil {
+				t.Fatal(err)
+			}
+			file := d.exports[transfer.ID].file
+			temporary := file.Name()
+			if err := file.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Remove(temporary); err != nil {
+				t.Fatal(err)
+			}
+			// Deterministic failed unlink on every test OS, without relying on permissions.
+			if err := os.Mkdir(temporary, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			child := filepath.Join(temporary, "keep")
+			if err := os.WriteFile(child, []byte("not an export"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if finish {
+				err = d.FinishExport(transfer.ID)
+			} else {
+				err = d.CancelExport(transfer.ID)
+			}
+			if err == nil || !strings.Contains(err.Error(), "remove export temporary file") {
+				t.Fatalf("cleanup error was hidden: %v", err)
+			}
+			if d.exports[transfer.ID] == nil {
+				t.Fatal("failed cleanup lost pending transfer")
+			}
+			if err := d.EndExportFolder(folder.ID); err == nil {
+				t.Fatal("folder cleanup reported success")
+			}
+			if _, ok := d.folders[folder.ID]; ok {
+				t.Fatal("failed cleanup retained folder authorization")
+			}
+			if data, err := os.ReadFile(child); err != nil || string(data) != "not an export" {
+				t.Fatal("cleanup removed unrelated directory contents")
+			}
+			if _, err := os.Stat(transfer.Path); !os.IsNotExist(err) {
+				t.Fatal("failed transfer published destination")
+			}
+			if err := os.Remove(child); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Remove(temporary); err != nil {
+				t.Fatal(err)
+			}
+			if err := d.CancelExport(transfer.ID); err != nil {
+				t.Fatalf("already closed/missing cleanup: %v", err)
+			}
+			if len(d.exports) != 0 {
+				t.Fatal("successful cleanup left pending transfer")
+			}
+			if err := d.CancelExport(transfer.ID); err != nil {
+				t.Fatal("repeat cancellation was not idempotent")
+			}
+		})
 	}
 }

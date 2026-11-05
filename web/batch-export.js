@@ -18,17 +18,34 @@ export const BATCH_EXPORT_MESSAGES = {
 }
 
 // Capture recipes and order, without moving the editor's active source or history.
-export async function exportSelection({
+export async function exportSelection(options) {
+  const job = options.progress?.start(options.args.ids?.length ?? options.selection.size)
+  try {
+    const result = await performExportSelection({ ...options, job })
+    options.progress?.finish(result.cancelled ? 'cancelled' : 'completed')
+    return job ? { ...result, jobId: job.id } : result
+  } catch (error) {
+    if (job) {
+      error.details = { ...error.details, jobId: job.id }
+      options.progress.finish('failed', error)
+    }
+    throw error
+  }
+}
+
+async function performExportSelection({
   visible,
   selection,
   args,
   original,
   prepare,
   openFolder,
-  reservedFolder
+  reservedFolder,
+  job
 }) {
   const { ids = [...selection], previous = false, outputDirectory, ...options } = args
   const files = []
+  const signal = job?.signal
   let folder,
     current,
     items = [],
@@ -41,6 +58,7 @@ export async function exportSelection({
       files,
       failed: current ? { id: current.id, name: current.name } : null
     }
+    if (error.cleanupError) details.cleanupError = error.cleanupError
     return Object.assign(
       Error(
         BATCH_EXPORT_MESSAGES.failed(files.length, details.total, current?.name ?? 'Export', error.message)
@@ -49,6 +67,7 @@ export async function exportSelection({
     )
   }
   try {
+    signal?.throwIfAborted()
     if (!ids.length) throw Error(BATCH_EXPORT_MESSAGES.empty)
     const chosen = new Set(ids)
     if (chosen.size !== ids.length || ids.some((id) => !visible.some((photo) => photo.id === id)))
@@ -70,23 +89,45 @@ export async function exportSelection({
     // Validate known format/source incompatibilities before the first file write.
     // Decoder/read errors discovered later remain honest partial failures.
     for (const item of items) {
+      signal?.throwIfAborted()
       current = item.photo
       if (current.local?.sidecarError) throw Error(current.local.sidecarError)
       if (item.options.format === 'image/x-adobe-dng')
         await validateDngSource((await original(current.id)).file)
     }
     current = null
+    signal?.throwIfAborted()
+    job?.update({ phase: 'choosing' })
     folder = await (reservedFolder ?? openFolder())
     if (!folder) return { files, total: items.length, cancelled: true }
     for (const item of items) {
+      signal?.throwIfAborted()
       current = item.photo
+      job?.update({
+        phase: 'preparing',
+        current: { id: current.id, name: current.name },
+        writtenBytes: 0,
+        totalBytes: 0
+      })
+      // Let the UI and control lane run before the next synchronous codec/render phase.
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      signal?.throwIfAborted()
       const prepared = await prepare(current, item.options, { original })
-      const saved = await folder.write(prepared.blob, prepared.filename)
+      signal?.throwIfAborted()
+      job?.update({ phase: 'writing', totalBytes: prepared.blob.size })
+      const saved = await folder.write(prepared.blob, prepared.filename, {
+        signal,
+        onProgress: (bytes) => job?.update(bytes)
+      })
       files.push({ id: current.id, ...saved })
+      job?.update({ completed: files.length, files: [...files] })
     }
     current = null
+    signal?.throwIfAborted()
+    job?.update({ phase: 'finishing' })
     folderClosed = true
     await folder.close()
+    signal?.throwIfAborted()
     try {
       saveExportSettingsBatch(items)
     } catch (error) {
@@ -94,6 +135,8 @@ export async function exportSelection({
     }
     return { files, total: items.length, cancelled: false }
   } catch (error) {
+    if (signal?.aborted && error === signal.reason && !error.cleanupError)
+      return { files, total: items.length || ids.length, cancelled: true }
     failure = exportError(error)
     throw failure
   } finally {

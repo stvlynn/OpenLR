@@ -63,12 +63,12 @@ export async function dispatch(command, args = {}, capture = false) {
 globalThis.openlr = Object.freeze({ run, commands, schema, search: searchCommands, dispatch })
 document.documentElement.dataset.agent = 'browser-ready'
 
-async function serveNative() {
+async function serveNative(pollMethod) {
   const call = (...args) => globalThis.mygo.call(...args)
   for (;;) {
     try {
       document.documentElement.dataset.agent = 'connected'
-      const request = await call('Desktop.AgentPoll')
+      const request = await call(pollMethod)
       if (!request) continue
       const reply = await dispatch(request.command, request.args ?? {}, request.capture)
       await call('Desktop.AgentReply', request.id, JSON.stringify(reply))
@@ -81,7 +81,8 @@ async function serveNative() {
 }
 
 if (globalThis.mygo?.call) {
-  serveNative()
+  serveNative('Desktop.AgentPoll')
+  serveNative('Desktop.AgentPollControl')
   if (globalThis.mygo.on)
     window.addEventListener('openlr-change', () =>
       globalThis.mygo.call('Desktop.AgentChanged').catch((error) => console.error(error))

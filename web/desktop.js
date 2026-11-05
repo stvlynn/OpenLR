@@ -20,7 +20,7 @@ export async function saveExport(blob, filename) {
 }
 
 /** Send an existing native transfer in bounded-memory chunks. */
-export async function writeNativeExport(blob, id) {
+export async function writeNativeExport(blob, id, { signal, onProgress } = {}) {
   const encode = (chunk) =>
     new Promise((resolve, reject) => {
       const reader = new FileReader()
@@ -29,15 +29,24 @@ export async function writeNativeExport(blob, id) {
       reader.readAsDataURL(chunk)
     })
   try {
+    signal?.throwIfAborted()
     const chunkSize = 512 * 1024
+    onProgress?.({ writtenBytes: 0, totalBytes: blob.size })
     for (let offset = 0; offset < blob.size; offset += chunkSize) {
+      signal?.throwIfAborted()
       const encoded = await encode(blob.slice(offset, offset + chunkSize))
+      signal?.throwIfAborted()
       await globalThis.mygo.call('Desktop.WriteExport', id, encoded)
+      onProgress?.({ writtenBytes: Math.min(offset + chunkSize, blob.size), totalBytes: blob.size })
     }
+    signal?.throwIfAborted()
     await globalThis.mygo.call('Desktop.FinishExport', id)
+    // Publication is the commit point; a later cancellation cannot undo this file.
     return true
   } catch (error) {
-    await globalThis.mygo.call('Desktop.CancelExport', id).catch(() => {})
+    await globalThis.mygo.call('Desktop.CancelExport', id).catch((cleanup) => {
+      if (error && typeof error === 'object') error.cleanupError = cleanup.message || String(cleanup)
+    })
     throw error
   }
 }
@@ -60,15 +69,16 @@ export async function beginExportFolder(outputDirectory) {
     if (!folder) return null
     let closed = false
     return {
-      async write(blob, filename) {
+      async write(blob, filename, options = {}) {
         if (closed) throw Error('The export folder is closed')
         if (!(blob instanceof Blob) || !blob.size) throw Error('The exported image is empty')
+        options.signal?.throwIfAborted()
         const transfer = await globalThis.mygo.call(
           'Desktop.BeginFolderExport',
           folder.id,
           exportBasename(filename)
         )
-        await writeNativeExport(blob, transfer.id)
+        await writeNativeExport(blob, transfer.id, options)
         return { path: transfer.path, filename: transfer.filename, bytes: blob.size }
       },
       async close() {
@@ -90,25 +100,40 @@ export async function beginExportFolder(outputDirectory) {
   }
   let closed = false
   return {
-    async write(blob, filename) {
+    async write(blob, filename, { signal, onProgress } = {}) {
       if (closed) throw Error('The export folder is closed')
       if (!(blob instanceof Blob) || !blob.size) throw Error('The exported image is empty')
+      signal?.throwIfAborted()
       const used = new Set()
-      for await (const name of directory.keys()) used.add(name.toLowerCase())
+      for await (const name of directory.keys()) {
+        signal?.throwIfAborted()
+        used.add(name.toLowerCase())
+      }
       const basename = exportBasename(filename),
         dot = basename.lastIndexOf('.')
       const stem = dot > 0 ? basename.slice(0, dot) : basename,
         extension = dot > 0 ? basename.slice(dot) : ''
       let chosen = basename
       for (let number = 2; used.has(chosen.toLowerCase()); number++) chosen = `${stem}-${number}${extension}`
+      signal?.throwIfAborted()
       const file = await directory.getFileHandle(chosen, { create: true })
       let stream
       try {
+        signal?.throwIfAborted()
         stream = await file.createWritable()
-        await stream.write(blob)
+        const chunkSize = 512 * 1024
+        onProgress?.({ writtenBytes: 0, totalBytes: blob.size })
+        for (let offset = 0; offset < blob.size; offset += chunkSize) {
+          signal?.throwIfAborted()
+          await stream.write(blob.slice(offset, offset + chunkSize))
+          onProgress?.({ writtenBytes: Math.min(offset + chunkSize, blob.size), totalBytes: blob.size })
+        }
+        signal?.throwIfAborted()
         await stream.close()
       } catch (error) {
-        await stream?.abort().catch(() => {})
+        await stream?.abort().catch((cleanup) => {
+          if (error && typeof error === 'object') error.cleanupError = cleanup.message || String(cleanup)
+        })
         throw error
       }
       return { path: directory.name + '/' + chosen, filename: chosen, bytes: blob.size }

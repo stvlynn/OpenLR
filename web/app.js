@@ -44,6 +44,7 @@ import { controls, render, renderFrame, toBlob } from './render.js'
 import { saveExport, beginExportFolder } from './desktop.js'
 import { preparePhotoExport } from './photo-export.js'
 import { exportSelection, BATCH_EXPORT_MESSAGES } from './batch-export.js'
+import { ExportProgress, EXPORT_PROGRESS_MESSAGES } from './export-progress.js'
 import { getImageWorkerDiagnostics } from './image-worker.js'
 import { EXPORT_FORMATS } from './formats.js'
 import { Organization, namedVersion, findVersion } from './organization.js'
@@ -675,6 +676,10 @@ async function applySelection(changes, recordUndo = false) {
     compare = false
   }
 }
+const exportProgress = new ExportProgress((job) => {
+  updateExportProgress(job)
+  notifyWorkspaceChange()
+})
 async function execute(command, args, context = {}) {
   const p = active()
   if (
@@ -708,6 +713,7 @@ async function execute(command, args, context = {}) {
         original,
         prepare: preparePhotoExport,
         reservedFolder: context.exportSink,
+        progress: exportProgress,
         openFolder: () => beginExportFolder(args.outputDirectory)
       })
     case 'export-settings':
@@ -1823,6 +1829,13 @@ const ready = Promise.all([db.all('photos'), db.all('albums'), presets.load()]).
   await draw()
 })
 export function run(command, args = {}, observe, context) {
+  if (command === 'export-status' || command === 'export-cancel') {
+    return Promise.resolve().then(() => {
+      validateArgs(command, args)
+      const result = command === 'export-status' ? exportProgress.snapshot() : exportProgress.cancel(args.id)
+      return observe ? observe(result, snapshot()) : result
+    })
+  }
   const next = queue
     .then(() => ready)
     .then(async () => {
@@ -2093,6 +2106,35 @@ previousExportButton.title = EXPORT_SETTINGS_MESSAGES.previousDescription
 previousExportButton.setAttribute('aria-label', EXPORT_SETTINGS_MESSAGES.previousDescription)
 previousExportButton.disabled = true
 $('export').after(previousExportButton)
+const exportProgressPanel = document.createElement('section'),
+  exportProgressLabel = document.createElement('span'),
+  exportProgressBar = document.createElement('progress'),
+  exportCancelButton = document.createElement('button')
+exportProgressPanel.id = 'export-progress'
+exportProgressPanel.hidden = true
+exportProgressLabel.setAttribute('role', 'status')
+exportCancelButton.id = 'export-cancel'
+exportCancelButton.textContent = EXPORT_PROGRESS_MESSAGES.cancel
+exportProgressBar.setAttribute('aria-label', BATCH_EXPORT_MESSAGES.action(1))
+exportProgressPanel.append(exportProgressLabel, exportProgressBar, exportCancelButton)
+document.body.append(exportProgressPanel)
+exportCancelButton.onclick = () => act('export-cancel', { id: exportCancelButton.dataset.job })
+function updateExportProgress(job) {
+  const running = job.status === 'running' || job.status === 'cancelling'
+  exportProgressPanel.hidden = !running
+  $('export').disabled = previousExportButton.disabled = running || !active()
+  if (!running) return
+  const text = EXPORT_PROGRESS_MESSAGES.progress(job.completed, job.total)
+  if (exportProgressLabel.textContent !== text) exportProgressLabel.textContent = text
+  exportProgressBar.max = Math.max(1, job.total)
+  exportProgressBar.value =
+    job.completed +
+    (job.phase === 'writing' && job.totalBytes ? Math.min(0.99, job.writtenBytes / job.totalBytes) : 0)
+  exportCancelButton.dataset.job = job.id
+  exportCancelButton.disabled = job.status === 'cancelling'
+  exportCancelButton.textContent =
+    job.status === 'cancelling' ? EXPORT_PROGRESS_MESSAGES.cancelling : EXPORT_PROGRESS_MESSAGES.cancel
+}
 $('export').onclick = () => {
   try {
     const media = isVideo(active()) ? 'video' : 'photo',
@@ -2130,7 +2172,11 @@ async function savePreparedExport(command, options, exportSink) {
       undefined,
       { exportSink }
     )
-    if (!result.cancelled) notice(BATCH_EXPORT_MESSAGES.complete(result.files.length))
+    notice(
+      result.cancelled
+        ? EXPORT_PROGRESS_MESSAGES.cancelled(result.files.length, result.total)
+        : BATCH_EXPORT_MESSAGES.complete(result.files.length)
+    )
     return
   }
   const result = await run(command, options)

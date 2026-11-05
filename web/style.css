@@ -329,3 +329,29 @@ aside h2 {
   white-space: pre-line;
   line-height: 1.7;
 }
+
+#export-progress:not([hidden]) {
+  position: fixed;
+  z-index: 10;
+  bottom: 64px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: calc(100vw - 32px);
+  padding: 12px 16px;
+  background: #24282b;
+  border: 1px solid #59636b;
+  border-radius: 8px;
+  box-shadow: 0 4px 20px #0008;
+}
+#export-progress span,
+#export-progress button {
+  white-space: nowrap;
+}
+#export-progress progress {
+  width: 120px;
+  min-width: 24px;
+  accent-color: #92bad0;
+}

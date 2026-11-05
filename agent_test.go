@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestSessionReplacementKeepsExistingReadersComplete(t *testing.T) {
@@ -85,5 +86,65 @@ func TestAgentReplyIsClaimedExactlyOnce(t *testing.T) {
 	<-reply // HTTP may consume the reply before it finishes writing the response.
 	if err := d.AgentReply("command", `{"ok":true}`); err == nil {
 		t.Fatal("a second reply claimed an already-consumed command")
+	}
+}
+
+func TestExportControlsBypassHeldCommandAndQueuedEdit(t *testing.T) {
+	b := &agentBroker{queue: make(chan *AgentCommand, 1), controls: make(chan *AgentCommand, 2), done: make(chan struct{}), pending: make(map[string]chan json.RawMessage), token: "test-secret"}
+	d := &Desktop{agent: b}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	post := func(body string) <-chan *httptest.ResponseRecorder {
+		completed := make(chan *httptest.ResponseRecorder, 1)
+		go func() {
+			request := httptest.NewRequest(http.MethodPost, "/command", strings.NewReader(body)).WithContext(ctx)
+			request.Header.Set("Authorization", "Bearer test-secret")
+			recorder := httptest.NewRecorder()
+			b.serveHTTP(recorder, request)
+			completed <- recorder
+		}()
+		return completed
+	}
+	exportReply := post(`{"command":"export-selection"}`)
+	export := d.AgentPoll(ctx)
+	if export == nil || export.Command != "export-selection" {
+		t.Fatalf("export not delivered: %+v", export)
+	}
+	// The ordinary lane is full and its consumer is awaiting the export result.
+	b.mu.Lock()
+	b.pending["edit"] = make(chan json.RawMessage, 1)
+	b.mu.Unlock()
+	b.queue <- &AgentCommand{ID: "edit", Command: "edit", Args: json.RawMessage(`{"key":"Exposure","value":1}`)}
+	// A disconnected control request must not be executed after a later poll.
+	b.controls <- &AgentCommand{ID: "expired", Command: "export-cancel"}
+	for _, command := range []string{"export-status", "export-cancel"} {
+		response := post(`{"command":"` + command + `","args":{"id":"job-1"},"capture":true}`)
+		control := d.AgentPollControl(ctx)
+		if control == nil || control.Command != command || !control.Capture || string(control.Args) != `{"id":"job-1"}` {
+			t.Fatalf("control not delivered while export held: %+v", control)
+		}
+		if err := d.AgentReply(control.ID, `{"ok":true,"result":{"status":"running"}}`); err != nil {
+			t.Fatal(err)
+		}
+		if got := <-response; got.Code != http.StatusOK || !strings.Contains(got.Body.String(), `"status":"running"`) {
+			t.Fatalf("wrong control reply: %d %s", got.Code, got.Body.String())
+		}
+		if len(b.queue) != 1 {
+			t.Fatal("a control consumed the queued edit")
+		}
+		select {
+		case <-exportReply:
+			t.Fatal("control completed the unrelated export request")
+		default:
+		}
+	}
+	if err := d.AgentReply(export.ID, `{"ok":true,"result":{"cancelled":true}}`); err != nil {
+		t.Fatal(err)
+	}
+	if got := <-exportReply; !strings.Contains(got.Body.String(), `"cancelled":true`) {
+		t.Fatalf("wrong export reply: %s", got.Body.String())
+	}
+	if next := d.AgentPoll(ctx); next == nil || next.ID != "edit" {
+		t.Fatalf("ordinary ordering lost: %+v", next)
 	}
 }

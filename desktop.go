@@ -111,18 +111,26 @@ func (d *Desktop) WriteExport(id, encoded string) error {
 }
 
 // FinishExport replaces the chosen destination only after all chunks arrive.
-func (d *Desktop) FinishExport(id string) error {
+func (d *Desktop) FinishExport(id string) (result error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	transfer, ok := d.exports[id]
 	if !ok {
 		return errors.New("unknown export transfer")
 	}
-	delete(d.exports, id)
 	tempPath := transfer.file.Name()
-	defer os.Remove(tempPath)
+	defer func() {
+		if cleanup := d.cancelExportLocked(id); cleanup != nil {
+			if result == nil {
+				// Publication has committed. Keep the completed-file acknowledgment;
+				// retained cleanup is retried/reported when its folder or app closes.
+				fmt.Fprintln(os.Stderr, "OpenLR saved export cleanup:", cleanup)
+			} else {
+				result = errors.Join(result, cleanup)
+			}
+		}
+	}()
 	if err := transfer.file.Sync(); err != nil {
-		transfer.file.Close()
 		return err
 	}
 	if err := transfer.file.Close(); err != nil {
@@ -253,45 +261,57 @@ func (d *Desktop) BeginFolderExport(folder, filename string) (*folderExport, err
 	d.mu.Lock()
 	if _, ok := d.folders[folder]; !ok {
 		d.mu.Unlock()
-		d.CancelExport(id)
-		return nil, errors.New("export folder was closed")
+		return nil, errors.Join(errors.New("export folder was closed"), d.CancelExport(id))
 	}
 	d.exports[id].folder = folder
 	d.mu.Unlock()
 	return &folderExport{ID: id, Path: destination, Filename: chosen}, nil
 }
 
-func (d *Desktop) EndExportFolder(folder string) {
+func (d *Desktop) EndExportFolder(folder string) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	delete(d.folders, folder)
+	var result error
 	for id, transfer := range d.exports {
 		if transfer.folder == folder {
-			transfer.file.Close()
-			os.Remove(transfer.file.Name())
-			delete(d.exports, id)
+			result = errors.Join(result, d.cancelExportLocked(id))
 		}
 	}
+	return result
 }
 
 // CancelExport discards a partial export and preserves an existing destination.
-func (d *Desktop) CancelExport(id string) {
+func (d *Desktop) CancelExport(id string) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
+	return d.cancelExportLocked(id)
+}
+
+// Failed removal stays tracked so folder/shutdown cleanup can report and retry it.
+func (d *Desktop) cancelExportLocked(id string) error {
 	if transfer, ok := d.exports[id]; ok {
-		transfer.file.Close()
-		os.Remove(transfer.file.Name())
-		delete(d.exports, id)
+		var result error
+		if err := transfer.file.Close(); err != nil && !errors.Is(err, os.ErrClosed) {
+			result = fmt.Errorf("close export temporary file: %w", err)
+		}
+		if err := os.Remove(transfer.file.Name()); err != nil && !errors.Is(err, os.ErrNotExist) {
+			result = errors.Join(result, fmt.Errorf("remove export temporary file: %w", err))
+		} else {
+			delete(d.exports, id)
+		}
+		return result
 	}
+	return nil
 }
 
 func (d *Desktop) cancelAll() {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	clear(d.folders)
-	for id, transfer := range d.exports {
-		transfer.file.Close()
-		os.Remove(transfer.file.Name())
-		delete(d.exports, id)
+	for id := range d.exports {
+		if err := d.cancelExportLocked(id); err != nil {
+			fmt.Fprintln(os.Stderr, "OpenLR export cleanup:", err)
+		}
 	}
 }

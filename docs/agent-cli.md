@@ -97,3 +97,5 @@ With the crop tool open, `state --summary true` exposes the uncommitted rectangl
 ## Selection export
 
 `export-selection --format image/png --output-dir ./exports --capture workspace.png` writes the selected visible group in display order, returns completed file paths/byte counts, and can capture the actual workspace. `--previous true` reuses each media slot. Single `export` still returns one active-photo file. See [batch export](batch-export.md) for IDs, mixed media, collisions, partial errors and completion semantics.
+
+`export-status` and `export-cancel --id JOB_ID` remain responsive during a batch, independently of queued edits. `watch --command export-status --images ./progress` emits current job data and actual workspace captures. Cancellation requests are cooperative; wait for a terminal status before assuming output stopped. A timeout or disconnected observer does not cancel the batch. IDs and the latest terminal record are scoped to the current GUI session.

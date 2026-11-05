@@ -859,6 +859,16 @@ definitions['export-selection'] = entry(
   },
   []
 )
+definitions['export-status'] = entry(
+  'Read the latest export job, including progress and completed files, without waiting for the editor queue'
+)
+definitions['export-cancel'] = entry(
+  'Request cancellation of the identified export job at the next safe checkpoint',
+  {
+    id: string('Job ID returned by export-status; prevents cancelling a later job')
+  },
+  ['id']
+)
 
 export const commands = Object.fromEntries(
   Object.entries(definitions).map(([name, definition]) => [

@@ -85,3 +85,10 @@ Windows／Node 24.9／Chrome 155 的 `OPENLR_TEST_CMS=1 OPENLR_TEST_METADATA=1 n
 Windows／Node 24.9／Chrome 155 的 `OPENLR_TEST_CMS=1 OPENLR_TEST_METADATA=1 npm test` 通过 **252/252、零跳过**。浏览器专项验证两种处理版本、成片字节／像素／ICC、GUI 多选与复用、混合视频、原件／预览不变、排队编辑隔离、取消与部分失败、设置原子提交及错误清理。另用 Chrome 实际 OPFS 写入流验证冲突名、Unicode、读回和写失败；普通浏览器目录 API 无独占创建，不能保证外部并发同名写入安全，失败时可能保留新建空占位文件。原生适配器真实文件测试验证无覆盖发布及竞态。1024×768 下批量导出对话框已截图检查。
 
 最终 Windows 安装包与 WSL Ubuntu 24.04／WebKitGTK 2.52.6 构建通过，两个环境各七组原生 GUI/CLI 套件全部通过；Linux Go test、race、vet 通过。新增真实 CLI 用同名源、不同处理版本导出 TIFF，保留已有目标，检查尺寸／字节／像素、再次导出及真实 PNG 截图，选择、配方、预览和原件不变。系统文件夹选择器由程序化目标替代，未声称自动操作 OS 选择器；Xvfb 结果不证明物理显示器/GPU。现阶段没有运行中批量取消／进度查询，CLI 超时不取消后端写入。合同与来源见[批量导出](batch-export.md)和[研究](../research/batch-export.md)，远程三端以本提交 Actions 实际记录为准。
+
+
+2026-11-05 导出实时控制补充：`export-status`／`export-cancel` 使用独立原生接收通道，但仍走中央 dispatcher 与共享参数验证；普通编辑维持串行。GUI 显示已保存数量和取消按钮，CLI `watch --command export-status --images ...` 复用变化通知并读取真实窗口。取消请求和终止分开，512 KiB 传输边界及发布前检查信号；已发布文件仍计数，设置只在全批完成后提交。最后一项 DNG 预检取消不再打开目录选择器，观察者异常不再卡死生命周期。原生关闭／删除错误回传并保留失败清理跟踪，不以成功取消掩盖错误。
+
+最终 Windows／Node 24.9／Chrome 155 的 `OPENLR_TEST_CMS=1 OPENLR_TEST_METADATA=1 npm test` 通过 **260/260、零跳过**。实际 Chrome 测试在第二个写入处暂停，验证状态／GUI 取消可越过排队编辑、第一文件保留、当前传输取消、旧设置不变；附加测试覆盖发布完成与取消竞态、真实写入错误优先、清理失败、快照隔离、旧任务 ID、观察者异常及 DNG 预检检查点。Chrome 实际文件系统流另验分块进度、取消与关闭提交边界。Go 测试验证普通队列满时控制仍可达、过期请求跳过以及实际文件删除错误回传；Linux test/race/vet 通过。1024×768 的进度面板截图已检查。
+
+Windows 与 WSL Ubuntu 24.04／WebKitGTK 2.52.6 的最终桌面构建及各七组原生套件通过。新增验收使用带 64 MiB 生成尾随原始字节的 PNG，在实际写入第二个文件时查询状态、通过 watch 保存真实 PNG 窗口截图、排队编辑后再取消；检查只有第一文件已发布、无当前临时文件、设置保留，编辑在取消后执行。没有通过测试后门挂起生产导出。此结果不等于同步编解码器可抢占、崩溃恢复、物理显示器或 OS 选择器验收；最新 macOS 结果仍须对应远程实际运行。合同与调度消融见[批量导出](batch-export.md)、[研究](../research/export-progress.md)及 [ADR 016](decisions/016-export-control-lane.md)。前一提交 `97ca4c2` 的远程任务 [42011667925](https://github.com/stvlynn/OpenLR/actions/runs/42011667925) 因账户付款／限额未开始，未算作通过。
