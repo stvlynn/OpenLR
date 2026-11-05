@@ -1,0 +1,23 @@
+# Video poster failure investigation
+
+On 2026-11-06, Windows attempt 1 of [Actions 42073613235](https://github.com/stvlynn/OpenLR/actions/runs/42073613235), application commit `38f35af`, failed the video/photo previous-export workflow during video import. The reported error was `createImageBitmap` rejecting an unusable image source. That run passed 307 browser tests, failed one and skipped eight optional-resource tests; the newly added straighten session passed. The log does not record media readyState, frame dimensions or decoder state at the failed call, so it does not establish a cause.
+
+## Inspected path and API evidence
+
+`importBatch` calls `poster` for video files before storing the original or adding the photo record. `poster` awaits `openVideo`, awaits `createImageBitmap(media.video)` and closes the media in `finally`. `openVideo` registers its `loadeddata` listener before assigning the object URL; it also rejects media errors and zero dimensions/duration. There is no explicit close before the bitmap promise settles in this path. This source inspection does not prove the browser always retains a usable decoded frame.
+
+Context7 `/mdn/content` documents [readyState](https://github.com/mdn/content/blob/main/files/en-us/web/api/htmlmediaelement/readystate/index.md): `HAVE_CURRENT_DATA` indicates data for the current position, while `HAVE_ENOUGH_DATA` additionally supports continued playback. [createImageBitmap](https://github.com/mdn/content/blob/main/files/en-us/web/api/window/createimagebitmap/index.md) accepts a video source. These contracts do not retrospectively establish the state of the failed remote element. No additional delay, automatic decode retry, timeout increase or alternative extraction algorithm was adopted from this single failure.
+
+## Local observations
+
+The provisioned Windows Chrome 156 full browser run passed all 316 tests before pushing the commit. After the remote failure, isolated `node --test tests/export-previous-workflow.test.js` passed all four tests in about 11.55 seconds, including the actual short video import/export. These are distinct observations, not proof that the remote failure is fixed.
+
+A bounded direct-poster probe generated the same 32×24, two-frame VP9/WebM structure: two opaque color frames of 0.2 seconds each, encoded with the bundled MediaBunny at 100,000 bitrate. The resulting file was 509 bytes. On Windows Chrome 156, the real `poster` adapter completed 25 sequential extractions and 100 extractions in batches of four, closing every resulting bitmap. All 125 calls succeeded. Each intercepted `createImageBitmap` call reported readyState 4, networkState 1, video dimensions 32×24, currentTime 0, seeking false and paused true. The sequential phase took 114ms and the parallel phase 216.5ms, excluding fixture generation. These timings are not a performance benchmark or a simulation of a GitHub-hosted runner.
+
+The probe wraps the actual bitmap function only to record its input state and exceptions; it does not replace decoding, synthesize success or retry failures. It omits the surrounding catalog and export workflow, so cannot rule out an interaction there. Ignored evidence is `.workspace/video-poster-probe.mjs`, `.json`, `.log`, `.workspace/straighten-video-isolated.log` and `.workspace/straighten-ci-windows-failed.log`.
+
+## Remote continuation
+
+The first macOS Intel and Linux jobs both completed their seven native suites. The macOS log explicitly includes the new guarded straighten session, full/summary state, PNG capture and unchanged-recipe assertions. The first request to rerun Windows while the overall run was active was rejected; after the overall run became terminal, a failed-jobs-only retry was accepted as attempt 2. Retry success, if observed, must remain separate from a root-cause fix. No production behavior was changed during this investigation.
+
+Attempt 2 subsequently completed successfully: Windows browser verification passed 308 tests, skipped eight optional-resource tests and failed none out of 316; packaging and all seven native suites then passed, including the new straighten session. Application and verification artifacts were uploaded. All three platform jobs are now successful for `38f35af`. This is a successful unchanged-code retry, not a diagnosed or fixed video-decoder defect. The successful log is `.workspace/straighten-ci-windows-retry.log`; the first failure remains retained separately.

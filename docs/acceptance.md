@@ -17,6 +17,8 @@
 
 ## 补充验证
 
+- **`38f35af` 远程验收终态**。[同一次 Actions](https://github.com/stvlynn/OpenLR/actions/runs/42073613235) 第二次尝试已全部成功：Windows 浏览器 308 通过、8 项可选资源跳过、0 失败，共 316 项；Windows、Linux、macOS Intel 均完成打包、七组原生套件及产物上传，包含新增拉直 CLI 状态／取消验证。首次视频导入失败与本地 125 次未复现实验见[调查记录](../research/video-poster-failure.md)。未修改应用代码、测试断言或超时后仅重跑失败 Windows 作业；成功重跑不代表视频问题根因已确定。以下进度段保留首轮证据，已由本终态更新。
+
 - **`38f35af` 远程验收进度**。[Actions 42073613235](https://github.com/stvlynn/OpenLR/actions/runs/42073613235) 的 Linux 构建及七组原生套件通过；Windows 浏览器套件为 307 通过、1 失败、8 跳过，新增拉直测试通过。失败在 `export-previous-workflow.test.js` 的视频导入，返回 `createImageBitmap` 图像源不可用，尚未证明根因；本地独立执行该文件 4/4 通过。没有提高超时、改变断言或添加推测性的解码重试。源码已经等待 `loadeddata`；Context7 的 HTMLMediaElement 就绪状态资料不能解释该次失败的实际浏览器状态。macOS 原生套件在本次记录时仍运行，未计为通过。Windows 单作业重跑请求被 GitHub 拒绝；整轮终态和后续失败作业复查仍待完成。日志保存在忽略目录 `.workspace/straighten-*`。
 
 - **拉直参考会话（2026-11-06）**。`tests/straighten-session.test.js` 用真实 Chrome 核对首点的 full/summary 回读及变更通知、输入焦点下 Escape、按钮与带照片身份的 CLI 取消、过期请求拒绝、退出视图、重新拉直和撤销；几何相关定向测试 8/8，通过后完整浏览器回归 316/316，无失败或跳过，约 210 秒。Windows 本次 MyGo 构建的 `build/windows-amd64/OpenLR.exe` 通过主原生 smoke，包括实际 CLI 状态、取消、PNG 截图和配方不变。首次原生命令误用了较旧的 `build/release` 产物，因不认识新增 `photoId` 参数而失败；核对构建路径和时间后改用实际新产物通过，未将旧产物失败当作功能通过。本项不声称原生鼠标手势或本次其他六组原生套件已在本地重跑；公开 Actions 的旧版本结果仍保留独立版本边界。
