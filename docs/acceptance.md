@@ -17,6 +17,12 @@
 
 ## 补充验证
 
+- **原生整理与堆叠状态（2026-11-06）**。新 `native-organization-smoke` 接入标准原生套件，实际 CLI 验证搜索／分页／选择反转、标签与关键词／时间／重命名、相册与版本重命名／删除、删除／恢复、预设 CRUD、手动堆叠／封面／展开／解除和时间／相似性自动堆叠。该检查发现展开后解除堆叠会残留公开 ID；现在只报告当前完整目录存在的堆叠，保留会话偏好以支持撤销恢复，过滤不会清除偏好。真实 Chrome 覆盖解除、撤销／重做、软删除及最终成员永久删除。Windows 独立 WebView2 profile、适配器配置及 MyGo socket 中重启后读回实际记录，预设像素由 `#465265` 变为 `#57657c`，两种自动堆叠均为一组两张，三张原件逐字节一致。其他平台该脚本使用临时会话，不声称其重启持久性。缩短临时前缀以适应标准 macOS socket 路径，最终脚本在 Windows 再次通过。
+
+  新 Windows MyGo 包及安装包构建成功，八组原生套件全部通过，包含独立 ExifTool 校验、真实外部编辑器进程、相机模拟器、审阅服务、迁移与合并／RAW 集成；各自既有边界保持不变。完整 `OPENLR_TEST_CMS=1 OPENLR_TEST_METADATA=1 npm test` **351/351、零失败、零跳过**，约 251.1 秒，使用被动视频诊断。新增启动失败诊断的 4 项受控 HTTP 测试另复核通过；保留错误、隔离进程和清理行为见[启动记录](../research/native-startup.md)。日志为忽略目录 `.workspace/organization-state-*`、`.workspace/native-organization-final.log`。本次新代码的远程三平台验证另行跟进。
+
+- **`0c030e5` 三平台终态**。[Actions 42105066362](https://github.com/stvlynn/OpenLR/actions/runs/42105066362) 首次执行全部成功：Windows 浏览器 339/347、8 项可选资源跳过、0 失败；三平台七组原生套件及打包均完成。Windows 的 Photos 截图为 1028×749，导航文字亮像素打开 726、关闭 0。本结果对应面板修复，不包含随后新增的第八组整理套件或启动诊断，也不解释此前 `3163f36` 的启动超时。
+
 - **面板 GUI／CLI 一致性（2026-11-06）**。21 项定向检查通过，覆盖 20 个折叠面板及 Photos 导航的稳定名称、显式开关／队列切换、完整与摘要状态、真实鼠标／Enter／空格、单次通知、带计数的 Filters、Photo 菜单自动关闭、隐藏的 inspector 重新显示，以及画面像素／裁剪草稿／编辑与原件保持。Windows／Node 24.9／Chrome 156 完整 `OPENLR_TEST_CMS=1 OPENLR_TEST_METADATA=1 npm test` **347/347 通过、零失败、零跳过**，约 264.2 秒，继续使用被动视频诊断。新的 Windows MyGo 完整安装包通过主原生 smoke（WebView2 156.0.4314.58）：实际 CLI、`watch`、状态及截图均验证；解码截图为 1783×1154，Photos 导航文字区域的亮像素打开为 1,529、关闭为 0。该运行还通过独立 ExifTool 30 文件检查。首次安装包构建因受限 DNS 无法下载 NSIS，授权网络后的完整构建成功；首次原生检查用了错误的测试筛选枚举 `edited`，改为现有合法值 `yes` 后全程通过。没有因此修改产品筛选规则、超时或重试。日志 `.workspace/panel-state-*`。本项为本地 Windows 主原生流程，不冒充远程三端或其他六组原生套件。
 
 - **`3163f36` 远程启动失败边界**。[Actions 42103142177](https://github.com/stvlynn/OpenLR/actions/runs/42103142177) 首次执行 Linux、macOS Intel 成功；Windows 浏览器 338/346 通过、8 项可选资源跳过、0 失败，安装包构建成功。Windows 原生主流程在首次 `state --summary true --timeout 30` 请求超时，位置为该提交的 `scripts/native-smoke.mjs:429`，尚未开始导入照片或白平衡测试。现有日志不能确认 WebView/页面/桥接的具体停顿位置，不能称作白平衡算法失败或已被面板修改修复。保留 `.workspace/crop-white-balance-ci-windows.log`，继续调查启动证据；不通过增大超时或盲目重跑消除失败记录。

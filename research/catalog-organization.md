@@ -1,5 +1,19 @@
 # Catalog organization evidence
 
+## Expanded stack readback — 2026-11-06
+
+The new native organization workflow reproduced a public-state inconsistency in OpenLR: ungrouping an expanded stack cleared the photos' membership while `state.openStacks` still exposed the former ID. A later similarity stack therefore returned an obsolete ID alongside the actual group. This is OpenLR runtime evidence, not an inference about Lightroom.
+
+Three candidates were compared in Chrome 156 with the same current `tests/stacks.test.js` workflow, intercepting only the application's module response. The baseline module came from `0c030e5`; the direct-delete candidate added a successful-unstack cleanup to that module; the final candidate used the current projection. Production files were not temporarily reverted.
+
+| Candidate | Ungrouped state | Undo restoring the stack | Result |
+| --- | --- | --- | --- |
+| Original session Set exposed directly | Still contains removed ID | Existing preference retained | Fails at empty-state assertion |
+| Delete preference after successful unstack | Empty as required | Expanded preference lost | Fails at restored-state assertion |
+| Project preferences through current catalog IDs | Empty as required | Expanded preference restored | Entire workflow passes, including filtering, redo and final-member purge |
+
+The chosen implementation keeps session preferences and reports only IDs referenced by the full current catalog, independently of the visible search/filter subset. It changes no stored row, transaction or history rules. The ignored comparison harness/results are `.workspace/stack-state-ablation.test.mjs` and `.workspace/stack-state-{baseline,delete,projection}.log`. The tracked browser regression and `scripts/native-organization-smoke.mjs` verify the production behavior; [acceptance](../docs/acceptance.md) records exact execution and platform boundaries.
+
 Reviewed 2026-11-05. This is a focused extension of the [Lightroom investigation](lightroom.md), using the installed Lightroom 9.4 resources and Adobe's desktop documentation. No Lightroom catalog, personal photos, executable payloads, or assets were copied into OpenLR.
 
 ## Static resource evidence

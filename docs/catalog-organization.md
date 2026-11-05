@@ -60,6 +60,10 @@ node cli/openlr.mjs paste-edits
 
 `state` returns `selected` (active ID), `selection` (group IDs), `filters`, `sortDirection`, clipboard metadata, and each visible photo's saved versions. Read version and album IDs from it before applying ID-based commands. The CLI reads its schema from the same command catalog as the GUI agent.
 
+Full `state` reports `openStacks` for expanded stacks that still have catalog records. Search, scope and filtering preserve expansion choices. Ungrouping a stack or permanently removing its last photo removes its ID from this result. Library Undo restores the expansion choice when it brings an expanded stack back. Restart clears expansion choices while preserving stack membership and cover.
+
+`node --test tests/stacks.test.js` checks expansion through filtering, unstack, library undo and redo, and permanent removal. `node scripts/native-organization-smoke.mjs /path/to/OpenLR` checks live CLI catalog operations and original-byte export. On Windows it restarts the host in an isolated persistent WebView2 profile to read back catalog records. Other platforms use an ephemeral web session.
+
 `tests/organization.test.js` verifies real browser UI selection, batch metadata, album rename/delete, version restore, copied settings and undo, filters/sorting, restart persistence, and original-byte preservation. Native local-folder and sidecar checks belong to the native integration suite; browser testing alone does not establish native behavior.
 
 `node --test tests/process-version-transport.test.js` checks neutral filtering, independent copied/saved recipes, real browser XMP round trips with depth settings, and IndexedDB preset reloads while preserving legacy records.

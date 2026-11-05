@@ -664,8 +664,10 @@ function panelSnapshot() {
 }
 function snapshot() {
   const items = visible().map(({ thumbnail, ...p }) => p)
+  // Retain expansion choices for history, but report only stacks in the current catalog.
+  const stackIds = openStacks.size ? new Set(photos.map((photo) => photo.stackId)) : null
   return {
-    openStacks: [...openStacks],
+    openStacks: [...openStacks].filter((id) => stackIds?.has(id)),
     slideshow: slideTimer !== null,
     gridLayout,
     playback:
