@@ -39,6 +39,8 @@ The detail Info text reports actual decoded precision or **8-bit compatibility d
 
 `frameCanvas` is a terminal sRGB display adapter. `encodeFrameTiff` converts the float result directly to target-space Uint16 samples, then uses the existing worker and TIFF writer with a matching ICC. Both output adapters clip only at their representable output boundary. Source values clipped earlier inside LibRaw cannot be reconstructed. Watermarks rasterize only their text/shadow layer and alpha-compose it into the linear result. PNG, JPEG, AVIF and JPEG XL convert directly from the float result into the requested target space before terminal 8-bit quantization; they do not pass through an sRGB preview. JPEG composites transparency over black in linear light. High-depth output beyond TIFF remains unimplemented.
 
+RGBA8-to-float decoding uses the exact 256-entry `SRGB8_LINEAR` Float64 table from the color-space owner, then assigns to Float32. Byte rendering, local adjustments, optics interpolation and byte export conversion reuse that same read-only-by-contract table instead of rebuilding equivalent transfer values. It is only for byte indices; continuous signed/HDR and native higher-depth input do not use this lookup. Exhaustive byte/alpha equivalence and measured source-conversion costs are recorded in [dehaze performance](dehaze-performance.md).
+
 ## Verification
 
 ```sh

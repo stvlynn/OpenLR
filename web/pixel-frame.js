@@ -1,4 +1,4 @@
-import { decodeSrgb, encodeSrgb, convertLinearSrgbColor } from './color-spaces.js'
+import { SRGB8_LINEAR, encodeSrgb, convertLinearSrgbColor } from './color-spaces.js'
 
 // Straight alpha, signed and unbounded linear sRGB. Storage owns its samples.
 export function isLinearFrame(frame) {
@@ -34,7 +34,7 @@ export function rgba8ToLinearFrame(pixels) {
     throw new TypeError('Expected RGBA8 samples')
   const data = new Float32Array(pixels.data.length)
   for (let i = 0; i < data.length; i += 4) {
-    for (let c = 0; c < 3; c++) data[i + c] = decodeSrgb(pixels.data[i + c] / 255)
+    for (let c = 0; c < 3; c++) data[i + c] = SRGB8_LINEAR[pixels.data[i + c]]
     data[i + 3] = pixels.data[i + 3] / 255
   }
   return { width: pixels.width, height: pixels.height, data, colorSpace: 'srgb-linear' }

@@ -1,6 +1,7 @@
 import { LENS_DATA } from './lens-data.js'
 import { multiply, project } from './merge-core.js'
 import { assertLinearFrame, sampleLinearRgba } from './pixel-frame.js'
+import { SRGB8_LINEAR as linear } from './color-spaces.js'
 
 export const OPTICS_CONTROLS = {
   manualDistortion: { label: 'Distortion', range: [-100, 100, 1], initial: 0 },
@@ -343,10 +344,6 @@ export function compileOptics(image, value = {}) {
   return { active, toOriginal, fromOriginal, transform, inverse: backward }
 }
 
-const linear = Float64Array.from({ length: 256 }, (_, i) => {
-  const v = i / 255
-  return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4
-})
 const encode = (value) => 255 * (value <= 0.0031308 ? 12.92 * value : 1.055 * value ** (1 / 2.4) - 0.055)
 export function warpOptics(pixels, recipe, reference = pixels) {
   const mapping = compileOptics(reference, recipe)

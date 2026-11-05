@@ -75,3 +75,20 @@ The production integration was measured with the same 24MP Original fixture and 
 The cached main-thread gap improves substantially versus the earlier 1.780/1.659s blocking measurements; total preview completion remains about 1.7s. The first source correction/byte-to-linear conversion still blocks for about 1.7s, so this does not establish continuously smooth interaction. Source generation took 2.234s and was excluded. Center output probes matched the previous integrated run at all three strengths; complete numerical equivalence is covered separately by small-image full-byte tests, not inferred from those probes.
 
 Active renderer peak working set was 1.572GB, compared with 1.195GB in the earlier analysis-only run; GPU process peak was 1.206GB. These include generated surfaces and caches, are single observations rather than a memory bound, and separate process peaks must not be summed. The higher allocation cost is retained as a tradeoff, not hidden by reducing source resolution. Ignored harness/result: `.workspace/dehaze-encoding-integrated-v1.mjs` and `.json`. Native acceptance and repeated-drag ownership checks remain separate evidence.
+
+## Exact byte-transfer lookup
+
+The remaining source conversion called the continuous sRGB transfer function once per RGB sample, despite RGBA8 having only 256 possible channel values. Existing byte render, local-adjustment and optics paths already used independently constructed 256-entry tables. The implementation now shares one Float64 table owned by `color-spaces.js`, generated from the existing `decodeSrgb`; byte-to-Float32 conversion and byte output-space conversion reuse it. There is no approximation, source downsampling or new transfer formula. Higher-depth and signed/HDR continuous inputs retain their continuous paths; Float32 rounding still occurs at frame assignment.
+
+An isolated Chrome 156 ablation on the same Windows/Ryzen machine used 6000×4000 RGBA bytes, with byte `i` initialized to `(i*17+floor(i/4))%256`, including varying alpha. Both variants consumed the same canvas readback (which may premultiply-round colors); readback took 19.8ms. Every resulting sample was checked outside timing against the scalar formula and Float32 assignment, including alpha. All comparisons were exact.
+
+| Conversion in execution order | Time | Differing samples |
+| --- | ---: | ---: |
+| Scalar transfer, run 1 | 1338.7ms | 0 |
+| Float64 lookup, run 1 | 203.9ms | 0 |
+| Scalar transfer, run 2 | 1503.7ms | 0 |
+| Float64 lookup, run 2 | 206.8ms | 0 |
+
+Each output remains 384,000,000 bytes; the shared table is 2048 bytes. This measures conversion only, not source corrections or rendering, and two observations are not a latency distribution. The retained experiment is `.workspace/byte-linear-ablation.mjs`/`.json`. The tracked `srgb-byte.test.js` exhaustively verifies all byte codes, independent scalar values, alpha, typed-array slices, input preservation and invalid frame boundaries.
+
+The complete Original dehaze fixture/protocol above was then rerun before builds/native testing. First preview took 8.830s with 807 heartbeat ticks and a .657s maximum gap; cached strengths took 2.156/1.999s with 203/186 ticks and .095/.087s gaps. Center output probes matched the earlier run. Compared with the earlier 8.829s first preview and 1.717s maximum gap, first main-thread blocking improved but total latency did not; cached completion was slower in this single run. These observations do not support an overall throughput improvement or smooth-interaction claim. Renderer/GPU peak working sets were 1.569GB/1.312GB, respectively, not a simultaneous total. Source generation was 2.260s, excluded. Evidence is `.workspace/dehaze-byte-lut-integrated.mjs`/`.json`. Further work must distinguish remaining source corrections, allocation and scheduling from the now-cheaper transfer function.

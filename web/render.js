@@ -22,11 +22,8 @@ import { processingVersion, PROCESS_MESSAGES } from './process-version.js'
 import { controls } from './adjustments.js'
 import { createPointCurves, createPointCurveTables } from './tone-curves.js'
 import { createColorGrading } from './color-grading.js'
+import { SRGB8_LINEAR as linear } from './color-spaces.js'
 export { controls } from './adjustments.js'
-const linear = Float64Array.from({ length: 256 }, (_, i) => {
-  const v = i / 255
-  return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4
-})
 function encode(v) {
   return 255 * (v <= 0.0031308 ? 12.92 * v : 1.055 * v ** (1 / 2.4) - 0.055)
 }

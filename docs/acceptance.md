@@ -196,3 +196,7 @@ Windows WebView2 和 WSL Ubuntu／WebKitGTK 均重新构建，并通过各自 `n
 2026-11-05 干净交付复现：仅将已提交的 `afbdcb8` 以 Git archive 导出到新目录，不复制未跟踪依赖、模型或生成文件。`npm ci`、Go test/vet、MyGo Windows 安装包构建、独立目录中打包 CLI 发现／dry-run、许可证与来源清单逐字节比对均通过。默认浏览器套件 **311 项中 304 通过、7 跳过、零失败**；跳过的模型和独立校验工具资源清单见[交付审查](delivery-review.md)。使用该快照新构建程序及 helper 的 Windows 七组原生套件全部通过。外部 Go 工具链／缓存及已安装 Chrome 属于明确的宿主前提；没有声称离线空缓存构建、二进制确定性、当前 macOS或无跳过全覆盖。
 
 同一 `afbdcb8` 归档随后在新的 WSL Linux 目录复现：独立 `npm ci`、Go test／**race**／vet、MyGo Linux 打包，以及 Xvfb／D-Bus 下七组原生套件全部通过；独立 CLI 发现／dry-run 和包内许可证／来源清单比对通过。未复制旧 Linux 构建或 Windows 依赖。此次未运行 Linux 全量浏览器套件；ExifTool 可选原生 oracle 因未安装明确跳过，既有实际导出／回读仍执行。当前已核实的 [CI 42052317375](https://github.com/stvlynn/OpenLR/actions/runs/42052317375) 三端均零步骤，macOS 服务端注释仍为账户付款／额度限制，不能记作运行通过。
+
+2026-11-05 字节源转换优化：24MP 消融发现重复计算 sRGB 转移函数占据主要前置时间。颜色模块现统一拥有 256 项 Float64 精确表，供 RGBA8 转浮点、字节渲染、局部处理、光学校正和输出空间转换复用，删除原有重复表生成。全部字节码、alpha、切片和原件保持检查与标量公式一致；没有改变全分辨率分析、连续浮点／HDR 公式或几何规则。
+
+Windows／Node 24.9／Chrome 156 全量 `OPENLR_TEST_CMS=1 OPENLR_TEST_METADATA=1 npm test` 完成 **312/312，零失败、零跳过**，包含独立 CMS／元数据校验。重新打包后的 Windows WebView2 与 WSL Linux WebKitGTK 各七组原生套件全部通过。单次集成测试首次最大主线程间隔从之前约 1.717s 降到 .657s，但总耗时仍为 8.830s，缓存完成时间本次更慢；完整负面结果及资源数据见[性能记录](dehaze-performance.md)，不声称整体吞吐或所有交互已改善。此前干净快照证据仍明确对应 `afbdcb8`，不冒充本轮新实现的独立快照验收。

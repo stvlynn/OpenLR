@@ -229,6 +229,10 @@ export function decodeSrgb(value) {
   return magnitude <= 0.04045 ? value / 12.92 : Math.sign(value) * ((magnitude + 0.055) / 1.055) ** 2.4
 }
 
+// Exact transfer values for the finite byte domain. Consumers only read this
+// shared table; signed/HDR and higher-depth samples still use decodeSrgb.
+export const SRGB8_LINEAR = Float64Array.from({ length: 256 }, (_, value) => decodeSrgb(value / 255))
+
 function decode(value, definition) {
   const magnitude = Math.abs(value),
     sign = Math.sign(value)
@@ -302,7 +306,7 @@ export function convertSrgbPixels({ data, width, height }, target = 'srgb') {
     return { data: output, width, height }
   }
   const transform = TRANSFORMS.srgb[target]
-  const table = Array.from({ length: 256 }, (_, value) => decode(value / 255, DEFINITIONS.srgb))
+  const table = SRGB8_LINEAR
   for (let offset = 0; offset < data.length; offset += 4) {
     const linear = multiply(transform, [
       table[data[offset]],

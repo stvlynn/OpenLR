@@ -3,6 +3,7 @@ import { validateSoftMask, sampleSoftMask } from './soft-mask.js'
 import { RANGE_TYPES, validateRange, rangeWeight, combineCoverage } from './range-masks.js'
 import { depthRangeWeight, applyLensBlur } from './depth-effects.js'
 import { assertLinearFrame } from './pixel-frame.js'
+import { SRGB8_LINEAR as linear } from './color-spaces.js'
 export const LOCAL_CONTROLS = {
   Exposure: [-5, 5, 0.05],
   Contrast: [-100, 100, 1],
@@ -326,10 +327,6 @@ function bounds(tool, width, height) {
     y1: clamp(Math.ceil(bottom + 0.5), 0, height)
   }
 }
-const linear = Float64Array.from({ length: 256 }, (_, i) => {
-  const v = i / 255
-  return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4
-})
 const encode = (v) => 255 * (v <= 0.0031308 ? 12.92 * v : 1.055 * v ** (1 / 2.4) - 0.055)
 // Float masks adjust and blend unbounded linear sRGB. Legacy masks retain
 // their encoded-byte blend and per-mask clamp/quantization boundary.
