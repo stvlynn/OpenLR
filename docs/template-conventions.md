@@ -39,3 +39,5 @@ Commands in the root manifest must perform real checks. A command that only prin
 Select checks according to the change: formatting or link checks for documentation; type, build, and behavior checks for code; visual inspection for layout; real decoding and exported-image inspection for processing. Native-only behavior needs the actual target OS. Browser rendering, mocked adapters, and static source inspection must be identified as such.
 
 A handoff states the resulting behavior, commands actually executed, and remaining limitations. Preserve a broken check's error evidence and investigate the cause. If degraded behavior is intentional, document its trigger and visible outcome and verify it; silent fallback is not evidence of success.
+
+Browser state waits must check the resolved condition, not the truthiness of a Promise. Follow [browser verification](browser-verification.md) for asynchronous dispatcher state, handler completion, and independent persisted/output assertions.

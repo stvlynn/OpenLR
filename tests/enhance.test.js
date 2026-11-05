@@ -1,3 +1,4 @@
+import { waitForAsyncFunction } from './browser-wait.mjs'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { createServer } from 'node:http'
@@ -92,7 +93,7 @@ test(
     await page.getByRole('button', { name: 'Enhance / Denoise', exact: true }).click()
     await page.getByLabel('Enhance mode', { exact: true }).selectOption('denoise')
     await page.getByRole('button', { name: 'Create enhanced copy', exact: true }).click()
-    await page.waitForFunction(async () =>
+    await waitForAsyncFunction(page, async () =>
       (await import('./app.js')).run('state').then((s) => s.photos.length === 2)
     )
     const first = await page.evaluate(async (originalId) => {

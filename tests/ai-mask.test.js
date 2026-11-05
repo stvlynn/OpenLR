@@ -1,3 +1,4 @@
+import { waitForAsyncFunction } from './browser-wait.mjs'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { createServer } from 'node:http'
@@ -79,7 +80,7 @@ test('real local subject/person inference, UI, original preservation and persist
   await page.getByText('Masks & local repair', { exact: true }).click()
   await page.getByLabel('AI mask target', { exact: true }).selectOption('person')
   await page.getByRole('button', { name: 'Generate AI mask', exact: true }).click()
-  await page.waitForFunction(async () =>
+  await waitForAsyncFunction(page, async () =>
     (await import('./app.js'))
       .run('state')
       .then((s) => s.photos[0].edit.localTools?.masks[0]?.provenance.target === 'person')

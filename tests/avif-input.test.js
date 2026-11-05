@@ -1,3 +1,4 @@
+import { waitForAsyncFunction } from './browser-wait.mjs'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
@@ -206,7 +207,8 @@ test('GUI AVIF linear opt-in exports true TIFF16, reimports low bits, reloads an
   await page.locator('#gallery .tile').waitFor()
   await run('view', { mode: 'detail' })
   await page.locator('#processing-version').selectOption('2')
-  await page.waitForFunction(
+  await waitForAsyncFunction(
+    page,
     async () => (await window.openlr.run('state')).processing?.input?.sourceBits === 12
   )
   const initial = await run('state')

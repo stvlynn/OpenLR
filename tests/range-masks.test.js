@@ -5,6 +5,7 @@ import { readFile } from 'node:fs/promises'
 import { chromium } from 'playwright-core'
 import { validateLocalTool, applyLocalTools, updateLocalTools, localWeight } from '../web/local-tools.js'
 import { parse } from '../cli/openlr.mjs'
+import { waitForAsyncFunction } from './browser-wait.mjs'
 
 test('range coverage uses source RGB/linear luminance and composites apply one adjustment', () => {
   const color = validateLocalTool('mask', {
@@ -116,7 +117,7 @@ test('UI creates range masks, combines them, persists and exports actual pixels'
   await page.getByLabel('Range tolerance', { exact: true }).fill('0')
   await page.getByLabel('Range softness', { exact: true }).fill('0')
   await page.getByRole('button', { name: 'Create color range', exact: true }).click()
-  await page.waitForFunction(async () =>
+  await waitForAsyncFunction(page, async () =>
     (await import('./app.js')).run('state').then((s) => s.photos[0].edit.localTools?.masks.length === 1)
   )
   const defaultPixels = await page
@@ -128,7 +129,7 @@ test('UI creates range masks, combines them, persists and exports actual pixels'
   await page.getByLabel('Range minimum', { exact: true }).fill('0.4')
   await page.getByLabel('Range maximum', { exact: true }).fill('1')
   await page.getByRole('button', { name: 'Create luminance range', exact: true }).click()
-  await page.waitForFunction(async () =>
+  await waitForAsyncFunction(page, async () =>
     (await import('./app.js')).run('state').then((s) => s.photos[0].edit.localTools?.masks.length === 2)
   )
   const ids = await page.evaluate(async () =>
@@ -139,7 +140,7 @@ test('UI creates range masks, combines them, persists and exports actual pixels'
   await page.getByLabel('Local edit selection', { exact: true }).selectOption(ids[0])
   await page.getByLabel('Combine with mask', { exact: true }).selectOption(ids[1])
   await page.getByRole('button', { name: 'Subtract mask', exact: true }).click()
-  await page.waitForFunction(async () =>
+  await waitForAsyncFunction(page, async () =>
     (await import('./app.js')).run('state').then((s) => s.photos[0].edit.localTools?.masks.length === 1)
   )
   const pixels = await page.evaluate(async () => {
@@ -223,15 +224,33 @@ test('UI creates range masks, combines them, persists and exports actual pixels'
   await page.getByLabel('Mask component', { exact: true }).selectOption('1')
   await page.getByLabel('Range minimum', { exact: true }).fill('0.5')
   await page.getByLabel('Range minimum', { exact: true }).press('Tab')
-  await page.waitForFunction(async () =>
+  await waitForAsyncFunction(page, async () =>
     (await import('./app.js'))
       .run('state')
       .then((s) => s.photos[0].edit.localTools.masks[0].components[1].min === 0.5)
   )
+  const beforeReload = await page.evaluate(async () => {
+    const state = await window.openlr.run('state')
+    return { photo: state.photos[0], selection: state.localSelection }
+  })
+  assert.equal(beforeReload.selection.id, ids[0])
+  assert.deepEqual(beforeReload.selection.path, [1])
+  assert.equal(
+    beforeReload.photo.edit.localTools.masks.find((mask) => mask.id === ids[0]).components[1].min,
+    0.5
+  )
   await page.reload()
   await page.locator('#gallery .tile').waitFor()
-  const kind = await page.evaluate(async () =>
-    (await import('./app.js')).run('state').then((s) => s.photos[0].edit.localTools.masks[0].type)
+  const restored = await page.evaluate(
+    async ({ photoId, maskId }) => {
+      const state = await window.openlr.run('state'),
+        photo = state.photos.find((photo) => photo.id === photoId)
+      return photo.edit.localTools.masks.find((mask) => mask.id === maskId)
+    },
+    { photoId: beforeReload.photo.id, maskId: ids[0] }
   )
-  assert.equal(kind, 'composite')
+  assert.equal(restored.id, ids[0])
+  assert.equal(restored.type, 'composite')
+  assert.equal(restored.components[1].type, 'luminance-range')
+  assert.equal(restored.components[1].min, 0.5)
 })

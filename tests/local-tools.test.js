@@ -1,3 +1,4 @@
+import { waitForAsyncFunction } from './browser-wait.mjs'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { serveWorkspace } from './browser-server.mjs'
@@ -113,7 +114,7 @@ test('UI brush and shared commands alter real pixels, survive reload, undo, expo
   await page.mouse.down()
   await page.mouse.move(bounds.x + bounds.width * 0.65, bounds.y + bounds.height * 0.5, { steps: 5 })
   await page.mouse.up()
-  await page.waitForFunction(async () =>
+  await waitForAsyncFunction(page, async () =>
     (await import('./app.js')).run('state').then((s) => s.photos[0].edit.localTools?.masks.length === 1)
   )
   const center = () =>

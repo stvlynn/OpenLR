@@ -1,3 +1,4 @@
+import { waitForAsyncFunction } from './browser-wait.mjs'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { chromium } from 'playwright-core'
@@ -94,7 +95,8 @@ test('GUI opt-in uses actual wide RAW samples, recovers local exposure, exports 
   assert.deepEqual((await run('state')).photos[0].edit, {})
   const legacy = await pixels(page)
   await page.locator('#processing-version').selectOption('2')
-  await page.waitForFunction(
+  await waitForAsyncFunction(
+    page,
     async () => (await window.openlr.run('state')).photos[0].edit.processVersion === 2
   )
   const neutral = await pixels(page),

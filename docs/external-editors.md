@@ -15,7 +15,7 @@ node cli/openlr.mjs external-check
 
 The GUI also checks pending copies automatically. The configured executable and session records live in the user's `OpenLR/external.json`; generated copies are in its `external-edits/` directory. `OPENLR_EXTERNAL_FILE` and `OPENLR_EXTERNAL_EDITOR` are test/deployment overrides. Generated files are retained for recovery. Saving under a different filename with Save As is outside the watched-file contract; save the handed-off TIFF to return it. Read, decode, launch and write failures are reported, and a failed import leaves its saved copy available.
 
-The current handoff uses the existing rendered 8-bit TIFF codec and the same decoder on return. It does not claim 16-bit/layered PSD roundtrip support or support for every TIFF compression/layout variant.
+The handoff uses the shared rendered TIFF export: Original processing writes 8-bit samples and Linear processing writes 16-bit samples. Saved copies return through the existing TIFF importer. Precision preservation by every external editor, layered PSD roundtrips, and every TIFF compression/layout variant remain outside the verified scope.
 
 `go test ./...` verifies persisted immutable snapshots and acknowledgment. For a real process/file test, build the controlled editor and run:
 

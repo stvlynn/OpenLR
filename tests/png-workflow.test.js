@@ -1,3 +1,4 @@
+import { waitForAsyncFunction } from './browser-wait.mjs'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { chromium } from 'playwright-core'
@@ -69,7 +70,8 @@ test('GUI PNG16 Linear opt-in preserves low samples through TIFF16, original rel
   assert.equal((await run('state')).processing.version, 1)
   const legacy = await output(page, 'preview', {})
   await page.locator('#processing-version').selectOption('2')
-  await page.waitForFunction(
+  await waitForAsyncFunction(
+    page,
     async () => (await window.openlr.run('state')).processing?.input?.sourceBits === 16
   )
   const state = await run('state')

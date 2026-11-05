@@ -1,3 +1,4 @@
+import { waitForAsyncFunction } from './browser-wait.mjs'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { chromium } from 'playwright-core'
@@ -129,7 +130,7 @@ test('GUI TIFF16 opt-in, edits, export/reimport, XMP and reload preserve source 
     legacy = await preview(page)
   assert.deepEqual((await run('state')).photos[0].edit, {})
   await page.locator('#processing-version').selectOption('2')
-  await page.waitForFunction(async () => (await window.openlr.run('state')).processing.version === 2)
+  await waitForAsyncFunction(page, async () => (await window.openlr.run('state')).processing.version === 2)
   const state = await run('state')
   assert.equal(state.processing.input.sourceBits, 16)
   assert.equal(state.processing.input.precision, 'uint16-source')
@@ -192,7 +193,7 @@ test('GUI TIFF16 opt-in, edits, export/reimport, XMP and reload preserve source 
     mimeType: 'image/tiff',
     buffer: Buffer.from(editedBytes)
   })
-  await page.waitForFunction(async () => (await window.openlr.run('state')).photos.length === 2)
+  await waitForAsyncFunction(page, async () => (await window.openlr.run('state')).photos.length === 2)
   const importedState = await run('state'),
     reimportId = importedState.photos.find((photo) => photo.name === 'rendered-16bit-ramp.tif').id
   await run('select', { id: reimportId })

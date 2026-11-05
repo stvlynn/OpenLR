@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { chromium } from 'playwright-core'
 import { serveWorkspace } from './browser-server.mjs'
+import { waitForAsyncFunction } from './browser-wait.mjs'
 
 async function workspace(t) {
   const server = await serveWorkspace()
@@ -37,7 +38,8 @@ async function workspace(t) {
     await page.keyboard.press(redo ? 'Control+Shift+z' : 'Control+z')
   }
   const waitRow = (id, fields) =>
-    page.waitForFunction(
+    waitForAsyncFunction(
+      page,
       async ({ id, fields }) => {
         const photo = (await window.openlr.run('state')).photos.find((item) => item.id === id)
         return Object.entries(fields).every(([key, value]) =>
@@ -77,8 +79,12 @@ test('Grid Ctrl+Z undoes pasted edits before earlier rating and replays interlea
   await invoke('paste-edits')
   await shortcut()
   await waitRow(target, { Exposure: null, rating: 4 })
+  assert.equal((await row(target)).edit.Exposure, undefined)
+  assert.equal((await row(target)).rating, 4)
   await shortcut(true)
   await waitRow(target, { Exposure: 1, rating: 4 })
+  assert.equal((await row(target)).edit.Exposure, 1)
+  assert.equal((await row(target)).rating, 4)
 
   await invoke('flag', { value: 'pick', advance: false })
   await invoke('history-undo')
@@ -161,6 +167,8 @@ test('batch paste history remains per photo and failed catalog commands create n
   await assert.rejects(invoke('rate', { value: 6 }), /range|between/i)
   await shortcut()
   await waitRow(first, { Exposure: null, rating: 3 })
+  assert.equal((await row(first)).edit.Exposure, undefined)
+  assert.equal((await row(first)).rating, 3)
   assert.equal((await row(second)).edit.Exposure, 0.75)
   assert.equal((await row(second)).rating, 3)
   await invoke('select', { id: second })

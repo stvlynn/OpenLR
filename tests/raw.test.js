@@ -1,3 +1,4 @@
+import { waitForAsyncFunction } from './browser-wait.mjs'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { serveWorkspace } from './browser-server.mjs'
@@ -201,10 +202,14 @@ test('legacy RAW thumbnails regenerate on visibility without changing originals 
             if (!observer.disconnected && observer.element.isConnected)
               observer.callback([{ isIntersecting: true }])
         })
-      await page.waitForFunction(async (id) => {
-        const { run } = await import('./app.js')
-        return (await run('state')).photos.find((p) => p.id === id)?.rawPreviewVersion === 1
-      }, id)
+      await waitForAsyncFunction(
+        page,
+        async (id) => {
+          const { run } = await import('./app.js')
+          return (await run('state')).photos.find((p) => p.id === id)?.rawPreviewVersion === 1
+        },
+        id
+      )
       // Catalog persistence and the lazy <img> request complete separately.
       // decode() alone may refer to the old 16x16 request during src replacement.
       await page.waitForFunction((id) => {

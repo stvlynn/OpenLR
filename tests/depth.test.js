@@ -1,3 +1,4 @@
+import { waitForAsyncFunction } from './browser-wait.mjs'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { createServer } from 'node:http'
@@ -105,7 +106,7 @@ test(
     })
     await page.getByText('Masks & local repair', { exact: true }).click()
     await page.getByRole('button', { name: 'Apply lens blur', exact: true }).click()
-    await page.waitForFunction(async () =>
+    await waitForAsyncFunction(page, async () =>
       (await import('./app.js')).run('state').then((s) => Boolean(s.photos[0].edit.localTools?.depth))
     )
     const first = await page.evaluate(async () => {
@@ -150,7 +151,7 @@ test(
     await page.getByLabel('Range maximum', { exact: true }).fill('0.5')
     await page.getByLabel('Range softness', { exact: true }).fill('0.01')
     await page.getByRole('button', { name: 'Create depth range', exact: true }).click()
-    await page.waitForFunction(async () =>
+    await waitForAsyncFunction(page, async () =>
       (await import('./app.js'))
         .run('state')
         .then((s) => s.photos[0].edit.localTools?.masks?.at(-1)?.type === 'depth-range')
