@@ -47,3 +47,17 @@ After production caller integration, the same 6000×4000 generated fixture was m
 The analyzer no longer blocks the main thread continuously: the heartbeat runs during worker computation. Cached reconstruction still runs synchronously and has zero heartbeat ticks within those particular short operations. Original remains visibly blocking for around 1.7–1.8 seconds, while Linear has roughly 300ms synchronous updates. Background analysis is implemented; responsive whole-pipeline interaction is not yet established. Source correction/conversion and final reconstruction/encoding remain the next optimization targets without reducing analysis resolution or changing the exact image rule.
 
 Observed active-renderer peak working sets were 1.195GB Original and 1.341GB Linear; GPU process peaks were 1.205GB and .506GB respectively. They include generated canvases, source arrays, browser surfaces and caches, and are not simultaneous totals. The Linear browser fixture retains both generated float samples and its display canvas, so these values cannot be compared directly to the earlier Node-only RSS as an allocation regression. Ignored scripts/JSON are `.workspace/dehaze-background-performance-v1.*` and `-v2.*`. These browser measurements do not establish native WebView latency.
+
+## Reconstruction transport experiment
+
+Measured separately against `a632bc4` on the same Windows/Chrome 156 environment. The 6000×4000 linear fixture above was prepared once at strength 40, then full-source `linearFrameToRgba8` with the shared dehaze mapper ran at strength 70. The experiment excludes first analysis, canvas upload, geometry, later edits and decode. Each strategy ran once in the listed order; values are not medians. A 10ms heartbeat includes explicit copying and worker startup/transport. Full byte comparison against a fresh synchronous oracle occurs outside each timing.
+
+| Strategy | Total conversion | Kernel | Explicit copy | Heartbeat ticks | Maximum gap | Differing output bytes |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Main thread | 1451.0ms | 1451.0ms | — | 0 | 1451.7ms | 0 |
+| Worker with structured-cloned message | 1836.7ms | 1466.8ms | implicit | 154 | 305.8ms | 0 |
+| Worker with owned copy/transfer | 1567.0ms | 1490.9ms | 51.2ms | 152 | 52.5ms | 0 |
+
+All strategies retained the original 384,000,000-byte frame, published corrected frame of the same size, and 96,000,000-byte transmission map attached. Copy/transfer additionally allocates 480,000,000 input bytes and the converter creates 96,000,000 output bytes; these are array sizes, **not measured process peak memory**. The converter returns its output buffer by transfer. No OffscreenCanvas assumption is involved. This supports a responsiveness improvement hypothesis while exposing its allocation cost; it does not establish whole-preview latency, repeated-drag memory behavior or native support. [Research](../research/dehaze-background.md) records the pending scheduler requirement. Production still uses synchronous reconstruction.
+
+The executed ignored harness/result are `.workspace/dehaze-encoding-ablation.mjs` and `.json`. Its initial syntax error was corrected before execution; the sandboxed browser then could not reach localhost. The completed run used the authorized local-server permission and exited zero. No application code changed for this experiment.
