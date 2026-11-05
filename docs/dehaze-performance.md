@@ -1,5 +1,7 @@
 # Dehaze performance and image acceptance
 
+The subsequent [sRGB byte-encoding experiment](../research/srgb-byte-encoding.md) investigates the remaining Original source-sized conversion. A routed 20-bit bucket prototype matched tested output bytes and reduced cached 24MP completion to about .72–.73s versus 1.74–1.84s for the scalar control in one controlled run. Saturation alone did not reproduce the gain. First latency and main-thread gaps remain variable. This is research only: no production converter has been replaced and no new platform acceptance is claimed.
+
 Measured on 2026-11-05, Windows x64, AMD Ryzen 7 7840U (16 logical processors), 30.84 GB installed RAM, Node v24.9.0 and headless Chrome 156.0.8078.80. This is a bounded local measurement, not a cross-platform performance guarantee. [Dehaze](dehaze.md) owns the behavior; [research](../research/dehaze.md) owns the algorithm and prior limitations.
 
 ## Large-image measurement

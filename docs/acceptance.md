@@ -17,6 +17,8 @@
 
 ## 补充验证
 
+- **`9e623b5` 三平台验收终态**。[Actions 42083004415](https://github.com/stvlynn/OpenLR/actions/runs/42083004415) 首次执行全部成功：Windows 浏览器 310 通过、8 项可选资源跳过、0 失败，共 318 项；Windows、macOS Intel、Linux 完成打包、七组原生套件和产物上传。Linux 曾长时间停留在系统依赖安装，之后在同一作业继续执行并成功；没有因观察等待重启任务。该结果覆盖局部创建完成状态一致性修正，不包括尚未进入生产的 [sRGB 编码实验](../research/srgb-byte-encoding.md)。
+
 - **局部创建完成状态一致性（2026-11-06）**。`tests/local-postcommit.test.js` 先复现直接 `repair.add` 返回未选中新修复，再复现直接 `ai-mask` 保留 Brush 模式。修正后定向五项通过；完整浏览器 **318/318 通过、无跳过**，约 237.7 秒。新测试检查命令返回、变更事件发生瞬间的下拉控件、真实鼠标修复、GUI／直接命令调用的 Person 模型推理、模式／选中项／覆盖层／面板／光标一致性。Windows MyGo 新构建的主原生 smoke 通过，新增实际 CLI 断言确认 AI 从 Brush 转到 Off、修复创建立即选中新对象、撤销恢复原配方。忽略日志为 `.workspace/local-postcommit-*`；其他平台和其他六组原生套件未在本地重复执行，本项不沿用 `a05a501` 的远程成功结论。
 
 - **修复源三平台验收终态**。`a05a501` 的 [Actions 42080915924](https://github.com/stvlynn/OpenLR/actions/runs/42080915924) 首次执行全部成功：Windows 浏览器 309 通过、8 项可选资源跳过、0 失败，共 317 项；Windows／Linux／macOS Intel 完成打包和七组原生套件。Windows 日志明确包含修复源状态、照片守卫、取消、PNG 截图与配方不变断言。该结果不覆盖之后的创建完成状态一致性修正。
