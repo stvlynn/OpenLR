@@ -26,6 +26,18 @@ The first Chrome acceptance checks discovery and dry-run typing, nonnegative val
 
 ## Remaining audit scope
 
+### Sequential grading input follow-up
+
+Windows run 42091276291 failed `color-grading-workflow.test.js:147`, waiting for Balance -25 and Blending 80 after adjacent numeric changes. A real Chrome 156 reproduction holds the completion callback of the actual IndexedDB photo write: Balance commits -25, then Blending is focused and filled with 80 before that callback is released. If Blending blurs first, both trusted change events fire but its full snapshot has the old expected grading value, so the dispatcher rejects the second change; final persisted values are -25/50 and a stale-edit notice appears. If Balance completes while Blending remains focused, redraw changes that unsaved DOM value back to 50; subsequent blur emits no second change and no notice appears. Both branches are asserted in ignored `.workspace/grading-numeric-race.mjs` with `.log`. The remote log cannot identify which branch caused its timeout.
+
+This needs a product fix, not a test delay: numeric field updates could merge into the latest recipe through the central dispatcher with a photo identity and same-field expected-value guard, retaining full-snapshot guards for wheel gestures. Focused dirty numeric drafts must also survive same-photo redraws. An alternative is sequencing full snapshots against anticipated prior local results, but that adds predecessor/failure reconciliation and still needs draft preservation. These are proposals, not implemented behavior; no stale-edit protection was removed.
+
+### Display-state and slideshow follow-up
+
+Inspection at `a70cb9b` found the clipping toggle absent from both full and summary state despite the GUI button and command using one internal flag. A real Chrome regression failed with `undefined` instead of `false`; the shared snapshots now expose that flag. Generated black/white input verifies actual red/blue display warning pixels, unchanged exported black/white pixels, GUI button and J shortcut, and sampler cleanup. The first GUI click attempt targeted a closed Histogram details section; the test now opens it before using the real button.
+
+The same source audit found Escape calling `stopSlides()` outside the dispatcher, whereas direct `view grid` left the timer and slideshow CSS active. A Chrome runtime probe confirmed Grid with `slideshow:true`, hidden stage and hidden navigation after the CLI-equivalent transition; Escape returned Grid with playback stopped. Grid transition now stops playback in the command owner, and Escape uses that transition without its separate mutation. This is observed OpenLR behavior, not new competitor evidence. Compare while cropping and sampled-color parity at different preview scales remain follow-up findings, not resolved features in this change.
+
 Inspect feature-module handlers for catalog organization, local/semantic masks, crop/optics, point/curve/grading selection, merge/enhance, export, sync, migration, external editors, camera and sharing. For each, distinguish semantic commands from file-picker acquisition, modal drafts and ordinary focus/scroll presentation. Verify representative GUI and CLI results against persisted state and actual images. A list of command names or an available screenshot endpoint alone does not prove these paths. Current platform/physical-device limits remain in the owning contracts and [completion audit](completion-audit.md).
 
 ## Feature-module dispatch inspection

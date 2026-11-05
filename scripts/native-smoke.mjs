@@ -1028,6 +1028,19 @@ try {
   console.log(
     'Native point selection: shared full/summary identity, actual capture, unchanged recipe and undo history, removal/reset/photo reconciliation, stale-target rejection and original bytes passed.'
   )
+  const displayBefore = await call('state')
+  assert.equal(displayBefore.clipping, false)
+  assert.equal((await call('clipping')).clipping, true)
+  assert.equal((await call('state', '--summary', 'true')).clipping, true)
+  assert.equal((await call('clipping')).clipping, false)
+  assert.equal((await call('slideshow', '--seconds', '60')).slideshow, true)
+  const stoppedSlides = await call('view', '--mode', 'grid')
+  assert.equal(stoppedSlides.mode, 'grid')
+  assert.equal(stoppedSlides.slideshow, false)
+  assert.equal(stoppedSlides.selected, displayBefore.selected)
+  assert.deepEqual(stoppedSlides.photos, displayBefore.photos)
+  await call('view', '--mode', 'detail')
+  console.log('Native display state: clipping full/summary readback and shared Grid slideshow exit passed.')
   const xmpExport = await call(
       'export',
       '--format',

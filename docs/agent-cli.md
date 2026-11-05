@@ -22,6 +22,10 @@ The shared queue validates command arguments before executing an action or recor
 
 `local-cancel` discards an in-progress brush, gradient or repair stroke and reports `{canceled:boolean}` without changing the selected tool or committed recipe. It shares the GUI Escape action and accepts an optional `--photoId` guard. Pointer cancellation and leaving the editing surface clear the same transient state; see [local tools](local-tools.md).
 
+Full and summary `state` expose `clipping`, the current workspace highlight/shadow warning toggle. The `clipping` command, Histogram button and J shortcut share this state. Warnings affect the displayed canvas, not exported image pixels or edit recipes. Starting a color sampler clears them.
+
+`view --mode grid` ends an active slideshow and restores navigation, matching the GUI Grid and Escape actions. `slideshow --stop true` ends playback while retaining the detail view. The full state reports whether the slideshow is active.
+
 ## Arguments and output
 
 `repair-source` reads the live Clone/Heal source and picker state without changing it. After `local-tool --tool clone` (or `heal`), pass either `--point '{"x":0.25,"y":0.5}'` or `--picking true|false` to set the original-image source or start/cancel the GUI picker. Both state forms expose `repairSource:{point,picking}`. Optional `--photoId` guards reads and writes. The selected source is session state; `repair.add` remains the operation that commits a repair recipe. See [local tools](local-tools.md).

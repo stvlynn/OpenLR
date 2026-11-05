@@ -649,6 +649,7 @@ function snapshot() {
     search,
     order,
     compare,
+    clipping,
     pair,
     sampling,
     cropping,
@@ -866,6 +867,7 @@ async function execute(command, args, context = {}) {
         scope,
         mode,
         visibleCount: visible().length,
+        clipping,
         viewport: mode === 'detail' && photo ? readViewport($('stage')) : null,
         selectionCount: organization.selection.size,
         processing: processingState(),
@@ -1318,6 +1320,7 @@ async function execute(command, args, context = {}) {
       break
     case 'view':
       mode = enumValue(args.mode, ['grid', 'detail'])
+      if (mode === 'grid') stopSlides()
       inspector = args.inspector ?? true
       cropping = pair = sampling = false
       break
@@ -2594,10 +2597,8 @@ document.onkeydown = (e) => {
   else if (!mod && e.shiftKey && key === 'a') act('auto-tone')
   else if (mod && key === '[') $('left').click()
   else if (mod && key === ']') $('right').click()
-  else if (!mod && key === 'escape') {
-    stopSlides()
-    act('view', { mode: 'grid' })
-  } else if (!mod && /^Digit[0-5]$/.test(e.code))
+  else if (!mod && key === 'escape') act('view', { mode: 'grid' })
+  else if (!mod && /^Digit[0-5]$/.test(e.code))
     act('rate', { value: Number(e.code.slice(-1)), ...(e.shiftKey ? { advance: true } : {}) })
   else if (!mod && ['z', 'u', 'x'].includes(key))
     act('flag', { value: { z: 'pick', u: '', x: 'reject' }[key], ...(e.shiftKey ? { advance: true } : {}) })

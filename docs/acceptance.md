@@ -17,6 +17,10 @@
 
 ## 补充验证
 
+- **显示状态与放映退出（2026-11-06）**。新增 Chrome 检查验证 clipping 的完整／摘要状态、实际红蓝提示像素、导出不带提示、真实按钮／快捷键和取色器清理；放映测试在旧代码上复现 Grid 仍保持播放，修正后验证 GUI Escape、命令切换、再次播放和停止后的定时器行为。新 Windows 构建及主原生 smoke 通过，包含实际 CLI 状态读回和退出放映。完整浏览器运行 **333 项，332 通过、1 失败、无跳过**：失败为混合媒体批量导出测试在视频导入时收到 `createImageBitmap` 不可用源错误，见[调查记录](../research/video-poster-failure.md)。本次新增两项及颜色分级测试通过；不能将这次完整运行称为全绿。日志 `.workspace/display-state-*`。
+
+- **`a70cb9b` 远程失败记录**。[Actions 42091276291](https://github.com/stvlynn/OpenLR/actions/runs/42091276291) 首次执行 Linux、macOS 原生成功；Windows 浏览器 322 通过、1 失败、8 跳过，共 331 项，未进入原生构建。颜色分级测试在连续修改 Balance／Blending 后等待最终值超时。控制实际存储完成时机的 Chrome 调查已复现第二次旧状态提交被拒绝和未提交文本被重绘覆盖两条路径；远程日志不能区分当时是哪条。本项没有通过重跑或增加超时宣称修复。
+
 - **无源修正时的重复扫描（2026-11-06）**。`tests/source-preparation.test.js` 的 10 项检查核对无修正、空列表、显式中性配方、四类单独／组合修正，以及坏浮点样本和尺寸错误；实际准备与渲染结果逐样本对照显式阶段组合，原始缓冲区保持不变。完整浏览器 **331/331 通过、无跳过**，约 253.6 秒；新 Windows MyGo 构建和主原生 smoke 通过。24MP 对照保留完整输出一致性，但只观察到首次主线程停顿减少，总完成时间没有改善，详见[性能记录](dehaze-performance.md#empty-linear-source-corrections-2026-11-06)。日志位于忽略目录 `.workspace/source-preparation-*`。本项尚不包含新提交的远程三平台结果。
 
 - **`daf0a11` 三平台验收终态**。[Actions 42088804293](https://github.com/stvlynn/OpenLR/actions/runs/42088804293) 首次执行全部成功，Windows 浏览器 313 通过、8 项可选资源跳过、0 失败，共 321 项；Windows、Linux、macOS Intel 完成实际原生套件、打包及产物上传。此结果覆盖共享 sRGB 字节编码器，不包含随后进行的空源修正扫描优化。

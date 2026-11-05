@@ -1,5 +1,7 @@
 # Video poster failure investigation
 
+Subsequent local recurrence (2026-11-06): the display-state working copy after `a70cb9b` ran all 333 provisioned browser checks; 332 passed and the mixed-media batch workflow failed during video import with the same unusable-source `createImageBitmap` message (`tests/batch-export.test.js:246`, thrown after `imported.failed`). Its generated VP9 input is 48×32 with ten 0.1-second frames, distinct from the two-frame fixture below. This is another observed failure, not evidence that the previous unchanged-code retry fixed the decoder. `.workspace/display-state-full.log` retains it. No extra delay or retry has been added; ready-state evidence at this new failure is still missing.
+
 On 2026-11-06, Windows attempt 1 of [Actions 42073613235](https://github.com/stvlynn/OpenLR/actions/runs/42073613235), application commit `38f35af`, failed the video/photo previous-export workflow during video import. The reported error was `createImageBitmap` rejecting an unusable image source. That run passed 307 browser tests, failed one and skipped eight optional-resource tests; the newly added straighten session passed. The log does not record media readyState, frame dimensions or decoder state at the failed call, so it does not establish a cause.
 
 ## Inspected path and API evidence
