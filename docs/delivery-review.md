@@ -16,6 +16,12 @@ Ignored evidence is `.workspace/delivery-2753c7a-*`, the source archive/director
 
 On 2026-11-06 the user explicitly changed delivery from private to public. Historical sensitive-file paths and common credential/private-key patterns were checked with no matches, then GitHub confirmed `PUBLIC`/`isPrivate:false`. [OpenLR](https://github.com/stvlynn/OpenLR) retains AGPL-3.0-only and its provenance/notices. This bounded review does not guarantee detection of every possible secret pattern. Earlier private-delivery requirements and checks below are historical. The preceding private CI run `42064995779` had zero steps and a macOS account-payment/spending-limit annotation; public visibility alone does not establish passing CI.
 
+### Public Actions verification
+
+[Run 42067429068](https://github.com/stvlynn/OpenLR/actions/runs/42067429068), at documentation commit `a14a9fb` with application source unchanged from `2753c7a`, completed successfully on Windows, Ubuntu 24.04 and macOS 15 Intel. Each platform built its native distribution, passed all seven native suites and uploaded application/verification artifacts. Linux also passed Go race tests. The macOS universal package was executed on Intel; Apple Silicon execution is not established by this run.
+
+The first Windows attempt failed at the initial PNG download wait in the processing-2 color workflow (`tests/color-workflow.test.js`): 306 passed, one failed, eight skipped. An isolated local rerun passed all three color-workflow tests. Only the failed Windows job was then retried, with no code or timeout changes: 307 passed, zero failed and eight skipped out of 315 browser tests, followed by successful packaging and all native suites. The original timeout remains unexplained; retry success is not evidence of a root-cause fix. Optional-resource skips and synthetic camera/catalog/chooser boundaries remain explicit in the logs. Ignored evidence includes `.workspace/public-actions-42067429068-*` and downloaded platform verification artifacts.
+
 ## Earlier tracked-snapshot reproduction
 
 Commit **`afbdcb8348d0e26de1775d3c308ab3bc5c91ff17`** was exported using `git archive --format=tar`, then extracted into a newly created ignored directory. Before installation, neither `node_modules` nor generated `resources/cli/openlr.mjs` existed there. No untracked application files, downloaded optional model weights, ExifTool checkout, Python CMS packages or prior build output were copied into that snapshot.
