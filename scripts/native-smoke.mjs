@@ -1027,6 +1027,104 @@ try {
   console.log(
     'Native PNG orientation: all eight directions, both processing versions, TIFF pixels and original bytes passed.'
   )
+  const sharpenInput = makePng({
+      width: 64,
+      height: 48,
+      bits: 8,
+      colorType: 2,
+      srgb: 0,
+      data: Array.from({ length: 64 * 48 * 3 }, (_, i) => {
+        const pixel = Math.floor(i / 3),
+          x = pixel % 64,
+          y = Math.floor(pixel / 64)
+        return Math.round(120 + 45 * Math.sin(x * 0.5) + 25 * Math.cos(y * 0.3))
+      })
+    }),
+    sharpenPath = path.join(root, 'output-sharpening.png')
+  await writeFile(sharpenPath, sharpenInput)
+  const sharpenImport = await call('import', sharpenPath)
+  assert.deepEqual(sharpenImport.failed, [])
+  const sharpenId = sharpenImport.added[0]
+  for (const version of [1, 2]) {
+    await call('select', '--id', sharpenId)
+    await call('processing', '--version', String(version))
+    const before = await call('preview', '--output', path.join(root, `sharp-before-${version}.png`)),
+      recipe = (await call('state')).photos.find((photo) => photo.id === sharpenId).edit
+    for (const [format, extension] of [
+      ['image/png', 'png'],
+      ['image/jpeg', 'jpg'],
+      ['image/tiff', 'tif'],
+      ['image/avif', 'avif'],
+      ['image/jxl', 'jxl']
+    ]) {
+      const decoded = []
+      for (const level of ['none', 'standard']) {
+        await call('select', '--id', sharpenId)
+        const output = await call(
+            'export',
+            '--format',
+            format,
+            '--quality',
+            '1',
+            '--maxSize',
+            '32',
+            '--colorSpace',
+            'display-p3',
+            '--outputSharpening',
+            level,
+            '--output',
+            path.join(root, `sharp-${version}-${level}.${extension}`)
+          ),
+          previous = await call(
+            'export-previous',
+            '--output',
+            path.join(root, `sharp-previous-${version}-${level}.${extension}`)
+          )
+        assert.deepEqual(await readFile(previous.path), await readFile(output.path))
+        const settings = (await call('export-settings')).photo
+        assert.equal(settings.outputSharpening ?? 'none', level)
+        const imported = await call('import', output.path)
+        assert.deepEqual(imported.failed, [])
+        await call('processing', '--version', '1')
+        const sampled = await call(
+            'export',
+            '--format',
+            'image/tiff',
+            '--output',
+            path.join(root, `sharp-readback-${version}-${level}-${extension}.tif`)
+          ),
+          bytes = await readFile(sampled.path),
+          buffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
+          ifd = UTIF.decode(buffer)[0]
+        UTIF.decodeImage(buffer, ifd)
+        assert.deepEqual([ifd.width, ifd.height], [32, 24])
+        decoded.push(UTIF.toRGBA8(ifd))
+      }
+      assert.ok(
+        decoded[0].some((value, i) => i % 4 !== 3 && value !== decoded[1][i]),
+        `Output sharpening must change actual ${format} pixels in processing ${version}`
+      )
+    }
+    await call('select', '--id', sharpenId)
+    const after = await call('preview', '--output', path.join(root, `sharp-after-${version}.png`))
+    assert.deepEqual(await readFile(after.path), await readFile(before.path))
+    assert.deepEqual((await call('state')).photos.find((photo) => photo.id === sharpenId).edit, recipe)
+  }
+  const sharpenOriginal = await call(
+    'export',
+    '--format',
+    'original',
+    '--output',
+    path.join(root, 'sharp-original.png')
+  )
+  assert.deepEqual(await readFile(sharpenOriginal.path), Buffer.from(sharpenInput))
+  await assert.rejects(
+    async () => call('export', '--format', 'original', '--outputSharpening', 'high'),
+    /does not support output sharpening/
+  )
+  console.log(
+    'Native output sharpening: both processing versions, five actual formats, pixel readback, previous settings, unchanged preview/recipe/original and preservation rejection passed.'
+  )
   console.log(
     'Native GUI/CLI passed RAW, editing, PNG preview, original bytes, live observation, workspace capture, person segmentation, TIFF export and WebDAV sync.'
   )

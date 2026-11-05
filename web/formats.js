@@ -19,6 +19,7 @@ export const EXPORT_FORMATS = [
 ]
 export const EXPORT_TYPES = EXPORT_FORMATS.map((format) => format.value)
 export const CODEC_TYPES = ['image/tiff', 'image/avif', 'image/jxl']
+export const RENDERED_PHOTO_TYPES = ['image/jpeg', 'image/png', 'image/tiff', 'image/avif', 'image/jxl']
 export function photoFormat(file) {
   const extension = (file.name || '').split('.').pop().toLowerCase()
   const format = EXPORT_FORMATS.find(

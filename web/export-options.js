@@ -1,13 +1,16 @@
 import { exportColorSpaces } from './export-color.js'
 import { exportMetadataPolicies } from './export-metadata.js'
+import { outputSharpeningLevels } from './export-sharpening.js'
 import { decodeSrgb } from './color-spaces.js'
-import { assertLinearFrame } from './pixel-frame.js'
+import { assertLinearFrame, rgba8ToLinearFrame, linearFrameToRgba8 } from './pixel-frame.js'
+import { applyFrameOutputSharpening } from './output-sharpening.js'
 
 export function readExportOptions() {
   const get = (id) => document.getElementById(id).value
   const args = { format: get('format'), quality: Number(get('quality')) / 100 }
   if (exportColorSpaces(args.format).length) args.colorSpace = get('export-color-space')
   if (exportMetadataPolicies(args.format).length) args.metadata = get('export-metadata')
+  if (outputSharpeningLevels(args.format).length) args.outputSharpening = get('export-sharpening')
   if (!['original', 'original-settings', 'application/rdf+xml', 'image/x-adobe-dng'].includes(args.format)) {
     if (get('export-size')) args.maxSize = Number(get('export-size'))
     if (get('watermark').trim()) args.watermark = get('watermark').trim()
@@ -28,6 +31,16 @@ export function applyWatermark(canvas, text) {
   ctx.fillStyle = 'rgba(255,255,255,.9)'
   ctx.fillText(text, canvas.width - size, canvas.height - size, Math.max(1, canvas.width - size * 2))
   ctx.restore()
+}
+
+export function applyOutputSharpening(canvas, level = 'none') {
+  if (level === 'none') return canvas
+  const context = canvas.getContext('2d'),
+    frame = rgba8ToLinearFrame(context.getImageData(0, 0, canvas.width, canvas.height))
+  applyFrameOutputSharpening(frame, level)
+  const pixels = linearFrameToRgba8(frame)
+  context.putImageData(new ImageData(pixels.data, pixels.width, pixels.height), 0, 0)
+  return canvas
 }
 
 export function applyFrameWatermark(frame, text) {

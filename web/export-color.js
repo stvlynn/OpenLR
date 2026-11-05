@@ -1,4 +1,5 @@
 import { COLOR_SPACES } from './color-spaces.js'
+import { RENDERED_PHOTO_TYPES } from './formats.js'
 
 export const EXPORT_COLOR_MESSAGES = {
   label: 'Color space',
@@ -6,8 +7,7 @@ export const EXPORT_COLOR_MESSAGES = {
 }
 
 export function exportColorSpaces(format) {
-  if (['image/jpeg', 'image/png', 'image/tiff', 'image/avif', 'image/jxl'].includes(format))
-    return Object.keys(COLOR_SPACES)
+  if (RENDERED_PHOTO_TYPES.includes(format)) return Object.keys(COLOR_SPACES)
   return []
 }
 

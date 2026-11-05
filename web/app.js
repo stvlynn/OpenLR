@@ -20,7 +20,13 @@ import { displayedPhotos, findStacks, smartMatch, stackMenu } from './stacks.js'
 import { exportXmp, readXmp, exportPackage } from './xmp.js'
 import { mountSync, synchronize } from './sync.js'
 import { metadata, describe } from './metadata.js'
-import { readExportOptions, applyWatermark, applyFrameWatermark } from './export-options.js'
+import {
+  readExportOptions,
+  applyWatermark,
+  applyFrameWatermark,
+  applyOutputSharpening
+} from './export-options.js'
+import { applyFrameOutputSharpening } from './output-sharpening.js'
 import {
   normalizeExportSettings,
   loadExportSettings,
@@ -29,6 +35,7 @@ import {
 } from './export-settings.js'
 import { COLOR_SPACES } from './color-spaces.js'
 import { EXPORT_METADATA_MESSAGES, exportMetadataPolicies } from './export-metadata.js'
+import { OUTPUT_SHARPENING_MESSAGES, outputSharpeningLevels } from './export-sharpening.js'
 import { exportColorSpaces, validateExportColorSpace, EXPORT_COLOR_MESSAGES } from './export-color.js'
 import * as db from './catalog.js'
 import * as local from './local.js'
@@ -1830,7 +1837,10 @@ async function execute(command, args) {
           const recipe = command === 'preview' && compare ? neutralRecipe(p.edit) : p.edit
           if (processingVersion(recipe) === 2) {
             const frame = renderFrame(workingFrame(image), recipe, max)
-            if (command === 'export') applyFrameWatermark(frame, args.watermark)
+            if (command === 'export') {
+              applyFrameOutputSharpening(frame, args.outputSharpening)
+              applyFrameWatermark(frame, args.watermark)
+            }
             return finished({
               blob: await encodeFrame(
                 frame,
@@ -1843,7 +1853,10 @@ async function execute(command, args) {
             })
           }
           const canvas = render(image, recipe, max)
-          if (command === 'export') applyWatermark(canvas, args.watermark)
+          if (command === 'export') {
+            applyOutputSharpening(canvas, args.outputSharpening)
+            applyWatermark(canvas, args.watermark)
+          }
           return finished({
             blob: await encodePhoto(
               canvas,
@@ -2154,6 +2167,7 @@ $('export').onclick = () => {
     $('watermark').value = options.watermark ?? ''
     if (options.colorSpace) exportColorSelect.value = options.colorSpace
     exportMetadataSelect.value = options.metadata ?? 'none'
+    exportSharpeningSelect.value = options.outputSharpening ?? 'none'
     $('export-dialog').showModal()
   } catch (error) {
     notice(error.message)
@@ -2192,6 +2206,11 @@ const exportMetadataLabel = document.createElement('label'),
 exportMetadataSelect.id = 'export-metadata'
 exportMetadataLabel.append(EXPORT_METADATA_MESSAGES.label, exportMetadataSelect)
 exportColorLabel.after(exportMetadataLabel)
+const exportSharpeningLabel = document.createElement('label'),
+  exportSharpeningSelect = document.createElement('select')
+exportSharpeningSelect.id = 'export-sharpening'
+exportSharpeningLabel.append(OUTPUT_SHARPENING_MESSAGES.label, exportSharpeningSelect)
+exportMetadataLabel.after(exportSharpeningLabel)
 $('format').onchange = (e) => {
   const spaces = exportColorSpaces(e.target.value),
     previous = exportColorSelect.value
@@ -2207,6 +2226,14 @@ $('format').onchange = (e) => {
   exportMetadataSelect.value = metadataPolicies.includes(previousMetadata) ? previousMetadata : 'none'
   exportMetadataSelect.disabled = !metadataPolicies.length
   exportMetadataLabel.hidden = !metadataPolicies.length
+  const sharpeningLevels = outputSharpeningLevels(e.target.value),
+    previousSharpening = exportSharpeningSelect.value
+  exportSharpeningSelect.replaceChildren(
+    ...sharpeningLevels.map((id) => option(id, OUTPUT_SHARPENING_MESSAGES.levels[id]))
+  )
+  exportSharpeningSelect.value = sharpeningLevels.includes(previousSharpening) ? previousSharpening : 'none'
+  exportSharpeningSelect.disabled = !sharpeningLevels.length
+  exportSharpeningLabel.hidden = !sharpeningLevels.length
   const usesQuality = EXPORT_FORMATS.find((format) => format.value === e.target.value)?.quality
   $('quality').disabled = !usesQuality
   $('quality').closest('label').hidden = !usesQuality

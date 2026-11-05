@@ -6,6 +6,7 @@ import { validateExportColorSpace } from './export-color.js'
 import { LOCAL_CONTROLS, validateLocalTool, validateLocalChanges } from './local-tools.js'
 import { EXPORT_TYPES } from './formats.js'
 import { EXPORT_METADATA_POLICIES, validateExportMetadataPolicy } from './export-metadata.js'
+import { OUTPUT_SHARPENING_LEVELS, validateOutputSharpening } from './export-sharpening.js'
 import { AI_TARGETS } from './ai-models.js'
 import { OPTICS_CONTROLS, validateOptics } from './optics.js'
 import { validateDepthChanges } from './depth-effects.js'
@@ -827,6 +828,9 @@ export const definitions = {
       },
       watermark: string('Optional text at lower right'),
       metadata: string('Photo metadata to include in rendered output', { enum: EXPORT_METADATA_POLICIES }),
+      outputSharpening: string('Sharpen the rendered photo at its final output size', {
+        enum: OUTPUT_SHARPENING_LEVELS
+      }),
       colorSpace: string('Output RGB encoding for JPEG, PNG, TIFF, AVIF and JPEG XL', {
         enum: Object.keys(COLOR_SPACES)
       }),
@@ -911,6 +915,7 @@ export function validateArgs(command, args) {
   if (command === 'export' && args.format !== undefined) {
     validateExportColorSpace(args.format, args.colorSpace)
     validateExportMetadataPolicy(args.format, args.metadata)
+    validateOutputSharpening(args.format, args.outputSharpening)
   }
   if (command === 'export-settings') {
     if (Object.hasOwn(args, 'media') !== Object.hasOwn(args, 'options'))

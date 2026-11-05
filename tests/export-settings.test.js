@@ -210,3 +210,43 @@ test('invalid input and storage failures do not replace previously remembered se
   )
   assert.equal(storage.values.get('export-settings'), original)
 })
+
+test('output sharpening is remembered only for rendered images and none preserves existing settings', () => {
+  for (const format of ['image/jpeg', 'image/png', 'image/tiff', 'image/avif', 'image/jxl']) {
+    const defaults = normalizeExportSettings({ format }, 'photo')
+    assert.deepEqual(normalizeExportSettings({ format, outputSharpening: 'none' }, 'photo'), defaults)
+    for (const outputSharpening of ['low', 'standard', 'high']) {
+      const expected = { ...defaults, outputSharpening }
+      assert.deepEqual(normalizeExportSettings({ format, outputSharpening }, 'photo'), expected)
+      assert.deepEqual(normalizeExportSettings({ format, outputSharpening }, 'video'), expected)
+    }
+  }
+  for (const format of [
+    'original',
+    'original-settings',
+    'application/rdf+xml',
+    'image/x-adobe-dng',
+    'video/mp4',
+    'video/webm'
+  ]) {
+    const media = format.startsWith('video/') ? 'video' : 'photo'
+    assert.deepEqual(
+      normalizeExportSettings({ format, outputSharpening: 'none' }, media),
+      normalizeExportSettings({ format }, media)
+    )
+    assert.throws(() => normalizeExportSettings({ format, outputSharpening: 'standard' }, media))
+  }
+  const storage = storageFixture()
+  saveExportSettings({ media: 'photo', options: { format: 'image/png', outputSharpening: 'high' } }, storage)
+  saveExportSettings({ media: 'video', options: { format: 'image/tiff', outputSharpening: 'low' } }, storage)
+  assert.equal(loadExportSettings(storage).photo.outputSharpening, 'high')
+  assert.equal(loadExportSettings(storage).video.outputSharpening, 'low')
+  const before = storage.values.get('export-settings')
+  assert.throws(() =>
+    saveExportSettings(
+      { media: 'photo', options: { format: 'image/png', outputSharpening: 'maximum' } },
+      storage
+    )
+  )
+  assert.equal(storage.values.get('export-settings'), before)
+})

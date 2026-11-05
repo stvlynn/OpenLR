@@ -31,6 +31,8 @@ JPEG、PNG、TIFF、AVIF 和 JPEG XL 可选择 [输出色彩空间](docs/export-
 
 渲染导出也可选择[仅版权或版权与照片信息](docs/export-metadata.md)，在五种格式中保留明确列出的字段；默认不携带源照片元数据。GUI、CLI 和沿用上次设置共用这一策略，原件导出保持原始字节。
 
+[输出锐化](docs/output-sharpening.md)可在最终导出尺寸上选择低、标准或高强度，默认关闭。它在水印之前处理成片，不改变照片的编辑参数、预览或原件，也可通过 `--outputSharpening standard` 和沿用上次设置使用。
+
 在详情页选择 **Processing → Linear**，或运行 `processing --version 2`，可对静态照片启用[浮点线性处理](docs/linear-working-frames.md)。RAW 保留宽色域 16-bit 解码样本；支持的 PNG/TIFF 整数样本和 AVIF 8/10/12-bit 源直接进入浮点帧，并按支持的 RGB 矩阵/TRC 配置或 SDR 色彩声明转换。TIFF 直接输出 16-bit，其他渲染格式在目标色彩空间量化为 8-bit。Info 和 `state` 显示实际解码精度；不支持的 ICC/CICP 路径可使用明确标注的 8-bit 兼容解码，JPEG XL 按实际解码配置转换整数和浮点源；PQ/HLG 等边界明确使用兼容解码。原有照片和普通新导入默认保持原处理方式，切换可撤销，重置保留处理版本。
 
 ## Agent CLI

@@ -1,4 +1,5 @@
 import { COLOR_SPACES } from './color-spaces.js'
+import { RENDERED_PHOTO_TYPES } from './formats.js'
 import { encodeExifTiff } from './color-containers.js'
 import { assertXmlText, escapeXml } from './xml.js'
 
@@ -20,16 +21,16 @@ export const EXPORT_METADATA_FIELDS = [
   'Artist',
   'Copyright'
 ]
-const formats = ['image/jpeg', 'image/png', 'image/tiff', 'image/avif', 'image/jxl']
 const encoder = new TextEncoder()
 
 export function exportMetadataPolicies(format) {
-  return formats.includes(format) ? [...EXPORT_METADATA_POLICIES] : []
+  return RENDERED_PHOTO_TYPES.includes(format) ? [...EXPORT_METADATA_POLICIES] : []
 }
 
 export function validateExportMetadataPolicy(format, policy = 'none') {
   if (!EXPORT_METADATA_POLICIES.includes(policy)) throw Error('Choose a supported metadata policy')
-  if (policy !== 'none' && !formats.includes(format)) throw Error(EXPORT_METADATA_MESSAGES.unsupported)
+  if (policy !== 'none' && !RENDERED_PHOTO_TYPES.includes(format))
+    throw Error(EXPORT_METADATA_MESSAGES.unsupported)
   return policy
 }
 

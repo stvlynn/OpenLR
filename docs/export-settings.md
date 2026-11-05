@@ -6,6 +6,8 @@ Photos and videos have independent settings, retained across restart. Each recor
 
 Rendered exports also remember the selected [photo metadata policy](export-metadata.md). An omitted or `none` policy preserves the prior default; non-default policies re-read the current original's fields rather than reusing another photo's metadata. Cancellation and failed output keep the previous policy with the other settings.
 
+The independent [output sharpening](output-sharpening.md) level is remembered with rendered photo options, including still-frame exports from video. Its default `none` is omitted from storage; non-default levels are applied to the current image at the current output size. It does not change recipe Sharpening or preview behavior.
+
 ```sh
 node cli/openlr.mjs export --format image/png --colorSpace display-p3 --maxSize 1600 --output first.png
 node cli/openlr.mjs export-previous --output next.png

@@ -2,6 +2,7 @@ import { validateArgs } from './agent-protocol.js'
 import { EXPORT_FORMATS } from './formats.js'
 import { exportColorSpaces, validateExportColorSpace } from './export-color.js'
 import { validateExportMetadataPolicy } from './export-metadata.js'
+import { validateOutputSharpening } from './export-sharpening.js'
 
 export const EXPORT_SETTINGS_MESSAGES = {
   previous: 'Export again',
@@ -26,6 +27,8 @@ export function normalizeExportSettings(options, media) {
     result = { format }
   const metadata = validateExportMetadataPolicy(format, options.metadata)
   if (metadata !== 'none') result.metadata = metadata
+  const outputSharpening = validateOutputSharpening(format, options.outputSharpening)
+  if (outputSharpening !== 'none') result.outputSharpening = outputSharpening
   if (media === 'photo' && format.startsWith('video/')) throw Error(EXPORT_SETTINGS_MESSAGES.selectVideo)
   if (definition.quality) result.quality = options.quality ?? 0.92
   if (exportColorSpaces(format).length) result.colorSpace = colorSpace
