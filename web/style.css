@@ -169,6 +169,34 @@ h1 {
   overflow: auto;
   padding: 12px;
 }
+
+.album-reviews {
+  overflow-wrap: anywhere;
+}
+.album-sharing input {
+  box-sizing: border-box;
+  min-width: 0;
+  width: 100%;
+}
+.album-reviews article {
+  border-top: 1px solid #444;
+  padding-block: 8px;
+}
+.album-reviews h3,
+.album-reviews h4,
+.album-reviews p {
+  margin: 6px 0;
+}
+.review-comment {
+  margin-block: 12px;
+}
+.review-comment p {
+  white-space: pre-wrap;
+}
+.review-comment time {
+  font-size: 11px;
+  color: #aaa;
+}
 #stage canvas {
   max-width: 100%;
   max-height: 100%;

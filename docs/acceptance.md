@@ -188,3 +188,7 @@ Windows／Node 24.9／Chrome 156.0.8078.80 全量 `OPENLR_TEST_CMS=1 OPENLR_TEST
 Windows／Node 24.9／Chrome 156 全量 `OPENLR_TEST_CMS=1 OPENLR_TEST_METADATA=1 npm test` 为 **310/310、零跳过**；新增测试后续仅做格式修正，单项实际浏览器复核通过。测试包含发现／dry-run、参数边界、实际鼠标滚动、state、过期照片拒绝、边界与未提供轴保持、配方保持和 Grid 拒绝。Windows WebView2 与 WSL Ubuntu 24.04／WebKitGTK 2.52.6 均重新构建并通过 `scripts/native-smoke.mjs`，实际 CLI 滚动、PNG 工作区截图、原件逐字节保持通过。本轮运行的是两端主原生 smoke，不重述为七组全套；上一轮七组结果另见上文。
 
 首次原生脚本因新增变量重名在启动前报语法错误，修复后运行；Windows 首次实际执行发现 CSSOM 整数宽度与 DPI 下小数滚动终点相差约 .6 CSS 像素。断言依据整数 extent／小数 offset 的 API 语义改为最多 1px 取整差，并额外验证请求更远坐标仍停在同一终点，复跑通过；生产代码未为测试伪造滚动值。Linux 原断言即通过。当前 macOS、完整模块命令覆盖与最终干净检出验收仍未完成。
+
+2026-11-05 审阅面板补充：功能模块命令审计发现桌面共享审阅区域直接输出协议 JSON。现在按照片显示署名、评论、时间和点赞人数，内部标识不展示，CLI 数据字段保持不变。新增真实 Chrome dispatcher 测试使用明确注入的原生接口夹具，验证结构化返回、HTML 样式评论作为文字、照片分组、空／撤销状态及窄栏无横向溢出；**1/1 通过**，1024×768 截图已实际查看。没有把注入边界记作真实服务器证据。
+
+Windows WebView2 和 WSL Ubuntu／WebKitGTK 均重新构建，并通过各自 `native-sharing-smoke.mjs`：仅本地独立服务器，实际发布编辑图、浏览器点赞／评论、GUI／CLI 回读、无权访问和撤销检查通过。Linux 首次单独调用时漏建服务可执行文件而等待超时；确认文件缺失且无遗留服务后执行 `go build -o build/openlr-share ./cmd/openlr-share`，复跑通过。此次没有重跑全量或七组原生套件，上一轮 310 项结果仍对应上一轮代码。当前 macOS与最终完整性限制不变。

@@ -2,6 +2,51 @@ import { renderPrepared as render } from './render.js'
 import { encodePhoto } from './encode.js'
 import { encodeBlob } from './transfer.js'
 let output
+const REVIEW_MESSAGES = {
+  empty: 'No comments or likes yet.',
+  unavailable: 'Unavailable photo',
+  revoked: 'Album link revoked',
+  likes: (count) => `${count} ${count === 1 ? 'like' : 'likes'}`
+}
+function showReviews(album) {
+  const node = (tag, text) => {
+    const element = document.createElement(tag)
+    element.textContent = text
+    return element
+  }
+  const title = node('h3', album.title)
+  output.replaceChildren(title)
+  if (album.revoked) output.append(node('p', REVIEW_MESSAGES.revoked))
+  const comments = album.comments ?? [],
+    likes = album.likes ?? {}
+  const ids = new Set([...comments.map((comment) => comment.photoId), ...Object.keys(likes)])
+  let count = 0
+  for (const id of ids) {
+    const names = Object.values(likes[id] ?? {})
+    const replies = comments.filter((comment) => comment.photoId === id)
+    if (!names.length && !replies.length) continue
+    const group = document.createElement('article')
+    group.append(
+      node('h4', album.photos?.find((photo) => photo.id === id)?.name ?? REVIEW_MESSAGES.unavailable)
+    )
+    if (names.length) group.append(node('p', `${REVIEW_MESSAGES.likes(names.length)} · ${names.join(', ')}`))
+    for (const comment of replies) {
+      const reply = document.createElement('div')
+      reply.className = 'review-comment'
+      reply.append(node('strong', comment.name), node('p', comment.text))
+      const date = new Date(comment.created)
+      if (Number.isFinite(date.getTime())) {
+        const time = node('time', date.toLocaleString())
+        time.dateTime = date.toISOString()
+        reply.append(time)
+      }
+      group.append(reply)
+    }
+    output.append(group)
+    count++
+  }
+  if (!count) output.append(node('p', REVIEW_MESSAGES.empty))
+}
 const call = (method, ...args) => {
   if (!globalThis.mygo?.call) throw Error('Publishing shared albums requires the desktop app.')
   return globalThis.mygo.call('Sharing.' + method, ...args)
@@ -53,12 +98,12 @@ export async function reviews(id) {
     likes: album.likes,
     revoked: album.revoked
   }
-  if (output) output.textContent = JSON.stringify(result, null, 2)
+  if (output) showReviews(album)
   return result
 }
 export const revoke = async (id) => {
   await call('Revoke', id)
-  if (output) output.textContent = 'Album link revoked'
+  if (output) output.textContent = REVIEW_MESSAGES.revoked
   return { id, revoked: true }
 }
 export function mount(run, report) {
@@ -81,8 +126,8 @@ export function mount(run, report) {
     control.disabled = !globalThis.mygo?.call
     return control
   }
-  output = document.createElement('pre')
-  output.style.whiteSpace = 'pre-wrap'
+  output = document.createElement('div')
+  output.className = 'album-reviews'
   output.setAttribute('role', 'status')
   section.append(
     title,

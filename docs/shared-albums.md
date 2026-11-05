@@ -32,6 +32,8 @@ Review access requires the album's random secret link. Anyone possessing that li
 
 **Read comments & likes** returns server-persisted reviews to the current GUI; the CLI returns the same data. **Revoke album link** denies subsequent album-data and image requests using that link. Republish after revocation creates a new secret link. The viewer uses no third-party scripts or analytics and inserts review text as text rather than HTML.
 
+The desktop groups feedback by photo filename and shows reviewer names, comment text, local timestamps and like counts. It does not display internal identifiers or raw protocol JSON. Empty reviews and revoked links have explicit states; feedback referring to a photo no longer listed by the server is shown under “Unavailable photo.” CLI review fields remain structured and unchanged. Review text is inserted as text in both interfaces, preserving line breaks without executing markup.
+
 ## Verified scope
 
 `go test ./...` covers administrator authentication, album/image access checks, persisted comments/likes, omitted public token fields and revocation. The real acceptance test is:
