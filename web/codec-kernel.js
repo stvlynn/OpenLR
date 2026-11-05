@@ -4,15 +4,23 @@ import { encodeColorPng, encodeColorTiff } from './color-containers.js'
 import { validateExportColorSpace } from './export-color.js'
 import { validateRgbProfile } from './color-profile.js'
 
-async function decoder(format) {
-  if (format === 'image/avif') return import('./vendor/codecs/avif/decode.js')
-  if (format === 'image/jxl') return import('./vendor/codecs/jxl/decode.js')
-  throw Error('Unsupported image format')
-}
-async function encoder(format) {
-  if (format === 'image/avif') return import('./vendor/codecs/avif/encode.js')
-  if (format === 'image/jxl') return import('./vendor/codecs/jxl/encode.js')
-  throw Error('Unsupported image format')
+async function managedRgb(pixels, profile) {
+  // Reuse the host CMS for native RGB samples from both TIFF and AVIF.
+  const tagged = encodeColorPng(pixels, validateRgbProfile(profile)),
+    bitmap = await createImageBitmap(new Blob([tagged], { type: 'image/png' }))
+  try {
+    const canvas =
+      typeof OffscreenCanvas === 'function'
+        ? new OffscreenCanvas(pixels.width, pixels.height)
+        : document.createElement('canvas')
+    canvas.width = pixels.width
+    canvas.height = pixels.height
+    const context = canvas.getContext('2d')
+    context.drawImage(bitmap, 0, 0)
+    return context.getImageData(0, 0, pixels.width, pixels.height)
+  } finally {
+    bitmap.close()
+  }
 }
 function orientTiff(pixels, orientation) {
   if (!orientation || orientation === 1) return pixels
@@ -90,24 +98,15 @@ export async function processCodec({ operation, format, file, pixels, quality, c
               rgba[i + c] = rgba[i + 3] ? Math.min(255, Math.round((rgba[i + c] * 255) / rgba[i + 3])) : 0
         const profile = image.t34675
         if (profile?.length) {
-          const profileData = validateRgbProfile(Uint8Array.from(profile))
           if (interpretation !== 2) throw Error('Unsupported TIFF color profile layout')
-          // The browser applies the embedded RGB ICC through its PNG decoder. No relabeling of samples.
-          const tagged = encodeColorPng({ width: image.width, height: image.height, data: rgba }, profileData)
-          const managed = await createImageBitmap(new Blob([tagged], { type: 'image/png' }))
-          try {
-            const canvas =
-              typeof OffscreenCanvas === 'function'
-                ? new OffscreenCanvas(image.width, image.height)
-                : document.createElement('canvas')
-            canvas.width = image.width
-            canvas.height = image.height
-            const ctx = canvas.getContext('2d')
-            ctx.drawImage(managed, 0, 0)
-            rgba.set(ctx.getImageData(0, 0, image.width, image.height).data)
-          } finally {
-            managed.close()
-          }
+          rgba.set(
+            (
+              await managedRgb(
+                { width: image.width, height: image.height, data: rgba },
+                Uint8Array.from(profile)
+              )
+            ).data
+          )
         }
         result = orientTiff(
           new ImageData(
@@ -117,7 +116,19 @@ export async function processCodec({ operation, format, file, pixels, quality, c
           ),
           image.t274?.[0]
         )
-      } else result = await (await decoder(format)).default(bytes)
+      } else if (format === 'image/avif') {
+        const { decodeAvif } = await import('./color-codecs.js'),
+          decoded = await decodeAvif(bytes)
+        if (decoded.icc.length) result = await managedRgb(decoded, decoded.icc)
+        else if ([1, 2].includes(decoded.colorPrimaries) && [2, 13].includes(decoded.transferCharacteristics))
+          result = new ImageData(decoded.data, decoded.width, decoded.height)
+        else {
+          // Other CICP transfers (including HDR) require the host's original-file decoder.
+          return { bitmap: await createImageBitmap(file) }
+        }
+      } else if (format === 'image/jxl')
+        result = await (await import('./vendor/codecs/jxl/decode.js')).default(bytes)
+      else throw Error('Unsupported image format')
       return { bitmap: await createImageBitmap(result) }
     } else if (operation === 'prepare-color') {
       validateExportColorSpace(format, colorSpace)
@@ -131,10 +142,14 @@ export async function processCodec({ operation, format, file, pixels, quality, c
           profile = makeColorProfile(colorSpace)
         bytes = (format === 'image/tiff' ? encodeColorTiff : encodeColorPng)(converted, profile)
       } else {
-        const module = await encoder(format)
-        // A quality of one selects a true lossless path for reliable archival round trips.
-        const options = { quality: Math.round(quality * 100), lossless: quality === 1 }
-        bytes = await module.default(pixels, options)
+        const { encodeProfiled } = await import('./color-codecs.js')
+        bytes = await encodeProfiled(
+          format,
+          convertSrgbPixels(pixels, colorSpace),
+          makeColorProfile(colorSpace),
+          quality,
+          colorSpace
+        )
       }
       if (!bytes?.byteLength) throw Error('The image encoder returned no data')
       if (ArrayBuffer.isView(bytes))

@@ -4,30 +4,17 @@ import { createHash } from 'node:crypto'
 
 const root = 'web/vendor/codecs'
 await mkdir(root, { recursive: true })
-for (const codec of ['avif', 'jxl']) {
-  const source = 'node_modules/@jsquash/' + codec,
-    target = path.join(root, codec)
-  async function copy(from, to) {
-    await mkdir(to, { recursive: true })
-    for (const item of await readdir(from, { withFileTypes: true })) {
-      if (item.isDirectory()) await copy(path.join(from, item.name), path.join(to, item.name))
-      else if (/\.(js|mjs|wasm)$/.test(item.name) || item.name === 'LICENSE') {
-        const file = path.join(from, item.name),
-          destination = path.join(to, item.name)
-        if (item.name === 'encode.js')
-          await writeFile(
-            destination,
-            '// OpenLR modification: resolve wasm-feature-detect through a local relative module.\n' +
-              (await readFile(file, 'utf8')).replaceAll(
-                "'wasm-feature-detect'",
-                "'../wasm-feature-detect.js'"
-              )
-          )
-        else await copyFile(file, destination)
-      }
-    }
+// Keep rebuilt color-capable bindings intact. Only the unchanged JPEG XL
+// decoder and small upstream metadata/helpers still come from npm.
+for (const [codec, files] of [
+  ['avif', ['LICENSE', 'meta.js']],
+  ['jxl', ['LICENSE', 'decode.js', 'utils.js', 'codec/dec/jxl_dec.js', 'codec/dec/jxl_dec.wasm']]
+]) {
+  for (const name of files) {
+    const destination = path.join(root, codec, name)
+    await mkdir(path.dirname(destination), { recursive: true })
+    await copyFile(path.join('node_modules/@jsquash', codec, name), destination)
   }
-  await copy(source, target)
 }
 await copyFile(
   'node_modules/wasm-feature-detect/dist/esm/index.js',
@@ -77,10 +64,16 @@ await writeFile(
         '@jsquash/jxl': '1.3.0',
         'wasm-feature-detect': '1.9.0'
       },
+      rebuiltBindings: {
+        toolchain: 'Emscripten 3.1.64',
+        avif: 'scripts/codec-color/avif/sources.json',
+        jxlEncoder: 'scripts/codec-color/jxl/sources.json',
+        recipe: 'scripts/codec-color/README.md'
+      },
       files: hashes
     },
     null,
     2
   ) + '\n'
 )
-console.log('Vendored TIFF/AVIF/JPEG XL modules with unchanged WASM and retained notices')
+console.log('Vendored npm codec dependencies; retained rebuilt color bindings and notices')

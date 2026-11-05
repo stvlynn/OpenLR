@@ -1,0 +1,42 @@
+{
+  "emscripten": "3.1.64",
+  "bindings": {
+    "repository": "https://github.com/jamsinclair/jSquash",
+    "revision": "b7fa9ac9ec02f224847ad23d19d115f9e296a368",
+    "paths": [
+      "packages/avif/codec/enc/avif_enc.cpp",
+      "packages/avif/codec/dec/avif_dec.cpp",
+      "packages/avif/codec/pre.js"
+    ],
+    "license": "Apache-2.0",
+    "notice": "LICENSE.jsquash"
+  },
+  "sources": [
+    {
+      "name": "libavif",
+      "revision": "d1c26facaf5a8a97919ceee06814d05d10e25622",
+      "release": "v1.0.1",
+      "url": "https://codeload.github.com/AOMediaCodec/libavif/tar.gz/d1c26facaf5a8a97919ceee06814d05d10e25622",
+      "stripComponents": 1,
+      "license": "BSD-2-Clause and retained third-party notices",
+      "notices": ["LICENSE"]
+    },
+    {
+      "name": "libaom",
+      "revision": "6054fae218eda6e53e1e3b4f7ef0fff4877c7bf1",
+      "release": "v3.7.0",
+      "url": "https://aomedia.googlesource.com/aom/+archive/6054fae218eda6e53e1e3b4f7ef0fff4877c7bf1.tar.gz",
+      "stripComponents": 0,
+      "license": "BSD-2-Clause and Alliance for Open Media Patent License 1.0",
+      "notices": ["LICENSE", "PATENTS"]
+    },
+    {
+      "name": "libwebp",
+      "revision": "e2c85878f6a33f29948b43d3492d9cdaf801aa54",
+      "url": "https://chromium.googlesource.com/webm/libwebp/+archive/e2c85878f6a33f29948b43d3492d9cdaf801aa54.tar.gz",
+      "stripComponents": 0,
+      "license": "BSD-3-Clause and WebM patent grant",
+      "notices": ["COPYING", "PATENTS", "AUTHORS"]
+    }
+  ]
+}

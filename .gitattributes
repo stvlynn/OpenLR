@@ -9,4 +9,6 @@ web/vendor/lensfun/*.xml -text
 web/vendor/lensfun/COPYING.CC_BY-SA_3.0 -text
 web/vendor/sqlite/sql.js -text
 web/vendor/sqlite/LICENSE* -text
+# Retain Emscripten-generated glue exactly, including its blank-line indentation.
+web/vendor/codecs/jxl/codec/enc/jxl_color_enc*.js whitespace=-blank-at-eol
 

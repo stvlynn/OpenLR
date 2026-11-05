@@ -23,6 +23,144 @@ test('shared format list keeps existing order and correct filename extensions', 
     assert.equal(parse(['export', '--format', format, '--dry-run']).args.format, format)
   }
 })
+test('AVIF import distinguishes native sRGB, host-managed CICP and malformed ICC', async (t) => {
+  const server = await serveWorkspace()
+  t.after(server.close)
+  const browser = await chromium.launch({ channel: process.env.CHROME_CHANNEL || 'chrome', headless: true })
+  t.after(() => browser.close())
+  const page = await browser.newPage()
+  await page.goto(server.url)
+  const results = await page.evaluate(async () => {
+    const { default: createEncoder } = await import('./vendor/codecs/avif/codec/enc/avif_enc.js'),
+      { defaultOptions } = await import('./vendor/codecs/avif/meta.js'),
+      { convertSrgbPixels, makeColorProfile } = await import('./color-spaces.js'),
+      { decodeAvif } = await import('./color-codecs.js'),
+      { processCodec } = await import('./codec-kernel.js'),
+      { decodePhoto } = await import('./decode.js'),
+      encoder = await createEncoder()
+    const colors = [
+        [180, 60, 40],
+        [45, 160, 70],
+        [50, 70, 190],
+        [128, 128, 128]
+      ],
+      data = new Uint8ClampedArray(160 * 80 * 4)
+    for (let y = 0; y < 80; y++)
+      for (let x = 0; x < 160; x++) data.set([...colors[Math.floor(x / 40)], 255], (y * 160 + x) * 4)
+    const source = { width: 160, height: 80, data }
+    const encode = (pixels, colorPrimaries, icc = new Uint8Array()) => {
+      const bytes = encoder.encode(pixels.data, pixels.width, pixels.height, {
+        ...defaultOptions,
+        quality: 100,
+        lossless: true,
+        subsample: 3,
+        icc,
+        colorPrimaries,
+        transferCharacteristics: 13,
+        matrixCoefficients: 0,
+        fullRange: true
+      })
+      if (!bytes?.byteLength) throw Error('AVIF fixture encoding failed')
+      return new File([bytes], 'cicp.avif', { type: 'image/avif' })
+    }
+    const maximumError = (samples) =>
+      Math.max(
+        ...samples.flatMap((pixel, i) => pixel.slice(0, 3).map((value, c) => Math.abs(value - colors[i][c])))
+      )
+    const sample = (bitmap) => {
+      const canvas = document.createElement('canvas')
+      canvas.width = bitmap.width
+      canvas.height = bitmap.height
+      if (canvas.width !== 160 || canvas.height !== 80) throw Error('AVIF fixture dimensions changed')
+      const ctx = canvas.getContext('2d')
+      ctx.drawImage(bitmap, 0, 0)
+      bitmap.close()
+      return colors.map((_, i) => Array.from(ctx.getImageData(i * 40 + 20, 40, 1, 1).data))
+    }
+    const records = []
+    for (const [colorSpace, colorPrimaries] of [
+      ['srgb', 1],
+      ['display-p3', 12]
+    ]) {
+      const file = encode(convertSrgbPixels(source, colorSpace), colorPrimaries),
+        native = await decodeAvif(await file.arrayBuffer()),
+        nativeSamples = colors.map((_, i) =>
+          Array.from(native.data.slice((40 * 160 + i * 40 + 20) * 4, (40 * 160 + i * 40 + 20) * 4 + 4))
+        ),
+        calls = [],
+        originalCreateImageBitmap = globalThis.createImageBitmap
+      let managed
+      // Observe the real kernel boundary while retaining the actual browser decoder.
+      globalThis.createImageBitmap = (...args) => {
+        calls.push(args[0] === file ? 'original-file' : args[0] instanceof ImageData ? 'native-rgb' : 'other')
+        return originalCreateImageBitmap.apply(globalThis, args)
+      }
+      try {
+        managed = sample((await processCodec({ operation: 'decode', format: 'image/avif', file })).bitmap)
+      } finally {
+        globalThis.createImageBitmap = originalCreateImageBitmap
+      }
+      const worker = sample(await decodePhoto(file))
+      records.push({
+        colorSpace,
+        colorPrimaries: native.colorPrimaries,
+        transferCharacteristics: native.transferCharacteristics,
+        matrixCoefficients: native.matrixCoefficients,
+        fullRange: native.fullRange,
+        iccLength: native.icc.length,
+        calls,
+        nativeError: maximumError(nativeSamples),
+        managedError: maximumError(managed),
+        workerError: maximumError(worker)
+      })
+    }
+    const rejected = []
+    for (const invalid of ['header', 'layout', 'tag-table']) {
+      const profile = makeColorProfile('display-p3')
+      if (invalid === 'header') profile[36] = 0
+      else if (invalid === 'layout') profile.set(new TextEncoder().encode('CMYK'), 16)
+      else new DataView(profile.buffer).setUint32(128, 65535)
+      const file = encode(convertSrgbPixels(source, 'display-p3'), 12, profile),
+        extracted = await decodeAvif(await file.arrayBuffer())
+      if (extracted.icc.length !== profile.length || extracted.icc.some((byte, i) => byte !== profile[i]))
+        throw Error('Malformed ICC fixture did not preserve its profile')
+      for (const [route, decode] of [
+        [
+          'kernel',
+          async () => (await processCodec({ operation: 'decode', format: 'image/avif', file })).bitmap
+        ],
+        ['worker', () => decodePhoto(file)]
+      ]) {
+        try {
+          const bitmap = await decode()
+          bitmap.close()
+          throw Error('Malformed AVIF ICC silently accepted')
+        } catch (error) {
+          if (error.code !== 'CODEC_ERROR' || !error.message.includes('Invalid RGB ICC profile:')) throw error
+          rejected.push({ invalid, route, code: error.code, message: error.message })
+        }
+      }
+    }
+    return { records, rejected }
+  })
+  for (const record of results.records) {
+    assert.equal(record.iccLength, 0, JSON.stringify(record))
+    assert.equal(record.transferCharacteristics, 13, JSON.stringify(record))
+    assert.equal(record.matrixCoefficients, 0, JSON.stringify(record))
+    assert.equal(record.fullRange, true, JSON.stringify(record))
+    assert.ok(record.managedError <= 3, JSON.stringify(record))
+    assert.ok(record.workerError <= 3, JSON.stringify(record))
+  }
+  assert.equal(results.records[0].colorPrimaries, 1)
+  assert.equal(results.records[0].nativeError, 0)
+  assert.deepEqual(results.records[0].calls, ['native-rgb'])
+  assert.equal(results.records[1].colorPrimaries, 12)
+  assert.ok(results.records[1].nativeError > 10, JSON.stringify(results.records[1]))
+  assert.deepEqual(results.records[1].calls, ['original-file'])
+  assert.equal(results.rejected.length, 6)
+  console.log('AVIF CICP/ICC import branches:', JSON.stringify(results))
+})
+
 test('real TIFF/AVIF/JXL encode/decode round trips, signatures, alpha and GUI export', async (t) => {
   let isolated = false
   const server = await serveWorkspace(() => isolated)

@@ -797,7 +797,7 @@ export const definitions = {
         description: 'Longest edge in pixels. Defaults to original size.'
       },
       watermark: string('Optional text at lower right'),
-      colorSpace: string('Output RGB encoding; JPEG/PNG/TIFF support all spaces, AVIF/JXL support sRGB', {
+      colorSpace: string('Output RGB encoding for JPEG, PNG, TIFF, AVIF and JPEG XL', {
         enum: Object.keys(COLOR_SPACES)
       }),
       quality: number('JPEG/AVIF/JPEG XL quality; 1 selects lossless AVIF/JXL', 0, 1)

@@ -6,58 +6,40 @@
     "@jsquash/jxl": "1.3.0",
     "wasm-feature-detect": "1.9.0"
   },
+  "rebuiltBindings": {
+    "toolchain": "Emscripten 3.1.64",
+    "avif": "scripts/codec-color/avif/sources.json",
+    "jxlEncoder": "scripts/codec-color/jxl/sources.json",
+    "recipe": "scripts/codec-color/README.md"
+  },
   "files": {
     "avif/codec/dec/avif_dec.js": {
-      "bytes": 35029,
-      "sha256": "65d0fd2b2e415bf2712c329694dc2bc257fc54f02572c29d5c46212ae6dc6c3c"
+      "bytes": 37323,
+      "sha256": "2525fb18da8b859f09ed47462f0e07828f7be4da8fb10e22de9d45b3d5a0348d"
     },
     "avif/codec/dec/avif_dec.wasm": {
-      "bytes": 1170930,
-      "sha256": "5c35dde23dfd862088a49a6b8a9fe81f9f9a1a46aaa27de7efd7baa7611c4b47"
+      "bytes": 1158246,
+      "sha256": "b899b4879d8f9683feb478eab64f9ebe4dab14121cb7a7bd0f42bb9c348382b1"
     },
     "avif/codec/enc/avif_enc.js": {
-      "bytes": 39621,
-      "sha256": "c6805e62cae5c1b9870fcc0448437da9e4edfc58c3da264af52361281082c63c"
+      "bytes": 41925,
+      "sha256": "d4aae1e5498ed262bc2abe77722f5792b6ada6bbd9215556be0442bf3e123234"
     },
     "avif/codec/enc/avif_enc.wasm": {
-      "bytes": 3485872,
-      "sha256": "d9f2a95164362af48558d176e619becfd49dd97b50b86c679b47100860522b3d"
+      "bytes": 3507983,
+      "sha256": "3092ab34fa8b23debdb4395ce67dd293b2b70704dd21867ea183b5a70468c115"
     },
     "avif/codec/enc/avif_enc_mt.js": {
-      "bytes": 54909,
-      "sha256": "b2fbada547e79de2b436a63c5eafcd000f169a6a2e6fc02b80ab8e8926db6ed9"
+      "bytes": 59323,
+      "sha256": "99b6a0d3df98812d1d540dc61e9561cfb114c7d3b617ebf2a96b4b389b870bdc"
     },
     "avif/codec/enc/avif_enc_mt.wasm": {
-      "bytes": 3534665,
-      "sha256": "202d7ec9fb7d658df7cbf17fd85d83da724ac9551818c2d5161c858353a683a4"
-    },
-    "avif/codec/enc/avif_enc_mt.worker.mjs": {
-      "bytes": 2057,
-      "sha256": "89a64cae14ec07dec00cdd6df943fad039501e9eef1748fb1504508d4252bafe"
-    },
-    "avif/codec/pre.js": {
-      "bytes": 847,
-      "sha256": "b4d7da800804a2390eefa7805bb5f4e20cf349681334eb9a1715d2c58a1822b2"
-    },
-    "avif/decode.js": {
-      "bytes": 1602,
-      "sha256": "a459aad75db44a7e2834b954539de55e90a83e0f953d80129d24e2d2d47db1e5"
-    },
-    "avif/encode.js": {
-      "bytes": 3645,
-      "sha256": "80e7f6f62a5590ca32e3ecb80f4c356c11e696183f5d0b925bd9350473224b84"
-    },
-    "avif/index.js": {
-      "bytes": 98,
-      "sha256": "281f1d048db337aaa2412503423b2ca99eeb8ec104b471618ee3845930a27688"
+      "bytes": 3547986,
+      "sha256": "7124259d458774916e5d29eac27174dc80f537009eb74de8128ca3bfb011c6b5"
     },
     "avif/meta.js": {
       "bytes": 410,
       "sha256": "d062b5f127754c61cebd2a9bf3ad381ad06494502eb931636561132c207a8570"
-    },
-    "avif/utils.js": {
-      "bytes": 1272,
-      "sha256": "e71535eeee820d68b68ece7c8af761c39f3ddec93d3d957d2f83b19191339e0d"
     },
     "jxl/codec/dec/jxl_dec.js": {
       "bytes": 36091,
@@ -67,57 +49,33 @@
       "bytes": 849240,
       "sha256": "165bde0f48f3bdc39c7806365db5bb3b777df67fefff48050841fb4430062433"
     },
-    "jxl/codec/enc/jxl_enc.js": {
-      "bytes": 47073,
-      "sha256": "5bb33d2a204f43035bfca2c581aff28669706aedae93188372c5d5c81532f8a8"
+    "jxl/codec/enc/jxl_color_enc.js": {
+      "bytes": 39270,
+      "sha256": "e9920659e14cff9f55a986f23dd77d8104099ca50b1b4351ac54cc24ce6192f7"
     },
-    "jxl/codec/enc/jxl_enc.wasm": {
-      "bytes": 1363824,
-      "sha256": "3c6c02df45c0dededab146888789d541b23b9a299cb16d497dce412a3a4bc7d3"
+    "jxl/codec/enc/jxl_color_enc.wasm": {
+      "bytes": 2069440,
+      "sha256": "836ddacfd092c9f32d421e9633ee62b118653541cc7a4268c72cc9b391d73158"
     },
-    "jxl/codec/enc/jxl_enc_mt.js": {
-      "bytes": 62617,
-      "sha256": "4ea9f5ce666a091ef702735bc227587cae8754aaeccf8ca66becd56410a9737e"
+    "jxl/codec/enc/jxl_color_enc_mt.js": {
+      "bytes": 56793,
+      "sha256": "7807a3093a8446cb814c544b0feac3a5af6ffab07c49c9c1546026174fdde9d0"
     },
-    "jxl/codec/enc/jxl_enc_mt.wasm": {
-      "bytes": 1375371,
-      "sha256": "6bb316b4e3b76fa7df5a69bd6e2508779b1c07f135dc0a52aba592fa995c72bf"
+    "jxl/codec/enc/jxl_color_enc_mt.wasm": {
+      "bytes": 2139367,
+      "sha256": "10322ab8a0c17def158e14099dcf744971de0e782f73891d654f696b0281e73f"
     },
-    "jxl/codec/enc/jxl_enc_mt.worker.js": {
-      "bytes": 2155,
-      "sha256": "f68a0bf6a8e4dc30f55bc23dd0feb288cd657d9d1db77ab2bd4387f610a262b2"
+    "jxl/codec/enc/jxl_color_enc_mt_simd.js": {
+      "bytes": 56808,
+      "sha256": "c6fd8de4fc6c6eb9835c53ad8d123c64dbc9cde829b18713480ddc45b838f51a"
     },
-    "jxl/codec/enc/jxl_enc_mt_simd.js": {
-      "bytes": 62607,
-      "sha256": "d76f4142caa4c51bf7f942ca87befebce0a144a5d24d499214f689483ef2d35a"
-    },
-    "jxl/codec/enc/jxl_enc_mt_simd.wasm": {
-      "bytes": 2012670,
-      "sha256": "8b5b3a537864181465e202df1913f7bbe333a168eacc48ddf945c3ce011fdb42"
-    },
-    "jxl/codec/enc/jxl_enc_mt_simd.worker.js": {
-      "bytes": 2160,
-      "sha256": "9e03737c805d768d1853088ee3b47c6f8d3eb00c0fefdeb7d5872bee9f45b3e3"
-    },
-    "jxl/codec/pre.js": {
-      "bytes": 847,
-      "sha256": "b4d7da800804a2390eefa7805bb5f4e20cf349681334eb9a1715d2c58a1822b2"
+    "jxl/codec/enc/jxl_color_enc_mt_simd.wasm": {
+      "bytes": 2347781,
+      "sha256": "eeadf01398a4ecaad856eacc24c108acaf9e887fba675bfe206a54930bcd1083"
     },
     "jxl/decode.js": {
       "bytes": 1625,
       "sha256": "c2c03340ece535c95fca6fbc926ab2246281e03627f0fc1c8a2df541301d68e8"
-    },
-    "jxl/encode.js": {
-      "bytes": 3364,
-      "sha256": "61239b7a373ccd413814685e33a16bee4b633f6b08c7e169f9a5121a43a1e8ff"
-    },
-    "jxl/index.js": {
-      "bytes": 98,
-      "sha256": "281f1d048db337aaa2412503423b2ca99eeb8ec104b471618ee3845930a27688"
-    },
-    "jxl/meta.js": {
-      "bytes": 332,
-      "sha256": "1a17bebcec5c5404d8d4233571128ddfbd268980b3e0933eac3d9e1ee71c1d02"
     },
     "jxl/utils.js": {
       "bytes": 1275,

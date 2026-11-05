@@ -23,3 +23,7 @@ The [independent Little CMS experiment](../../research/color-transform-experimen
 The app adds actual color-preserving target encodings without pretending to recover discarded gamut or precision. Conversion has one owner across workers, fallback, GUI and CLI. ICC integer coefficient rounding and 8-bit quantization remain measurable limits. TIFF's PNG bridge trades extra encoding/memory for the host CMS and must be verified on every native platform. General wide-gamut editing, arbitrary ICC transforms, high-bit-depth export, AVIF/JXL profile bindings and HDR display are still required future work, not removed from the overall objective.
 
 See [product behavior and verification](../export-color.md) and [prior investigation](../../research/color-management.md).
+
+## Extension: AVIF and JPEG XL bindings
+
+The original capability restriction is superseded by rebuilt bindings in `scripts/codec-color/`. All five rendered formats now share the same named-space conversion contract. AVIF exposes native RGB plus ICC/CICP and reuses the existing host-CMS bridge; JPEG XL sets `uses_original_profile` for target samples and retains its existing skcms decoder. Fixed-source builds replace the old encoder artifacts rather than adding target-only parallel encoders. Actual VarDCT/modular ablation supports VarDCT for lossy output; sRGB lossy retains XYB. [AVIF](../../research/avif-color-binding.md) and [JPEG XL](../../research/jxl-color-binding.md) records distinguish independent sample/profile verification from browser and native workflow acceptance.

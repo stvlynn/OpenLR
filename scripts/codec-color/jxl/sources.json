@@ -1,0 +1,38 @@
+[
+  {
+    "name": "libjxl",
+    "repository": "libjxl/libjxl",
+    "revision": "9f544641ec83f6abd9da598bdd08178ee8a003e0",
+    "url": "https://codeload.github.com/libjxl/libjxl/zip/9f544641ec83f6abd9da598bdd08178ee8a003e0"
+  },
+  {
+    "name": "brotli",
+    "repository": "google/brotli",
+    "revision": "35ef5c554d888bef217d449346067de05e269b30",
+    "url": "https://codeload.github.com/google/brotli/zip/35ef5c554d888bef217d449346067de05e269b30"
+  },
+  {
+    "name": "highway",
+    "repository": "google/highway",
+    "revision": "e69083a12a05caf037cabecdf1b248b7579705a5",
+    "url": "https://codeload.github.com/google/highway/zip/e69083a12a05caf037cabecdf1b248b7579705a5"
+  },
+  {
+    "name": "skcms",
+    "repository": "google/skcms",
+    "revision": "64374756e03700d649f897dbd98c95e78c30c7da",
+    "url": "https://codeload.github.com/google/skcms/zip/64374756e03700d649f897dbd98c95e78c30c7da"
+  },
+  {
+    "name": "libpng",
+    "repository": "glennrp/libpng",
+    "revision": "a40189cf881e9f0db80511c382292a5604c3c3d1",
+    "url": "https://codeload.github.com/glennrp/libpng/zip/a40189cf881e9f0db80511c382292a5604c3c3d1"
+  },
+  {
+    "name": "zlib",
+    "repository": "madler/zlib",
+    "revision": "cacf7f1d4e3d44d871b605da3b647f07d718623f",
+    "url": "https://codeload.github.com/madler/zlib/zip/cacf7f1d4e3d44d871b605da3b647f07d718623f"
+  }
+]

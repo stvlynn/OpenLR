@@ -6,14 +6,25 @@ import { exportColorSpaces, validateExportColorSpace } from '../web/export-color
 import { validateArgs } from '../web/agent-protocol.js'
 
 test('output color capabilities reject unsupported combinations without relabeling', () => {
-  assert.equal(exportColorSpaces('image/png').length, 5)
-  assert.deepEqual(exportColorSpaces('image/avif'), ['srgb'])
-  for (const format of ['original', 'image/x-adobe-dng', 'video/mp4', 'application/rdf+xml']) {
+  const spaces = ['srgb', 'display-p3', 'adobe-rgb', 'prophoto-rgb', 'rec2020']
+  for (const format of ['image/png', 'image/tiff', 'image/jpeg', 'image/avif', 'image/jxl']) {
+    assert.deepEqual(exportColorSpaces(format), spaces)
+    for (const colorSpace of spaces) {
+      assert.equal(validateExportColorSpace(format, colorSpace), colorSpace)
+      assert.doesNotThrow(() => validateArgs('export', { format, colorSpace }))
+    }
+  }
+  for (const format of [
+    'original',
+    'original-settings',
+    'image/x-adobe-dng',
+    'video/mp4',
+    'application/rdf+xml'
+  ]) {
     assert.equal(validateExportColorSpace(format), 'srgb')
     assert.throws(() => validateExportColorSpace(format, 'srgb'))
+    assert.throws(() => validateArgs('export', { format, colorSpace: 'srgb' }))
   }
-  assert.throws(() => validateExportColorSpace('image/jxl', 'display-p3'))
-  assert.throws(() => validateArgs('export', { format: 'image/avif', colorSpace: 'display-p3' }))
 })
 
 test('GUI and agent export actual tagged colors, round-trip through import and preserve originals', async (t) => {
@@ -40,6 +51,7 @@ test('GUI and agent export actual tagged colors, round-trip through import and p
     const blob = await new Promise((resolve) => canvas.toBlob(resolve))
     window.sourceBytes = Array.from(new Uint8Array(await blob.arrayBuffer()))
     await window.openlr.run('import', { files: [new File([blob], 'color.png', { type: 'image/png' })] })
+    await window.openlr.run('edit', { key: 'flip', value: true })
   })
   await page.locator('#export').click()
   await page.locator('#format').selectOption('image/png')
@@ -53,9 +65,18 @@ test('GUI and agent export actual tagged colors, round-trip through import and p
   for await (const chunk of stream) chunks.push(chunk)
   assert.ok(Buffer.concat(chunks).includes(Buffer.from('iCCP')))
   await page.locator('#export').click()
-  await page.locator('#format').selectOption('image/avif')
-  assert.equal(await page.locator('#export-color-space').inputValue(), 'srgb')
-  assert.equal(await page.locator('#export-color-space').isDisabled(), true)
+  for (const format of ['image/png', 'image/tiff', 'image/jpeg', 'image/avif', 'image/jxl']) {
+    await page.locator('#format').selectOption(format)
+    assert.equal(await page.locator('#export-color-space').isDisabled(), false)
+    for (const colorSpace of ['srgb', 'display-p3', 'adobe-rgb', 'prophoto-rgb', 'rec2020']) {
+      await page.locator('#export-color-space').selectOption(colorSpace)
+      const selected = await page.evaluate(async () =>
+        (await import('./export-options.js')).readExportOptions()
+      )
+      assert.equal(selected.format, format)
+      assert.equal(selected.colorSpace, colorSpace)
+    }
+  }
   await page.locator('#format').selectOption('original')
   assert.equal(await page.locator('#export-color-space').isVisible(), false)
   await page.locator('#export-dialog button[value=cancel]').click()
@@ -107,21 +128,36 @@ test('GUI and agent export actual tagged colors, round-trip through import and p
       throw Error('JPEG output color conversion changed transparency compositing')
     const before = await run('state')
     const colors = [
-      [180, 60, 40],
-      [45, 160, 70],
+      [128, 128, 128],
       [50, 70, 190],
-      [128, 128, 128]
+      [45, 160, 70],
+      [180, 60, 40]
     ]
     const result = []
+    const hasSignature = (bytes, format) => {
+      const matches = (offset, values) => values.every((value, i) => bytes[offset + i] === value)
+      if (format === 'image/png') return matches(0, [137, 80, 78, 71, 13, 10, 26, 10])
+      if (format === 'image/jpeg') return matches(0, [255, 216, 255])
+      if (format === 'image/tiff') return matches(0, [73, 73, 42, 0]) || matches(0, [77, 77, 0, 42])
+      if (format === 'image/avif')
+        return (
+          matches(4, [102, 116, 121, 112]) &&
+          new TextDecoder('latin1').decode(bytes.subarray(8, 32)).includes('avif')
+        )
+      return matches(0, [255, 10]) || matches(0, [0, 0, 0, 12, 74, 88, 76, 32, 13, 10, 135, 10])
+    }
     for (const colorSpace of ['srgb', 'display-p3', 'adobe-rgb', 'prophoto-rgb', 'rec2020']) {
       for (const [format, extension] of [
         ['image/png', 'png'],
         ['image/tiff', 'tif'],
-        ['image/jpeg', 'jpg']
+        ['image/jpeg', 'jpg'],
+        ['image/avif', 'avif'],
+        ['image/jxl', 'jxl']
       ]) {
         const { blob } = await run('export', { format, colorSpace, quality: 1 })
         const bytes = new Uint8Array(await blob.arrayBuffer())
         const bitmap = await decodePhoto(new File([blob], `result.${extension}`, { type: format }))
+        if (bitmap.width !== 160 || bitmap.height !== 80) throw Error('Export changed image dimensions')
         const canvas = document.createElement('canvas')
         canvas.width = bitmap.width
         canvas.height = bitmap.height
@@ -137,19 +173,23 @@ test('GUI and agent export actual tagged colors, round-trip through import and p
         result.push({
           colorSpace,
           format,
+          mimeType: blob.type,
           maxError,
           pixels,
-          tagged: new TextDecoder('latin1').decode(bytes).includes(format === 'image/png' ? 'iCCP' : 'acsp')
+          signatureValid: hasSignature(bytes, format)
         })
       }
     }
-    for (const args of [
-      { format: 'original', colorSpace: 'display-p3' },
-      { format: 'image/avif', colorSpace: 'prophoto-rgb' }
+    for (const format of [
+      'original',
+      'original-settings',
+      'image/x-adobe-dng',
+      'video/mp4',
+      'application/rdf+xml'
     ]) {
       let rejected = false
       try {
-        await run('export', args)
+        await run('export', { format, colorSpace: 'display-p3' })
       } catch {
         rejected = true
       }
@@ -167,10 +207,11 @@ test('GUI and agent export actual tagged colors, round-trip through import and p
   })
   assert.equal(records.editUnchanged, true)
   assert.equal(records.sourceUnchanged, true)
+  assert.equal(records.result.length, 25)
   for (const row of records.result) {
+    assert.equal(row.mimeType, row.format, JSON.stringify(row))
     assert.ok(row.maxError <= (row.format === 'image/jpeg' ? 5 : 3), JSON.stringify(row))
-    if (row.colorSpace !== 'srgb' || row.format === 'image/tiff')
-      assert.equal(row.tagged, true, JSON.stringify(row))
+    assert.equal(row.signatureValid, true, JSON.stringify(row))
   }
   console.log('Managed color round trips:', JSON.stringify(records.result))
 })

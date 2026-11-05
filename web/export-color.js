@@ -6,8 +6,8 @@ export const EXPORT_COLOR_MESSAGES = {
 }
 
 export function exportColorSpaces(format) {
-  if (['image/jpeg', 'image/png', 'image/tiff'].includes(format)) return Object.keys(COLOR_SPACES)
-  if (['image/avif', 'image/jxl'].includes(format)) return ['srgb']
+  if (['image/jpeg', 'image/png', 'image/tiff', 'image/avif', 'image/jxl'].includes(format))
+    return Object.keys(COLOR_SPACES)
   return []
 }
 

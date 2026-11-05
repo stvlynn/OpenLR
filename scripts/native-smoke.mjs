@@ -27,6 +27,25 @@ const host = spawn(path.resolve(executable), [], {
 })
 const exited = new Promise((resolve) => host.once('exit', (code, signal) => resolve({ code, signal })))
 const call = (...args) => execute(parse([...args, '--session', session]))
+function hasImageSignature(bytes, format) {
+  if (format === 'image/png')
+    return bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))
+  if (format === 'image/jpeg') return bytes.subarray(0, 3).equals(Buffer.from([255, 216, 255]))
+  if (format === 'image/tiff')
+    return (
+      bytes.subarray(0, 4).equals(Buffer.from([73, 73, 42, 0])) ||
+      bytes.subarray(0, 4).equals(Buffer.from([77, 77, 0, 42]))
+    )
+  if (format === 'image/avif')
+    return (
+      bytes.subarray(4, 8).toString('latin1') === 'ftyp' &&
+      bytes.subarray(8, 32).includes(Buffer.from('avif'))
+    )
+  return (
+    bytes.subarray(0, 2).equals(Buffer.from([255, 10])) ||
+    bytes.subarray(0, 12).equals(Buffer.from([0, 0, 0, 12, 74, 88, 76, 32, 13, 10, 135, 10]))
+  )
+}
 try {
   const end = Date.now() + 45000
   for (;;) {
@@ -203,12 +222,17 @@ try {
   const colorBytes = fixturePng({ width: 160, height: 80, data: colorPixels })
   await writeFile(colorSource, colorBytes)
   const colorAsset = (await call('import', colorSource)).added[0]
+  await call('edit', '--key', 'flip', '--value', 'true')
+  const editedColors = colors.toReversed()
+  const beforeColorExport = (await call('state')).photos.find((photo) => photo.id === colorAsset).edit
   const colorResults = []
   for (const colorSpace of ['srgb', 'display-p3', 'adobe-rgb', 'prophoto-rgb', 'rec2020']) {
     for (const [format, extension] of [
       ['image/png', 'png'],
       ['image/tiff', 'tif'],
-      ['image/jpeg', 'jpg']
+      ['image/jpeg', 'jpg'],
+      ['image/avif', 'avif'],
+      ['image/jxl', 'jxl']
     ]) {
       await call('select', '--id', colorAsset)
       const file = await call(
@@ -222,14 +246,15 @@ try {
         '--output',
         path.join(root, `${colorSpace}.${extension}`)
       )
-      if (colorSpace !== 'srgb' || format === 'image/tiff')
-        assert.ok((await readFile(file.path)).includes(Buffer.from(format === 'image/png' ? 'iCCP' : 'acsp')))
+      assert.equal(file.mimeType, format)
+      assert.ok(hasImageSignature(await readFile(file.path), format), `${colorSpace} ${format}: signature`)
       const imported = await call('import', file.path)
       assert.equal(imported.failed.length, 0)
+      assert.equal(imported.added.length, 1)
       const errors = []
       for (let i = 0; i < colors.length; i++) {
         const { color } = await call('sample-color', '--x', String((i + 0.5) / 4), '--y', '0.5')
-        colors[i].forEach((value, c) =>
+        editedColors[i].forEach((value, c) =>
           errors.push(Math.abs(parseInt(color.slice(c * 2 + 1, c * 2 + 3), 16) - value))
         )
       }
@@ -238,6 +263,29 @@ try {
       colorResults.push({ colorSpace, format, maximum })
     }
   }
+  assert.equal(colorResults.length, 25)
+  await call('select', '--id', colorAsset)
+  for (const format of [
+    'original',
+    'original-settings',
+    'image/x-adobe-dng',
+    'video/mp4',
+    'application/rdf+xml'
+  ]) {
+    await assert.rejects(async () => call('export', '--format', format, '--colorSpace', 'display-p3'))
+  }
+  const preservedColor = await call(
+    'export',
+    '--format',
+    'original',
+    '--output',
+    path.join(root, 'color-original.png')
+  )
+  assert.deepEqual(await readFile(preservedColor.path), colorBytes)
+  assert.deepEqual(
+    (await call('state')).photos.find((photo) => photo.id === colorAsset).edit,
+    beforeColorExport
+  )
   assert.deepEqual(await readFile(colorSource), colorBytes)
   console.log('Native color-managed export/import:', JSON.stringify(colorResults))
   console.log(
