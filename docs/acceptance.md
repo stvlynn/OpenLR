@@ -206,3 +206,9 @@ Windows／Node 24.9／Chrome 156 全量 `OPENLR_TEST_CMS=1 OPENLR_TEST_METADATA=
 本轮首次全量为 313 项中 312 通过、1 失败、零跳过：颜色分级手势测试等待条件超时，未启用去雾。原日志保留在忽略的 `.workspace/dehaze-byte-worker-full.log`。独立复跑颜色分级 **3/3** 通过；为共享等待助手加入原调用位置作为错误 cause 后，完整 `OPENLR_TEST_CMS=1 OPENLR_TEST_METADATA=1 npm test` 复跑 **313/313，零失败、零跳过**，约 194.4 秒。没有修改该手势测试、延长等待或削弱断言；首次超时未复现，根因尚未证实，不能把复跑通过称为已修复交互缺陷。复跑记录为 `.workspace/dehaze-byte-worker-full-recheck.log`。
 
 Windows WebView2 与 WSL Ubuntu 24.04／WebKitGTK 2.52.6 均重新构建，七组原生套件分别全部通过，分析和 Original 编码 worker 没有启动回退。24MP 集成首帧约 8.059s、最长主线程间隔 .428s，缓存完成约 1.639/1.744s；[性能记录](dehaze-performance.md)保留资源代价与单次测量限制。仍不声称流畅拖动、当前 macOS 验收或覆盖本轮代码的干净快照交付。
+
+2026-11-06 局部手势取消审计：真实 Chrome 复现 Escape 后残留草稿覆盖层；没有据此声称发生错误持久化。现由局部 UI 适配器统一清除草稿和指针捕获，Escape 与新增 `local-cancel` 共用 dispatcher；工具／视图切换、捕获丢失和 pointercancel 亦清理同一状态。命令可校验照片身份，取消不改变所选工具或已提交配方。
+
+Windows／Node 24.9／Chrome 156 的 `OPENLR_TEST_CMS=1 OPENLR_TEST_METADATA=1 npm test` **314/314、零失败、零跳过**，约 231.9 秒。新增真实鼠标矩阵覆盖笔刷、线性／径向渐变、克隆／修复、保留输入焦点时 Escape、CLI 身份保护、实际 releasePointerCapture、注入 pointercancel、视图／工具／面板切换和取消后的正常绘制／撤销。首次测试误用 SVG path 定位，改为实际 image 覆盖层后才得到残留缺陷证据；捕获释放用例的指针记录改为捕获阶段，以免被已有 stopPropagation 隔断。生产逻辑未为测试延长等待或放宽断言。
+
+Windows WebView2 和 WSL Ubuntu 24.04／WebKitGTK 2.52.6 均重新打包并通过各自 `native-smoke.mjs`，包含实际 CLI 空闲取消结果、所选工具保持，以及原有图像导出／观察／截图检查。本轮运行两端主 smoke，不冒称七组全套或原生鼠标手势已覆盖。Linux 首次同步命令因跨 shell 参数传递错误未进入构建，改为独立脚本后成功。最新核实的 [CI 42059549193](https://github.com/stvlynn/OpenLR/actions/runs/42059549193) 对应 `b9d4849`，三端作业均零步骤；macOS 注释仍为账户付款／额度问题。大图响应、完整交互覆盖和最终快照验收继续保留。

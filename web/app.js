@@ -1312,6 +1312,10 @@ async function execute(command, args, context = {}) {
       inspector = args.inspector ?? true
       cropping = pair = sampling = false
       break
+    case 'local-cancel': {
+      if (args.photoId !== undefined && args.photoId !== p?.id) throw Error('The selected photo changed')
+      return { canceled: localToolsUI.cancelGesture() }
+    }
     case 'local-tool': {
       if (!p) throw Error('Select a photo first')
       if (args.photoId !== undefined && args.photoId !== p.id) throw Error('The selected photo changed')
@@ -2527,6 +2531,11 @@ $('export-dialog').onclose = async (e) => {
   }
 }
 document.onkeydown = (e) => {
+  if (e.key === 'Escape' && localToolsUI?.hasDraft() && !document.querySelector('dialog[open]')) {
+    e.preventDefault()
+    act('local-cancel')
+    return
+  }
   if (document.querySelector('dialog[open]') || e.target.matches('input,select,textarea')) return
   const key = e.key.toLowerCase(),
     mod = e.ctrlKey || e.metaKey

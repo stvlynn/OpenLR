@@ -797,6 +797,9 @@ export const definitions = {
     },
     ['tool']
   ),
+  'local-cancel': entry('Discard the current uncommitted local stroke without changing the tool', {
+    photoId: string('Optional current-photo guard')
+  }),
   screenshot: entry('Capture the visible desktop workspace as a PNG', {}, [], { returns: 'image/png' }),
   presets: entry('List built-in and saved adjustment presets'),
   'preset-save': entry('Save global adjustments as a reusable preset', { name: string('Preset name') }, [

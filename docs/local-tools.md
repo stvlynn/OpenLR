@@ -10,6 +10,8 @@ Recipes live in `photo.edit.localTools = {masks:[], repairs:[]}`. All points are
 
 All changes use the shared serialized application queue, persistence, and undo/redo. UI commands carry a selected-photo guard so a queued gesture cannot write to a newly selected photo. **Show overlay (O)** or the O shortcut toggles the selected mask's true soft coverage. All mask types use the same coverage renderer, including semantic, color/luminance, composite and depth masks, mapped through original coordinates, optics, crop and rotation. The overlay is temporary presentation state and is absent from image exports. CLI `mask-preview --id ID --style gray --output mask.png` exports actual grayscale coverage; `--style rgba` exports a red coverage PNG with proportional alpha. It applies geometry/optics without global color adjustments.
 
+Escape discards the in-progress local stroke, even when an inspector control retains focus. `local-cancel` performs the same operation through the dispatcher and returns `{canceled:true}` only when a draft existed; an optional `photoId` guards the target. Cancellation preserves the selected tool and previously committed edits. Losing pointer capture, pointer cancellation, switching tools or rebuilding/leaving the editing surface also discard the draft and release its capture. A later pointer release cannot commit the canceled stroke. The next stroke remains usable and contributes one normal undo entry.
+
 ## CLI
 
 The native GUI must be running for changes; `schema`, discovery and `--dry-run` are available offline. Existing format/order conventions are unchanged. Examples use JSON objects for nested recipes:

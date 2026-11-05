@@ -20,6 +20,8 @@ Run the native OpenLR GUI before commands that read or change live state. `cli s
 
 The shared queue validates command arguments before executing an action or recording history. This also applies to direct `window.openlr.run` calls, so invalid crop coordinates or non-finite movement cannot corrupt the live draft through browser automation.
 
+`local-cancel` discards an in-progress brush, gradient or repair stroke and reports `{canceled:boolean}` without changing the selected tool or committed recipe. It shares the GUI Escape action and accepts an optional `--photoId` guard. Pointer cancellation and leaving the editing surface clear the same transient state; see [local tools](local-tools.md).
+
 ## Arguments and output
 
 `processing --version 2` selects Linear processing for the active still photo; `--version 1` selects Original processing. Optional `--photoId` guards the intended selection. Both the detail selector and CLI use this command. `state` includes the stored `edit.processVersion` (absence means 1). Full and summary state also expose `processing:{version,input}`: `input` contains the matching decoded source's actual precision/depth and transform or compatibility provenance, or `null` while no matching source is cached. The detail Info text shows that decoded precision. Inspect this field to distinguish native PNG/TIFF/AVIF/JPEG XL samples from `rgba8-display` compatibility; Float32 storage alone does not recover source bits. Switching is undoable; reset and neutral comparison preserve the chosen version. Linear `export --format image/tiff` writes genuine 16-bit target-space samples, while PNG/JPEG/AVIF/JPEG XL use target-space 8-bit output. See [processing contracts and limits](linear-working-frames.md).

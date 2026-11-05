@@ -327,6 +327,7 @@ export function createLocalToolsUI({ container, run, getActive, notify }) {
     asset = '',
     mounted,
     cleanup = () => {},
+    gesture = null,
     draft = null
   const rootItem = () => localToolAt(getActive()?.edit ?? {}, list.value)
   const selectedItem = () =>
@@ -602,7 +603,17 @@ export function createLocalToolsUI({ container, run, getActive, notify }) {
     }
     if (source) circle(source)
   }
+  function cancelGesture() {
+    const previous = gesture
+    const canceled = Boolean(gesture || draft)
+    gesture = draft = null
+    if (previous && mounted?.canvas.hasPointerCapture(previous.pointerId))
+      mounted.canvas.releasePointerCapture(previous.pointerId)
+    if (canceled && mounted) drawOverlay()
+    return canceled
+  }
   function unmount() {
+    cancelGesture()
     cleanup()
     cleanup = () => {}
     mounted = null
@@ -615,7 +626,6 @@ export function createLocalToolsUI({ container, run, getActive, notify }) {
     document.body.append(overlay)
     mounted = { canvas, overlay, image, edit }
     canvas.style.cursor = mode.value === 'off' && !colorPicking ? 'zoom-in' : 'crosshair'
-    let gesture = null
     const point = (event) => {
       const r = canvas.getBoundingClientRect()
       return viewToOriginal(
@@ -628,7 +638,6 @@ export function createLocalToolsUI({ container, run, getActive, notify }) {
       if ((mode.value === 'off' && !colorPicking) || event.button !== 0) return
       event.preventDefault()
       event.stopPropagation()
-      canvas.setPointerCapture(event.pointerId)
       const p = point(event),
         repair = ['clone', 'heal'].includes(mode.value)
       if (!p) {
@@ -651,6 +660,7 @@ export function createLocalToolsUI({ container, run, getActive, notify }) {
         return
       }
       gesture = { id: getActive()?.id, start: p, points: [p], pointerId: event.pointerId, type: mode.value }
+      canvas.setPointerCapture(event.pointerId)
       updateDraft(p)
     }
     function updateDraft(end) {
@@ -693,14 +703,13 @@ export function createLocalToolsUI({ container, run, getActive, notify }) {
       event.stopPropagation()
       const end = point(event)
       if (!end) {
-        gesture = draft = null
-        drawOverlay()
+        cancelGesture()
         return
       }
       updateDraft(end)
       const tool = draft,
         current = gesture
-      gesture = draft = null
+      cancelGesture()
       if (current.id === getActive()?.id) {
         const repair = ['clone', 'heal'].includes(tool.type)
         if (
@@ -713,9 +722,8 @@ export function createLocalToolsUI({ container, run, getActive, notify }) {
         commit(repair ? 'repair.add' : 'mask.add', { [repair ? 'repair' : 'mask']: tool })
       }
     }
-    const cancel = () => {
-      gesture = draft = null
-      drawOverlay()
+    const cancel = (event) => {
+      if (event.pointerId === gesture?.pointerId) cancelGesture()
     }
     const click = (event) => {
       if (mode.value !== 'off' || colorPicking || sampledClick) {
@@ -729,6 +737,7 @@ export function createLocalToolsUI({ container, run, getActive, notify }) {
       pointermove: move,
       pointerup: up,
       pointercancel: cancel,
+      lostpointercapture: cancel,
       click
     }))
       canvas.addEventListener(type, handler)
@@ -744,6 +753,7 @@ export function createLocalToolsUI({ container, run, getActive, notify }) {
         pointermove: move,
         pointerup: up,
         pointercancel: cancel,
+        lostpointercapture: cancel,
         click
       }))
         canvas.removeEventListener(type, handler)
@@ -754,6 +764,7 @@ export function createLocalToolsUI({ container, run, getActive, notify }) {
   }
   sync()
   function setMode(value) {
+    cancelGesture()
     const sample = value === 'color-sample'
     mode.value = sample ? 'off' : value
     picking = false
@@ -787,6 +798,8 @@ export function createLocalToolsUI({ container, run, getActive, notify }) {
   return {
     sync,
     mount,
+    cancelGesture,
+    hasDraft: () => Boolean(gesture || draft),
     setMode,
     getMode: () => (colorPicking ? 'color-sample' : mode.value),
     setRangeColor,

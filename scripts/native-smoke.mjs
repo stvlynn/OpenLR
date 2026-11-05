@@ -772,6 +772,8 @@ try {
     assert.equal(summary.localTool, tool)
     assert.equal(full.mode, 'detail')
     assert.equal(full.compare, false)
+    assert.deepEqual(await call('local-cancel', '--photoId', full.selected), { canceled: false })
+    assert.equal((await call('state')).localTool, tool)
     assert.deepEqual(full.photos.find((photo) => photo.id === full.selected).edit, beforeToolEdit)
   }
   await call('local-select', '--id', localSelection.id)
