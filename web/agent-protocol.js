@@ -801,6 +801,11 @@ export const definitions = {
   'local-cancel': entry('Discard the current uncommitted local stroke without changing the tool', {
     photoId: string('Optional current-photo guard')
   }),
+  'repair-source': entry('Read or set the live clone/heal source; choose either point or picking', {
+    point: pointRule,
+    picking: { type: 'boolean', description: 'Start or cancel choosing a source in the image' },
+    photoId: string('Optional current-photo guard')
+  }),
   screenshot: entry('Capture the visible desktop workspace as a PNG', {}, [], { returns: 'image/png' }),
   presets: entry('List built-in and saved adjustment presets'),
   'preset-save': entry('Save global adjustments as a reusable preset', { name: string('Preset name') }, [
@@ -1072,6 +1077,11 @@ export function validateArgs(command, args) {
   if (command === 'purge' && args.expectedIds?.some((id) => typeof id !== 'string'))
     throw Error('expectedIds must contain photo IDs')
   if (command === 'album-rule') validateSmartRule(args.rule)
+  if (command === 'repair-source') {
+    if (args.point !== undefined && args.picking !== undefined)
+      throw Error('Choose point or picking, not both')
+    if (args.point !== undefined) validateLocalChanges('repair', { source: args.point })
+  }
   if (command === 'grading-set') {
     validateColorGrading(args.value)
     if (args.expectedValue !== undefined) validateColorGrading(args.expectedValue)

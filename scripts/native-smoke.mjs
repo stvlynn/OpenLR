@@ -777,6 +777,36 @@ try {
     assert.deepEqual(full.photos.find((photo) => photo.id === full.selected).edit, beforeToolEdit)
   }
   await call('local-select', '--id', localSelection.id)
+  await call('local-tool', '--tool', 'clone')
+  const repairPoint = { x: 0.25, y: 0.4 }
+  await call('repair-source', '--point', JSON.stringify(repairPoint))
+  assert.throws(() => call('repair-source', '--point', '{"x":2,"y":0.5}'), /between 0 and 1/)
+  assert.deepEqual(await call('repair-source'), { point: repairPoint, picking: false })
+  assert.deepEqual((await call('state', '--summary', 'true')).repairSource, {
+    point: repairPoint,
+    picking: false
+  })
+  await assert.rejects(
+    call('repair-source', '--picking', 'true', '--photoId', 'stale'),
+    /selected photo changed/
+  )
+  await call('repair-source', '--picking', 'true')
+  assert.equal((await call('state')).repairSource.picking, true)
+  const repairSourceCapture = await call(
+    'repair-source',
+    '--picking',
+    'false',
+    '--capture',
+    path.join(root, 'repair-source.png')
+  )
+  assert.equal((await readFile(repairSourceCapture.frame.path)).subarray(1, 4).toString(), 'PNG')
+  const repairState = await call('state')
+  assert.deepEqual(repairState.repairSource, { point: repairPoint, picking: false })
+  assert.deepEqual(repairState.photos.find((photo) => photo.id === repairState.selected).edit, beforeToolEdit)
+  await call('local-tool', '--tool', 'off')
+  console.log(
+    'Native repair source: shared source/picker state, guard, cancellation, actual capture and unchanged recipe passed.'
+  )
   const straightenPhoto = (await call('state')).selected
   await call('straighten-tool', '--axis', 'vertical', '--photoId', straightenPhoto)
   assert.deepEqual((await call('state')).straightenTool, { axis: 'vertical', first: null })

@@ -657,6 +657,7 @@ function snapshot() {
     straightenTool: opticsUI?.snapshot(),
     localSelection: localToolsUI?.selection(),
     localTool: localToolsUI?.getMode() ?? 'off',
+    repairSource: localToolsUI?.repairSource(),
     rangeColor: localToolsUI?.rangeColor() ?? '#808080',
     selectedPoint,
     toneCurve: { channel: curveChannel, index: curveIndex },
@@ -873,6 +874,7 @@ async function execute(command, args, context = {}) {
         straightenTool: opticsUI?.snapshot(),
         localSelection: localToolsUI?.selection(),
         localTool: localToolsUI?.getMode() ?? 'off',
+        repairSource: localToolsUI?.repairSource(),
         rangeColor: localToolsUI?.rangeColor() ?? '#808080',
         selectedPoint,
         toneCurve: { channel: curveChannel, index: curveIndex },
@@ -1322,6 +1324,12 @@ async function execute(command, args, context = {}) {
     case 'local-cancel': {
       if (args.photoId !== undefined && args.photoId !== p?.id) throw Error('The selected photo changed')
       return { canceled: localToolsUI.cancelGesture() }
+    }
+    case 'repair-source': {
+      if (args.photoId !== undefined && args.photoId !== p?.id) throw Error('The selected photo changed')
+      if (args.point === undefined && args.picking === undefined) return localToolsUI.repairSource()
+      if (!p) throw Error('Select a photo first')
+      return localToolsUI.setRepairSource(args)
     }
     case 'local-tool': {
       if (!p) throw Error('Select a photo first')
@@ -2081,6 +2089,7 @@ export function run(command, args = {}, observe, context) {
       const result = await execute(command, args, context)
       libraryHistory.record(previous, photos, albums)
       const unchangedPoll =
+        (command === 'repair-source' && args.point === undefined && args.picking === undefined) ||
         (command === 'viewport' && args.x === undefined && args.y === undefined) ||
         (command === 'external-check' && !result.imported?.length) ||
         (command === 'export-settings' && args.options === undefined)
@@ -2538,6 +2547,11 @@ $('export-dialog').onclose = async (e) => {
   }
 }
 document.onkeydown = (e) => {
+  if (e.key === 'Escape' && localToolsUI?.repairSource().picking && !document.querySelector('dialog[open]')) {
+    e.preventDefault()
+    act('repair-source', { picking: false })
+    return
+  }
   if (e.key === 'Escape' && opticsUI?.active() && !document.querySelector('dialog[open]')) {
     e.preventDefault()
     act('straighten-tool', { axis: 'off' })

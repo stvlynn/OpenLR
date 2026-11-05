@@ -17,6 +17,8 @@
 
 ## 补充验证
 
+- **修复源会话（2026-11-06）**。新增 `repair-source` 将 Clone/Heal 的源点、选择源按钮和 Alt 点击接入共享分发器，完整／摘要状态均可读取。`tests/repair-source-session.test.js` 实际验证通知与只读查询、GUI／CLI／输入焦点下 Escape 取消、过期照片／无效坐标拒绝、修改源点取消未完成笔画、克隆配方和红色目标像素、撤销及视图／照片切换清理。首次全量测试发现新命令缺少嵌套坐标校验；已复用 `validateLocalChanges`，并将互斥参数校验放入协议层。修正后完整浏览器 **317/317 通过，无跳过**，约 258.6 秒。Windows MyGo 明确输出至 `build/release/windows-amd64` 后，主原生 smoke 通过实际源点／选择器状态、拒绝过期照片、取消、PNG 截图及配方不变。第一次修正后原生测试误用异步异常断言处理 CLI 同步校验错误；改为同步断言后同一产物通过，未修改应用行为。日志为忽略目录 `.workspace/repair-source-*`；本项不把前一提交的三平台结果转记为当前提交验收。
+
 - **`38f35af` 远程验收终态**。[同一次 Actions](https://github.com/stvlynn/OpenLR/actions/runs/42073613235) 第二次尝试已全部成功：Windows 浏览器 308 通过、8 项可选资源跳过、0 失败，共 316 项；Windows、Linux、macOS Intel 均完成打包、七组原生套件及产物上传，包含新增拉直 CLI 状态／取消验证。首次视频导入失败与本地 125 次未复现实验见[调查记录](../research/video-poster-failure.md)。未修改应用代码、测试断言或超时后仅重跑失败 Windows 作业；成功重跑不代表视频问题根因已确定。以下进度段保留首轮证据，已由本终态更新。
 
 - **`38f35af` 远程验收进度**。[Actions 42073613235](https://github.com/stvlynn/OpenLR/actions/runs/42073613235) 的 Linux 构建及七组原生套件通过；Windows 浏览器套件为 307 通过、1 失败、8 跳过，新增拉直测试通过。失败在 `export-previous-workflow.test.js` 的视频导入，返回 `createImageBitmap` 图像源不可用，尚未证明根因；本地独立执行该文件 4/4 通过。没有提高超时、改变断言或添加推测性的解码重试。源码已经等待 `loadeddata`；Context7 的 HTMLMediaElement 就绪状态资料不能解释该次失败的实际浏览器状态。macOS 原生套件在本次记录时仍运行，未计为通过。Windows 单作业重跑请求被 GitHub 拒绝；整轮终态和后续失败作业复查仍待完成。日志保存在忽略目录 `.workspace/straighten-*`。

@@ -360,6 +360,7 @@ export function createLocalToolsUI({ container, run, getActive, notify }) {
     if (asset !== photo?.id) {
       asset = photo?.id
       source = null
+      picking = false
       draft = null
       colorPicking = false
       sampledClick = false
@@ -434,6 +435,7 @@ export function createLocalToolsUI({ container, run, getActive, notify }) {
       }
     }
     choose.hidden = !['clone', 'heal'].includes(mode.value)
+    choose.textContent = picking ? 'Cancel source selection' : 'Choose repair source'
     if (mounted) drawOverlay()
   }
   const selection = () => ({
@@ -462,10 +464,10 @@ export function createLocalToolsUI({ container, run, getActive, notify }) {
   list.onchange = () => chooseAdjustment([])
   component.onchange = () => chooseAdjustment(selection().path)
   mode.onchange = () => run('local-tool', { tool: mode.value }).catch((error) => notify(error.message))
-  choose.onclick = () => {
-    picking = true
-    status.textContent = 'Click the image to choose the source.'
-  }
+  choose.onclick = () =>
+    run('repair-source', { picking: !picking, photoId: getActive()?.id }).catch((error) =>
+      notify(error.message)
+    )
   remove.onclick = () => {
     const item = rootItem()
     if (item) commit(['clone', 'heal'].includes(item.type) ? 'repair.remove' : 'mask.remove', { id: item.id })
@@ -614,6 +616,8 @@ export function createLocalToolsUI({ container, run, getActive, notify }) {
   }
   function unmount() {
     cancelGesture()
+    picking = false
+    choose.textContent = 'Choose repair source'
     cleanup()
     cleanup = () => {}
     mounted = null
@@ -653,10 +657,7 @@ export function createLocalToolsUI({ container, run, getActive, notify }) {
         return
       }
       if (repair && (picking || event.altKey || !source)) {
-        source = p
-        picking = false
-        status.textContent = 'Source selected. Drag the target to apply.'
-        drawOverlay()
+        run('repair-source', { point: p, photoId: getActive()?.id }).catch((error) => notify(error.message))
         return
       }
       gesture = { id: getActive()?.id, start: p, points: [p], pointerId: event.pointerId, type: mode.value }
@@ -795,7 +796,26 @@ export function createLocalToolsUI({ container, run, getActive, notify }) {
     if (mounted) drawOverlay()
     return overlayVisible.checked
   }
+  const repairSource = () => ({ point: source ? { ...source } : null, picking })
+  function setRepairSource(args) {
+    if (!['clone', 'heal'].includes(mode.value)) throw Error('Select Clone or Heal texture first')
+    cancelGesture()
+    if (args.point !== undefined) {
+      source = { ...args.point }
+      picking = false
+    } else picking = args.picking
+    choose.textContent = picking ? 'Cancel source selection' : 'Choose repair source'
+    status.textContent = picking
+      ? 'Click the image to choose the source.'
+      : source
+        ? 'Source selected. Drag the target to apply.'
+        : 'Choose a source, then drag the target.'
+    if (mounted) drawOverlay()
+    return repairSource()
+  }
   return {
+    repairSource,
+    setRepairSource,
     sync,
     mount,
     cancelGesture,
