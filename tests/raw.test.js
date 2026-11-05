@@ -69,6 +69,21 @@ test('real WASM decodes generated sensor DNG, orientation, recovery and bitmap o
       }
       const after = await crypto.subtle.digest('SHA-256', await file.arrayBuffer())
       const linear = await decodePhotoLinear(file)
+      const displayed = context.getImageData(0, 0, canvas.width, canvas.height).data
+      let displayMaximumError = 0,
+        linearPreviewDifference = 0
+      for (let i = 0; i < linear.linear.length; i++) {
+        const value = linear.linear[i],
+          expected = Math.round(
+            255 * (value <= 0.0031308 ? 12.92 * value : 1.055 * value ** (1 / 2.4) - 0.055)
+          ),
+          rgbaIndex = Math.floor(i / 3) * 4 + (i % 3)
+        displayMaximumError = Math.max(displayMaximumError, Math.abs(displayed[rgbaIndex] - expected))
+        linearPreviewDifference = Math.max(
+          linearPreviewDifference,
+          Math.abs(displayed[rgbaIndex] - linear.data[rgbaIndex])
+        )
+      }
       const linearFacts = {
         width: linear.width,
         height: linear.height,
@@ -90,6 +105,8 @@ test('real WASM decodes generated sensor DNG, orientation, recovery and bitmap o
         terminated,
         maxLive,
         linearFacts,
+        displayMaximumError,
+        linearPreviewDifference,
         unchanged: String(new Uint8Array(before)) === String(new Uint8Array(after)),
         closedWidth: bitmap.width
       }
@@ -113,9 +130,112 @@ test('real WASM decodes generated sensor DNG, orientation, recovery and bitmap o
     sub8bit: true
   })
   assert.equal(result.maxLive, 1)
+  assert.ok(result.displayMaximumError <= 1, JSON.stringify(result))
+  assert.equal(result.linearPreviewDifference, 0)
   const [red, green, blue] = result.pixels
   assert.ok(red[0] > red[2] + 40, JSON.stringify(result))
   assert.ok(green[1] > green[0] + 40, JSON.stringify(result))
   assert.ok(blue[2] > blue[0] + 40, JSON.stringify(result))
   console.log('RAW decode result:', JSON.stringify(result))
+})
+
+test('legacy RAW thumbnails regenerate on visibility without changing originals or edits', async (t) => {
+  const server = await serveWorkspace()
+  t.after(server.close)
+  const browser = await chromium.launch({ channel: process.env.CHROME_CHANNEL || 'chrome', headless: true })
+  t.after(() => browser.close())
+  for (const scenario of ['native visibility', 'queued row replacement', 'without IntersectionObserver']) {
+    await t.test(scenario, async (t) => {
+      const page = await browser.newPage()
+      t.after(() => page.close())
+      await page.goto(server.url)
+      const id = await page.evaluate(async (bytes) => {
+        const { run } = await import('./app.js'),
+          db = await import('./catalog.js')
+        const imported = await run('import', { files: [new File([new Uint8Array(bytes)], 'legacy.dng')] })
+        const photo = (await db.all('photos')).find((p) => p.id === imported.added[0])
+        const canvas = document.createElement('canvas')
+        canvas.width = canvas.height = 16
+        const ctx = canvas.getContext('2d')
+        ctx.fillStyle = '#ff00ff'
+        ctx.fillRect(0, 0, 16, 16)
+        photo.thumbnail = await new Promise((resolve) => canvas.toBlob(resolve))
+        delete photo.rawPreviewVersion
+        await db.save('photos', photo)
+        return photo.id
+      }, Array.from(makeDng()))
+      if (scenario === 'queued row replacement')
+        await page.addInitScript(() => {
+          window.thumbnailObservers = []
+          window.IntersectionObserver = class {
+            constructor(callback) {
+              this.callback = callback
+            }
+            observe(element) {
+              this.element = element
+              window.thumbnailObservers.push(this)
+            }
+            disconnect() {
+              this.disconnected = true
+            }
+          }
+        })
+      else if (scenario === 'without IntersectionObserver')
+        await page.addInitScript(() => {
+          window.IntersectionObserver = undefined
+        })
+      await page.reload()
+      if (scenario === 'queued row replacement')
+        await page.evaluate(async () => {
+          const { run } = await import('./app.js')
+          await run('state')
+          const rate = run('rate', { value: 1 })
+          // Queue the old row's cache work behind a command that replaces that row.
+          for (const observer of [...window.thumbnailObservers])
+            if (!observer.disconnected && observer.element.isConnected)
+              observer.callback([{ isIntersecting: true }])
+          await rate
+          await run('state')
+          // A reused visible tile must observe its current row after the old job exits.
+          for (const observer of [...window.thumbnailObservers])
+            if (!observer.disconnected && observer.element.isConnected)
+              observer.callback([{ isIntersecting: true }])
+        })
+      await page.waitForFunction(async (id) => {
+        const { run } = await import('./app.js')
+        return (await run('state')).photos.find((p) => p.id === id)?.rawPreviewVersion === 1
+      }, id)
+      const result = await page.evaluate(async (id) => {
+        const { run } = await import('./app.js'),
+          db = await import('./catalog.js')
+        const image = document.querySelector(`[data-photo="${id}"] img`)
+        await image.decode()
+        const canvas = document.createElement('canvas')
+        canvas.width = image.naturalWidth
+        canvas.height = image.naturalHeight
+        canvas.getContext('2d').drawImage(image, 0, 0)
+        const pixel = Array.from(
+          canvas
+            .getContext('2d')
+            .getImageData(Math.floor(canvas.width / 2), Math.floor(canvas.height / 2), 1, 1).data
+        )
+        await run('select', { id })
+        await run('rate', { value: 2 })
+        const saved = (await db.all('photos')).find((p) => p.id === id)
+        return {
+          pixel,
+          version: saved.rawPreviewVersion,
+          edit: saved.edit,
+          bytes: Array.from(new Uint8Array(await (await db.original(id)).file.arrayBuffer()))
+        }
+      }, id)
+      assert.equal(result.version, 1)
+      assert.deepEqual(result.edit, {})
+      assert.deepEqual(result.bytes, Array.from(makeDng()))
+      assert.ok(
+        result.pixel[1] > result.pixel[0] + 40 && result.pixel[1] > result.pixel[2] + 40,
+        JSON.stringify(result.pixel)
+      )
+    })
+  }
 })

@@ -1,5 +1,5 @@
 import { addPhoto } from './catalog.js'
-import { decodePhoto } from './decode.js'
+import { decodePhoto, RAW_PREVIEW_VERSION } from './decode.js'
 import { isVideo, poster } from './video.js'
 import { metadata } from './metadata.js'
 import { readXmp } from './xmp.js'
@@ -71,7 +71,8 @@ export async function importBatch(files, { photos, album, readOriginal, update, 
           ...(media ? { duration: media.duration } : {}),
           metadata: media ? {} : await metadata(file),
           ...settings,
-          thumbnail: await toBlob(render(image, settings.edit || {}, 240))
+          thumbnail: await toBlob(render(image, settings.edit || {}, 240)),
+          rawPreviewVersion: RAW_PREVIEW_VERSION
         }
         await addPhoto(p, file)
         photos.push(p)

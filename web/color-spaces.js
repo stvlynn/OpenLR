@@ -148,11 +148,15 @@ function decode(value, definition) {
   return sign * magnitude ** definition.gamma
 }
 
+export function encodeSrgb(value) {
+  const magnitude = Math.abs(value)
+  return magnitude <= 0.0031308 ? value * 12.92 : Math.sign(value) * (1.055 * magnitude ** (1 / 2.4) - 0.055)
+}
+
 function encode(value, definition) {
   const magnitude = Math.abs(value),
     sign = Math.sign(value)
-  if (definition.curve === 'srgb')
-    return magnitude <= 0.0031308 ? value * 12.92 : sign * (1.055 * magnitude ** (1 / 2.4) - 0.055)
+  if (definition.curve === 'srgb') return encodeSrgb(value)
   if (definition.curve === 'prophoto')
     return magnitude <= 1 / 512 ? value * 16 : sign * magnitude ** (1 / 1.8)
   return sign * magnitude ** (1 / definition.gamma)

@@ -1,5 +1,6 @@
 import { decodePhoto } from './decode.js'
 import { render, toBlob } from './render.js'
+import { whenVisible } from './thumbnail-visibility.js'
 
 const messages = {
   desktop: 'Local folders require the desktop app.',
@@ -128,22 +129,8 @@ export function observeThumbnail(photo, img, onReady) {
         }
       })
   }
-  if (typeof IntersectionObserver === 'undefined') {
-    load()
-    return
-  }
-  const observer = new IntersectionObserver(
-    (entries) => {
-      if (entries.some((entry) => entry.isIntersecting)) {
-        observer.disconnect()
-        observers.delete(observer)
-        load()
-      }
-    },
-    { rootMargin: '120px' }
-  )
-  observers.add(observer)
-  observer.observe(img)
+  const observer = whenVisible(img, load, (finished) => observers.delete(finished))
+  if (observer) observers.add(observer)
 }
 
 export function mount(run, onError) {

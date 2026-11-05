@@ -51,6 +51,9 @@ export const RAW_EXTENSIONS = [
 ]
 export const PHOTO_ACCEPT =
   'image/*,.tif,.tiff,.avif,.jxl,' + RAW_EXTENSIONS.map((ext) => '.' + ext).join(',')
+export const RAW_PREVIEW_VERSION = 1
+export const isRawPhoto = (photo) =>
+  RAW_EXTENSIONS.includes((photo.sourceName || photo.name || '').split('.').pop().toLowerCase())
 const MESSAGES = {
   EMPTY: 'The photo is empty.',
   RAW_DECODE: 'This RAW format or compression could not be decoded.',
@@ -68,7 +71,7 @@ export class PhotoDecodeError extends Error {
 }
 export async function decodePhotoLinear(file) {
   if (!file?.size) throw new PhotoDecodeError('EMPTY')
-  if (!RAW_EXTENSIONS.includes((file.name || '').split('.').pop().toLowerCase()))
+  if (!isRawPhoto(file))
     throw Error('Linear RAW decoding requires a camera RAW/DNG file')
   return (
     await runImageWorker(
@@ -84,8 +87,7 @@ export async function decodePhotoLinear(file) {
 export async function decodePhoto(file) {
   if (file && isVideo(file)) return (await poster(file)).bitmap
   if (!file?.size) throw new PhotoDecodeError('EMPTY')
-  const extension = (file.name || '').split('.').pop().toLowerCase()
-  if (!RAW_EXTENSIONS.includes(extension)) {
+  if (!isRawPhoto(file)) {
     const format = photoFormat(file)
     if (CODEC_TYPES.includes(format)) {
       const { bitmap } = await runImageWorker(

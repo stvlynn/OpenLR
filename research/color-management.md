@@ -4,7 +4,7 @@
 
 ## 证据和结论的边界
 
-后续实现已完成 JPEG/PNG/TIFF 的具名 RGB 输出转换与 ICC 封装，以及 RGB TIFF 的宿主颜色管理桥接，见[产品说明](../docs/export-color.md)和[独立 CMS 消融](color-transform-experiment.md)。下面的代码表保留调查时的基线；它不再代表这些已更新路径的当前状态。后续 AVIF/JXL 目标空间绑定已按固定源代码重建，见 [AVIF](avif-color-binding.md) 与 [JPEG XL](jxl-color-binding.md) 实验。高精度广色域编辑仍未完成。
+后续实现已完成 JPEG/PNG/TIFF 的具名 RGB 输出转换与 ICC 封装，以及 RGB TIFF 的宿主颜色管理桥接，见[产品说明](../docs/export-color.md)和[独立 CMS 消融](color-transform-experiment.md)。下面的代码表保留调查时的基线；它不再代表这些已更新路径的当前状态。后续 AVIF/JXL 目标空间绑定已按固定源代码重建，见 [AVIF](avif-color-binding.md) 与 [JPEG XL](jxl-color-binding.md) 实验。后续 [RAW 实验](high-precision-raw.md) 还发现并修正了默认 BT.709 传递曲线被当作 sRGB 的问题；普通与线性 RAW 入口现共用 16-bit 线性解码、显式 sRGB 显示转换。完整高精度广色域编辑仍未完成，后续边界见 [管线审计](precision-pipeline-audit.md)。
 
 Windows Lightroom 9.4 的真实导出下拉可见 sRGB、Display P3、Adobe RGB、ProPhoto RGB、Rec.2020，默认选中 sRGB。会话没有改选空间并导出图像。因此只能确认菜单存在，不能推断其 ICC 字节、转换意图、传递函数、量化、各格式支持或内部工作空间。现有运行时记录归 [Lightroom 证据](lightroom.md) 所有；静态 REA 资源入口也不能证明这些算法。
 

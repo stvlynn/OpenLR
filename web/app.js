@@ -2,7 +2,8 @@ import { importBatch } from './import-library.js'
 import { validateArgs } from './agent-protocol.js'
 import { decodeFile } from './transfer.js'
 import { isVideo, openVideo, clipRange, exportVideo } from './video.js'
-import { decodePhoto, PHOTO_ACCEPT } from './decode.js'
+import { decodePhoto, PHOTO_ACCEPT, RAW_PREVIEW_VERSION, isRawPhoto } from './decode.js'
+import { whenVisible } from './thumbnail-visibility.js'
 import { Presets } from './presets.js'
 import { LibraryHistory } from './library-history.js'
 import { preferences, setPreferences, mountPreferences, displayName, colorLabels } from './preferences.js'
@@ -187,6 +188,8 @@ function original(id) {
       : db.original(photo?.originalId ?? id)
 }
 function clearSources() {
+  for (const observer of rawThumbnailObservers) observer.disconnect()
+  rawThumbnailObservers.clear()
   localToolsUI?.unmount()
   opticsUI?.unmount()
   stopPlayback()
@@ -231,6 +234,55 @@ function invalidate(id) {
   if (urls.has(id)) URL.revokeObjectURL(urls.get(id))
   urls.delete(id)
 }
+const rawThumbnailJobs = new WeakMap(),
+  rawThumbnailTargets = new WeakMap(),
+  rawThumbnailObservers = new Set()
+function refreshRawThumbnail(photo, img) {
+  if (photo.local || !isRawPhoto(photo) || photo.rawPreviewVersion === RAW_PREVIEW_VERSION) return
+  const previous = rawThumbnailTargets.get(img)
+  if (previous?.photo === photo) return
+  previous?.observer?.disconnect()
+  rawThumbnailObservers.delete(previous?.observer)
+  const observer = whenVisible(
+    img,
+    async () => {
+      if (!img.isConnected || !photos.includes(photo)) return
+      if (!rawThumbnailJobs.has(photo)) {
+        // Cache writes share the command queue, but do not create edit history.
+        const job = queue
+          .then(() => ready)
+          .then(async () => {
+            if (!photos.includes(photo)) return
+            let image
+            try {
+              image = await decodePhoto((await original(photo.id)).file)
+              const thumbnail = await toBlob(render(image, photo.edit, 240))
+              // Replaced rows represent newer edits or another library; never overwrite them.
+              if (!photos.includes(photo)) return
+              await db.save('photos', { ...photo, thumbnail, rawPreviewVersion: RAW_PREVIEW_VERSION })
+              photo.thumbnail = thumbnail
+              photo.rawPreviewVersion = RAW_PREVIEW_VERSION
+              invalidate(photo.id)
+            } finally {
+              image?.close()
+            }
+          })
+        rawThumbnailJobs.set(photo, job)
+        queue = job.catch(() => {})
+      }
+      try {
+        await rawThumbnailJobs.get(photo)
+        if (img.isConnected && photos.includes(photo)) img.src = thumb(photo)
+      } catch (error) {
+        img.title = error.message
+        notice(photo.name + ': ' + error.message)
+      }
+    },
+    (finished) => rawThumbnailObservers.delete(finished)
+  )
+  if (observer) rawThumbnailObservers.add(observer)
+  rawThumbnailTargets.set(img, { photo, observer })
+}
 function tile(photo) {
   const button = document.createElement('button'),
     img = new Image(),
@@ -255,6 +307,7 @@ function tile(photo) {
     invalidate(photo.id)
     img.src = thumb(photo)
   })
+  refreshRawThumbnail(photo, img)
   return button
 }
 function syncTiles(container, items) {
@@ -272,6 +325,7 @@ function syncTiles(container, items) {
       node.dataset.label = p.label || ''
       node.setAttribute('aria-pressed', organization.selection.has(p.id))
       if (node.firstChild.src !== url) node.firstChild.src = url
+      refreshRawThumbnail(p, node.firstChild)
     })
   }
 }
@@ -504,7 +558,10 @@ export { commands } from './agent-protocol.js'
 
 async function preparePhoto(p, changes) {
   const next = { ...p, ...changes }
-  if (changes.edit) next.thumbnail = await toBlob(render(await source(p.id), changes.edit, 240))
+  if (changes.edit) {
+    next.thumbnail = await toBlob(render(await source(p.id), changes.edit, 240))
+    next.rawPreviewVersion = RAW_PREVIEW_VERSION
+  }
   return next
 }
 async function replace(p, changes) {
