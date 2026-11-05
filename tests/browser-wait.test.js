@@ -106,6 +106,7 @@ test('a permanently false predicate has a bounded deadline and useful timeout di
       assert.equal(error.code, 'BROWSER_WAIT_TIMEOUT')
       assert.match(error.message, /timed out after 30 ms/)
       assert.match(error.message, /last result: false/)
+      assert.match(error.cause.stack, /browser-wait\.test\.js:/)
       return true
     }
   )

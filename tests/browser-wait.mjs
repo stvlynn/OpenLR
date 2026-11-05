@@ -20,6 +20,8 @@ export async function waitForAsyncFunction(page, predicate, arg, options = {}) {
   if (polling !== 'raf' && (!Number.isFinite(polling) || polling <= 0 || polling > MAX_TIMER_DELAY))
     throw new TypeError('Browser wait polling must be "raf" or a positive Node timer interval')
 
+  const origin = new Error('Browser wait started here')
+  Error.captureStackTrace(origin, waitForAsyncFunction)
   const deadline = performance.now() + timeout
   let stopped = false,
     pending = false,
@@ -30,7 +32,8 @@ export async function waitForAsyncFunction(page, predicate, arg, options = {}) {
   const timedOut = () =>
     Object.assign(
       new Error(
-        `waitForAsyncFunction timed out after ${timeout} ms (${attempts} evaluations; ${pending ? 'predicate still pending' : 'last result: ' + inspect(lastResult, { depth: 1, maxArrayLength: 8, maxStringLength: 120 })})`
+        `waitForAsyncFunction timed out after ${timeout} ms (${attempts} evaluations; ${pending ? 'predicate still pending' : 'last result: ' + inspect(lastResult, { depth: 1, maxArrayLength: 8, maxStringLength: 120 })})`,
+        { cause: origin }
       ),
       { name: 'TimeoutError', code: 'BROWSER_WAIT_TIMEOUT' }
     )

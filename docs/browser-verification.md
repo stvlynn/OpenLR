@@ -6,6 +6,8 @@ Use Playwright's synchronous `waitForFunction` for directly observable DOM, imag
 
 The helper does not establish that every part of a UI handler has completed. A save may finish its catalog command before output, preference acknowledgment or error presentation. In those cases, wait for a visible terminal state or the actual handler's completion, as the export boundary test does. Preserve separate checks for rendered pixels, exported files, original bytes and reopened records.
 
+Timeout errors retain the original wait call site as their cause, alongside the evaluation count and last result. This identifies the failed condition when one workflow has several waits; a later passing rerun alone does not establish why an earlier timeout occurred.
+
 ## Evidence and comparison
 
 The installed Playwright 1.56.1 polling implementation checks the truthiness of `predicate()` before resolving its value. An async predicate returns a truthy Promise, so a first resolved `false` can end the wait. This was observed in the previous-export CI failure and reproduced with a deliberately held GUI handler. It is a test synchronization defect, not evidence that each affected production operation failed.
