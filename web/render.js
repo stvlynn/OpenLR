@@ -1,26 +1,18 @@
-import { analyzeDehazeOwned, encodeDehaze } from './dehaze-worker-client.js'
+import { analyzeDehazeOwned, encodeDehaze, renderDehazeFrame } from './dehaze-worker-client.js'
 import { analyzeDehaze, createDehazePixel } from './dehaze.js'
 import { geometry } from './geometry.js'
 import { filledSource, filledFrame } from './fill.js'
 import { correctEyes, correctEyesFrame } from './culling.js'
 import { renderLocalSource, applyLocalTools } from './local-tools.js'
 import { renderOpticsSource, warpOpticsFrame } from './optics.js'
-import {
-  createMixer,
-  spatialEffects,
-  toneCurve,
-  createGlobalTone,
-  createFloatMixer,
-  createFloatToneCurve,
-  spatialEffectsFloat
-} from './color.js'
+import { createMixer, spatialEffects, toneCurve } from './color.js'
 import { globalToneParameters, globalToneRgb } from './tone.js'
 import { assertLinearFrame, linearFrameToRgba8, rgba8ToLinearFrame, isLinearFrame } from './pixel-frame.js'
-import { transformFrame } from './frame-geometry.js'
+import { renderCorrectedFrame } from './frame-render.js'
 import { workingFrame } from './working-frames.js'
 import { processingVersion, PROCESS_MESSAGES } from './process-version.js'
 import { controls } from './adjustments.js'
-import { createPointCurves, createPointCurveTables } from './tone-curves.js'
+import { createPointCurveTables } from './tone-curves.js'
 import { createColorGrading } from './color-grading.js'
 import { SRGB8_LINEAR as linear } from './color-spaces.js'
 export { controls } from './adjustments.js'
@@ -162,6 +154,20 @@ export async function prepareDehaze(image, edit = {}, { signal } = {}) {
 export async function renderPrepared(image, edit = {}, maxSize = Infinity, options = {}) {
   const prepared = await prepareDehaze(image, edit, options)
   if (options.signal?.aborted) throw canceledPreparation()
+  if (prepared && processingVersion(edit) === 2) {
+    const original = workingFrame(image)
+    if (!original) throw Error(PROCESS_MESSAGES.missingSource)
+    const { frame } = await renderDehazeFrame(
+      prepared.source,
+      prepared.analysis,
+      edit,
+      maxSize,
+      original,
+      options
+    )
+    if (options.signal?.aborted) throw canceledPreparation()
+    return frameCanvas(frame)
+  }
   if (prepared && processingVersion(edit) !== 2) {
     const { pixels } = await encodeDehaze(prepared.source, prepared.analysis, edit.Dehaze, options)
     if (options.signal?.aborted) throw canceledPreparation()
@@ -172,6 +178,18 @@ export async function renderPrepared(image, edit = {}, maxSize = Infinity, optio
 export async function renderFramePrepared(image, edit = {}, maxSize = Infinity, options = {}) {
   const prepared = await prepareDehaze(image, edit, options)
   if (options.signal?.aborted) throw canceledPreparation()
+  if (prepared) {
+    const { frame } = await renderDehazeFrame(
+      prepared.source,
+      prepared.analysis,
+      edit,
+      maxSize,
+      image,
+      options
+    )
+    if (options.signal?.aborted) throw canceledPreparation()
+    return frame
+  }
   return renderFrame(image, edit, maxSize, prepared)
 }
 
@@ -181,23 +199,13 @@ export function renderFrame(image, edit = {}, maxSize = Infinity, ready = null) 
   const prepared = edit.Dehaze
     ? (ready ?? dehazedSource(image, edit, () => correctedFrame(image, edit)))
     : null
-  const frame = prepared
-    ? transformFrame(prepared.source, edit, maxSize, image, createDehazePixel(edit.Dehaze, prepared.analysis))
-    : transformFrame(correctedFrame(image, edit), edit, maxSize, image)
-  const tone = createGlobalTone(edit),
-    curve = createFloatToneCurve(edit),
-    points = createPointCurves(edit),
-    mixer = createFloatMixer(edit),
-    grading = createColorGrading(edit)
-  for (let i = 0; i < frame.data.length; i += 4) {
-    tone?.(frame.data, i)
-    if (curve) for (let c = 0; c < 3; c++) frame.data[i + c] = curve(frame.data[i + c])
-    if (points) for (let c = 0; c < 3; c++) frame.data[i + c] = points(frame.data[i + c], c)
-    mixer?.(frame.data, i)
-    grading?.(frame.data, i)
-  }
-  spatialEffectsFloat(frame.data, frame.width, frame.height, edit)
-  return assertLinearFrame(frame)
+  return renderCorrectedFrame(
+    prepared?.source ?? correctedFrame(image, edit),
+    edit,
+    maxSize,
+    image,
+    prepared?.analysis
+  )
 }
 
 export function frameCanvas(frame, readPixel = null) {

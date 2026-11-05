@@ -120,3 +120,19 @@ A second experiment kept HTML Canvas and copied successive 64-, 256- or 1024-row
 Reversing the order exposed the cold-start limitation: the first 256-row run took **424.9ms with a 307.0ms maximum gap**, followed by 173.3/213.9ms warm runs. Thus the attractive ~76ms warmed result does not remove the first readback stall. No strip implementation was added to production. This leaves source readback responsiveness unresolved; it does not justify reducing analysis resolution or silently changing pixels. Existing Linear reconstruction and final canvas/later stages remain separate targets.
 
 Ignored evidence: `.workspace/dehaze-readback-ablation-first.mjs`/`.json`, `.workspace/dehaze-readback-ablation.json`, `.workspace/dehaze-readback-tiles.mjs`/`.json` and `.workspace/dehaze-readback-tiles-first.json`. These are performance observations, not browser/native acceptance runs or new pass counts. No production behavior changed in this investigation.
+
+## Linear reconstruction worker (2026-11-06)
+
+An isolated transport ablation used the same 24MP floating haze fixture, already prepared source/map, strength 70, Exposure .2, crop (.1,.1,.8,.8), one quarter-turn and a 1280px output edge. The existing `renderFrame` computed every candidate; float output samples matched exactly. Synchronous execution took 401.0ms with a 402.0ms maximum 10ms-heartbeat gap. Structured cloning took 748.1ms with a 205.4ms gap; explicit copies/transfers took 567.5ms with a 66.9ms gap, including 65.4ms copying. This supports the owned-copy option for responsiveness, not a kernel speedup. Each observation ran once; startup, copy and worker kernel time were included, while first analysis and terminal display encoding were excluded. The 384MB corrected source and 96MB transmission map remained attached; an admitted worker needs additional owned copies of both. Evidence: `.workspace/dehaze-linear-ablation.mjs`/`.json`.
+
+Production integration extracts the unchanged corrected-frame geometry and subsequent float operations into `frame-render.js`. Both synchronous rendering and `dehaze-frame-worker.js` call it. The existing queue allocates source/map copies only at admission, using the same snapshot adapter as Original encoding; it does not keep one copy per queued request. Display encoding remains outside this worker and float export retains the returned samples.
+
+The complete 24MP Linear preview was then measured in separate fresh Chrome instances against the `4720ad0` renderer and the integrated renderer, on the same machine as above. This fixture uses the established 1280×853 full-view output with strengths 40, 70 and 20 and no additional adjustments. Generation/display-surface setup was excluded (2.146/2.160s). All three center probes matched; the separate small-image tests compare complete float and display outputs.
+
+| Stage | Baseline elapsed / maximum gap | Worker elapsed / maximum gap | Worker heartbeat ticks |
+| --- | --- | --- | --- |
+| First analysis + preview, 40 | 6.792s / .454s | 6.867s / .467s | 627 |
+| Cached strength 70 | .344s / .344s | .314s / .093s | 18 |
+| Cached strength 20 | .353s / .353s | .319s / .099s | 18 |
+
+Baseline cached runs had zero heartbeat ticks. Cached responsiveness improved in this observation, while the first gap and first completion did not improve. Peak active renderer working set increased from **1.243GB to 1.591GB**; GPU peaks were .422GB in both runs. Per-process peaks are not a simultaneous total and include fixture/surface/cache storage. These single runs do not establish a general throughput improvement or smooth 60fps interaction. First source preparation, owned copies and terminal display encoding remain costs to address. Evidence: `.workspace/dehaze-linear-integrated.mjs`/`.json`; native correctness results belong in acceptance rather than being inferred from these Chrome timings.

@@ -1315,7 +1315,7 @@ try {
   assert.deepEqual(await readFile(hazeOriginal.path), hazeBytes)
   assert.equal(
     (await call('state')).codecDiagnostics.filter((item) =>
-      ['dehaze-worker.js', 'dehaze-encode-worker.js'].includes(item.worker)
+      ['dehaze-worker.js', 'dehaze-encode-worker.js', 'dehaze-frame-worker.js'].includes(item.worker)
     ).length,
     0,
     'Dehaze analysis and Original encoding must execute in native workers without startup fallback'

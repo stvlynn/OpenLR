@@ -212,3 +212,9 @@ Windows WebView2 与 WSL Ubuntu 24.04／WebKitGTK 2.52.6 均重新构建，七�
 Windows／Node 24.9／Chrome 156 的 `OPENLR_TEST_CMS=1 OPENLR_TEST_METADATA=1 npm test` **314/314、零失败、零跳过**，约 231.9 秒。新增真实鼠标矩阵覆盖笔刷、线性／径向渐变、克隆／修复、保留输入焦点时 Escape、CLI 身份保护、实际 releasePointerCapture、注入 pointercancel、视图／工具／面板切换和取消后的正常绘制／撤销。首次测试误用 SVG path 定位，改为实际 image 覆盖层后才得到残留缺陷证据；捕获释放用例的指针记录改为捕获阶段，以免被已有 stopPropagation 隔断。生产逻辑未为测试延长等待或放宽断言。
 
 Windows WebView2 和 WSL Ubuntu 24.04／WebKitGTK 2.52.6 均重新打包并通过各自 `native-smoke.mjs`，包含实际 CLI 空闲取消结果、所选工具保持，以及原有图像导出／观察／截图检查。本轮运行两端主 smoke，不冒称七组全套或原生鼠标手势已覆盖。Linux 首次同步命令因跨 shell 参数传递错误未进入构建，改为独立脚本后成功。最新核实的 [CI 42059549193](https://github.com/stvlynn/OpenLR/actions/runs/42059549193) 对应 `b9d4849`，三端作业均零步骤；macOS 注释仍为账户付款／额度问题。大图响应、完整交互覆盖和最终快照验收继续保留。
+
+2026-11-06 Linear 去雾重建后台接入：将既有校正后浮点几何／颜色／空间处理抽取到 `frame-render.js`，同步 API、薄 worker 和启动回退共用同一函数。非零去雾的生产预览／浮点导出经既有队列执行，Original 与 Linear 共用入队执行时的快照复制逻辑；原件和已发布 source/map 保持附着，完成后继续检查取消及应用资产／配方身份。
+
+Windows／Node 24.9／Chrome 156 的 `OPENLR_TEST_CMS=1 OPENLR_TEST_METADATA=1 npm test` **315/315、零失败、零跳过**，约 258.3 秒。新增实际 worker 检查完整 Float32 样本与预览字节、有符号／高亮／透明样本、负／正强度、几何和后续颜色效果、并发、运行中终止、重试与启动回退。零去雾路径也经抽取后的共享函数，已有完整回归覆盖其原行为。
+
+重新打包的 Windows WebView2 和 WSL Ubuntu 24.04／WebKitGTK 2.52.6 均通过七组原生套件。主 smoke 独立检查分析、Original 编码和 Linear 重建 worker 均未启动回退，并验证两种处理版本的真实 TIFF 像素、撤销和原件保持；Local 侧车重启等既有套件亦通过。当前 macOS 未执行，本轮不是最终干净快照验收。24MP Linear 完整预览缓存最大间隔由约 .344/.353s 降至 .093/.099s，但首帧约 .467s 间隔未改善，活动渲染进程峰值从约 1.243GB 增至 1.591GB；[测量记录](dehaze-performance.md#linear-reconstruction-worker-2026-11-06)明确保留这些代价和单次实验限制。
