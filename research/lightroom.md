@@ -83,6 +83,16 @@ REA Evidence 在当前服务中 retained，可用 `get_evidence_bundle(detail:"s
 
 后续优先验证：在 Windows 可见 UI 中核对云端/本地入口、选中照片后的编辑工具栏、裁剪与蒙版切换、导出对话框；使用明确授权的示例照片。验证后新增 runtime 证据，不覆盖上述静态/未知边界。
 
+## Windows 启动观察补记
+
+2026-11-05，使用 Computer Use 的 Windows 窗口 API 重新检查本机安装。应用列表分别返回 Adobe Lightroom 与 Adobe Lightroom Classic，均未运行。启动 Adobe Lightroom 后，获得唯一的 Lightroom 窗口，其所属可执行文件为云版安装目录中的 lightroom.exe。该次观察来自 Windows 窗口截图及 UI Automation 树，未生成 REA Evidence ID。
+
+截图显示暗色主窗口及居中的 Adobe 登录对话框，包含电子邮件输入框、取消及继续按钮。后台主窗口可见顶部搜索区、右侧工具栏和底部视图、缩放、胶片条及比较入口。UI Automation 树返回 OrganizeModuleView、OrganizeToolbarGridButton、OrganizeToolbarCompareButton、OrganizeToolbarLoupeButton、filmstrip_button、before_after_button 等节点，搜索所有照片节点标记为 disabled。登录框出现在截图中，但未出现在该次主窗口的可访问性树内，因此仅凭主窗口树不足以判断是否有模态窗口。
+
+观察结束时登录对话框仍打开。未输入凭据、提交认证、导入照片或测量编辑输出。Computer Use 的 Windows 自动化规则明确禁止自动操作用户认证对话框；登录后的裁剪、蒙版及导出行为仍缺运行证据。REA 当前 observe_native_ui 工具要求绑定 Mach-O 目标，也不能代替这次 Windows 观察。
+
+这次运行观察只证实启动界面与当前认证状态。前文“本轮没有启动”的表述指最初静态调查，其边界保持独立；它不适用于本节新增观察。当前 OpenLR 的跨平台端到端测试证明的是自身实现，尚不足以证明与登录后 Lightroom 的全部功能和交互对等。
+
 ### 菜单字节码的补充核对
 
 以 R1/L2 给出的资源范围运行 `node research/menu-bytecode.mjs <安装程序> 26741832 18861 ag.file.export`。无须执行 Adobe 程序。Lua 5.1 主原型第 112、113 条指令在文件偏移 26742316 和 26742320 将导出和沿用上次设置两个不同命令载入相邻寄存器。第 119–121 条分别加载 Photoshop 编辑、智能对象和图层命令。第 129 条 CALL 的两个静态参数可追溯至高级编辑功能开关和编辑器偏好命令。第 584–585 条加载本地目录包含子目录的命令并将其传入函数。
