@@ -16,14 +16,18 @@ export class CropSurface {
         if (moved) notify()
       }
     })
-    stage.addEventListener('pointercancel', () => {
-      if (this.drag) {
+    const cancel = (e) => {
+      if (this.drag && e.pointerId === this.drag.pointer) {
+        const moved = this.drag.box !== this.box
         this.box = this.drag.box
         this.changed = this.drag.changed
         this.drag = null
         this.draw()
+        if (moved) notify()
       }
-    })
+    }
+    stage.addEventListener('pointercancel', cancel)
+    stage.addEventListener('lostpointercapture', cancel)
     stage.addEventListener('dblclick', () => {
       if (this.frame?.isConnected) this.finish()
     })

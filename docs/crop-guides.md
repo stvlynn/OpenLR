@@ -6,6 +6,8 @@
 
 选择 **Show original** 或并排对比会退出裁剪并丢弃未提交的草稿，不会覆盖已保存的裁剪。原图对比显示当前处理版本的中性原图；关闭对比后恢复已保存编辑的画面。这类视图切换不增加撤销记录。
 
+拖拽被取消或编辑区域失去指针捕获时，恢复本次拖拽之前的草稿，并通知实时观察者；之前已经完成但尚未提交的裁剪仍然保留。正常松开鼠标会保留新位置。两种情况都不会自行保存照片，之后仍可用鼠标、方向键或 CLI 调整并完成裁剪。
+
 ## OpenLR 的几何定义
 
 这些是独立实现的 OpenLR 构图规则，不是 Lightroom 辅助线的逐像素复刻。
@@ -38,6 +40,10 @@ node cli/openlr.mjs crop-guide --type none
 `type` 是 `none/grid/thirds/fifths/diagonal/center/triangle/golden-ratio/golden-spiral/aspect-ratios`。可选 `orientation` 是整数 0（默认）、1（水平镜像）、2（垂直镜像）、3（双镜像），省略则保留当前值。返回 `{cropGuide:{type,orientation}}`。完整及摘要 `state` 均返回同样的 `cropGuide`，并继续返回未提交的 `cropDraft`。类型或方向不合法时，schema 会在变更视图之前拒绝命令。变更辅助线会通知实时观察者。
 
 ## 验证
+
+2026-11-06 的指针捕获回归在 Windows / Chrome 156 上通过 `tests/crop.test.js` 与 `tests/crop-guides.test.js`（6/6，无跳过）。真实鼠标拖拽后调用浏览器 `releasePointerCapture`，确认收到可信的捕获与丢失事件、草稿框恢复、观察者收到一次通知、`crop-nudge` 可以继续；再次正常拖动并保存后独立检查 PNG 的 200×180 尺寸与 RGB 像素、原件字节及重新加载后的 crop。该用例是浏览器事件验收，不代表原生系统输入设备验收。
+
+实现沿用已有 `pointercancel` 的撤销语义，由同一处理器处理相应 pointerId 的 `lostpointercapture`。依据 [W3C Pointer Events 捕获释放规则](https://www.w3.org/TR/pointerevents3/#implicit-release-of-pointer-capture)，正常 `pointerup` 后也会释放捕获；因此必须先结束已完成的拖拽，再处理丢失事件，不能无条件撤销。本次没有增加另一套裁剪几何算法。
 
 ```sh
 node --test tests/crop-guides.test.js tests/crop.test.js

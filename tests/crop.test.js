@@ -3,6 +3,95 @@ import assert from 'node:assert/strict'
 import { chromium } from 'playwright-core'
 import { serveWorkspace } from './browser-server.mjs'
 
+test('lost crop capture restores the prior draft and permits subsequent shared commands', async (t) => {
+  const server = await serveWorkspace()
+  t.after(server.close)
+  const browser = await chromium.launch({ channel: process.env.CHROME_CHANNEL || 'chrome' })
+  t.after(() => browser.close())
+  const page = await browser.newPage({ viewport: { width: 1440, height: 960 } })
+  await page.goto(server.url)
+  const run = (command, args = {}) =>
+    page.evaluate(([command, args]) => window.openlr.run(command, args), [command, args])
+  await page.evaluate(async () => {
+    const canvas = document.createElement('canvas')
+    canvas.width = 400
+    canvas.height = 300
+    const ctx = canvas.getContext('2d')
+    ctx.fillStyle = '#6090c0'
+    ctx.fillRect(0, 0, 400, 300)
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve))
+    window.cropOriginal = Array.from(new Uint8Array(await blob.arrayBuffer()))
+    await window.openlr.run('import', { files: [new File([blob], 'capture.png', { type: 'image/png' })] })
+    window.cropEvents = []
+    const stage = document.querySelector('#stage')
+    for (const name of ['gotpointercapture', 'lostpointercapture'])
+      stage.addEventListener(name, (event) => window.cropEvents.push({ name, trusted: event.isTrusted }))
+  })
+  await run('crop-tool')
+  await run('crop-drag', { grip: 'new', x1: 0.2, y1: 0.2, x2: 0.7, y2: 0.8 })
+  const before = await run('state')
+  const bounds = await page.locator('.crop-surface').boundingBox()
+  await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(bounds.x + bounds.width / 2 + 24, bounds.y + bounds.height / 2 + 12)
+  assert.notDeepEqual((await run('state')).cropDraft, before.cropDraft)
+  await page.evaluate(() => {
+    window.cropCancelNotifications = 0
+    window.addEventListener('openlr-change', () => window.cropCancelNotifications++)
+    const stage = document.querySelector('#stage')
+    if (!stage.hasPointerCapture(1)) throw Error('Expected real pointer capture')
+    stage.releasePointerCapture(1)
+  })
+  await page.mouse.move(10, 10)
+  await page.mouse.up()
+  const restored = await run('state')
+  assert.deepEqual(restored.cropDraft, before.cropDraft)
+  assert.deepEqual(restored.photos[0].edit, before.photos[0].edit)
+  assert.equal(await page.evaluate(() => window.cropCancelNotifications), 1)
+  assert.deepEqual(await page.evaluate(() => window.cropEvents), [
+    { name: 'gotpointercapture', trusted: true },
+    { name: 'lostpointercapture', trusted: true }
+  ])
+  const visual = await page.locator('.crop-surface').boundingBox()
+  for (const key of ['x', 'y', 'width', 'height']) assert.ok(Math.abs(visual[key] - bounds[key]) < 1)
+  const nudged = await run('crop-nudge', { dx: 1, dy: 0 })
+  assert.ok(nudged.cropDraft.x > before.cropDraft.x)
+  await run('crop-nudge', { dx: -1, dy: 0 })
+  // A normal pointerup also releases capture; it must retain the completed drag.
+  await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(bounds.x + bounds.width / 2 + 16, bounds.y + bounds.height / 2)
+  await page.mouse.up()
+  const completed = (await run('state')).cropDraft
+  assert.ok(completed.x > before.cropDraft.x)
+  await run('crop-tool')
+  assert.deepEqual((await run('state')).photos[0].edit.crop, completed)
+  const output = await page.evaluate(async () => {
+    const { blob } = await window.openlr.run('export', { format: 'image/png' })
+    const bitmap = await createImageBitmap(blob)
+    const canvas = document.createElement('canvas')
+    canvas.width = bitmap.width
+    canvas.height = bitmap.height
+    const ctx = canvas.getContext('2d')
+    ctx.drawImage(bitmap, 0, 0)
+    const { blob: original } = await window.openlr.run('export', { format: 'original' })
+    return {
+      width: bitmap.width,
+      height: bitmap.height,
+      pixel: Array.from(ctx.getImageData(10, 10, 1, 1).data),
+      originalMatches:
+        JSON.stringify(Array.from(new Uint8Array(await original.arrayBuffer()))) ===
+        JSON.stringify(window.cropOriginal)
+    }
+  })
+  assert.equal(output.width, 200)
+  assert.equal(output.height, 180)
+  assert.deepEqual(output.pixel, [96, 144, 192, 255])
+  assert.equal(output.originalMatches, true)
+  await page.reload()
+  assert.deepEqual((await run('state')).photos[0].edit.crop, completed)
+})
+
 test('draw, resize, move, cancel and commit a crop using the workspace handles', async (t) => {
   const server = await serveWorkspace()
   t.after(server.close)
