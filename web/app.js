@@ -10,23 +10,17 @@ import {
 } from './process-version.js'
 import { workingFrame } from './working-frames.js'
 import { inputPrecisionDescription } from './input-color.js'
-import { isVideo, openVideo, clipRange, exportVideo } from './video.js'
+import { isVideo, openVideo, clipRange } from './video.js'
 import { PHOTO_ACCEPT, photoPreviewVersions } from './decode.js'
 import { whenVisible } from './thumbnail-visibility.js'
 import { Presets } from './presets.js'
 import { LibraryHistory } from './library-history.js'
 import { preferences, setPreferences, mountPreferences, displayName, colorLabels } from './preferences.js'
 import { displayedPhotos, findStacks, smartMatch, stackMenu } from './stacks.js'
-import { exportXmp, readXmp, exportPackage } from './xmp.js'
+import { readXmp } from './xmp.js'
 import { mountSync, synchronize } from './sync.js'
 import { metadata, describe } from './metadata.js'
-import {
-  readExportOptions,
-  applyWatermark,
-  applyFrameWatermark,
-  applyOutputSharpening
-} from './export-options.js'
-import { applyFrameOutputSharpening } from './output-sharpening.js'
+import { readExportOptions } from './export-options.js'
 import {
   normalizeExportSettings,
   loadExportSettings,
@@ -36,7 +30,7 @@ import {
 import { COLOR_SPACES } from './color-spaces.js'
 import { EXPORT_METADATA_MESSAGES, exportMetadataPolicies } from './export-metadata.js'
 import { OUTPUT_SHARPENING_MESSAGES, outputSharpeningLevels } from './export-sharpening.js'
-import { exportColorSpaces, validateExportColorSpace, EXPORT_COLOR_MESSAGES } from './export-color.js'
+import { exportColorSpaces, EXPORT_COLOR_MESSAGES } from './export-color.js'
 import * as db from './catalog.js'
 import * as local from './local.js'
 import * as external from './external.js'
@@ -47,15 +41,15 @@ import { CropSurface } from './crop-surface.js'
 import { CROP_GUIDES, CROP_GUIDE_MESSAGES } from './crop-guides.js'
 import { drawHistogram, histogram, autoExposure } from './histogram.js'
 import { controls, render, renderFrame, toBlob } from './render.js'
-import { saveExport } from './desktop.js'
-import { encodePhoto, encodeFrame } from './encode.js'
+import { saveExport, beginExportFolder } from './desktop.js'
+import { preparePhotoExport } from './photo-export.js'
+import { exportSelection, BATCH_EXPORT_MESSAGES } from './batch-export.js'
 import { getImageWorkerDiagnostics } from './image-worker.js'
-import { EXPORT_FORMATS, EXPORT_TYPES, exportFilename } from './formats.js'
+import { EXPORT_FORMATS } from './formats.js'
 import { Organization, namedVersion, findVersion } from './organization.js'
 import { mountOrganization } from './organization-ui.js'
 import { mergePhotos } from './merge.js'
 import { mountMerge } from './merge-ui.js'
-import { exportDng } from './dng.js'
 import {
   validateOptics,
   compileOptics,
@@ -432,6 +426,7 @@ async function draw() {
   $('stage').hidden = !detail
   document.querySelector('aside').hidden = !detail || !inspector || p?.deleted
   $('actions').hidden = !p
+  $('export').textContent = BATCH_EXPORT_MESSAGES.action(organization.selection.size)
   $('export').disabled = !p
   $('export-previous').disabled = !p
   $('detail').disabled = !p
@@ -680,7 +675,7 @@ async function applySelection(changes, recordUndo = false) {
     compare = false
   }
 }
-async function execute(command, args) {
+async function execute(command, args, context = {}) {
   const p = active()
   if (
     [
@@ -705,6 +700,16 @@ async function execute(command, args) {
     organization.selection.size === 1
   const nextId = advance ? visible()[visible().findIndex((row) => row.id === selected) + 1]?.id : null
   switch (command) {
+    case 'export-selection':
+      return exportSelection({
+        visible: visible(),
+        selection: organization.selection,
+        args,
+        original,
+        prepare: preparePhotoExport,
+        reservedFolder: context.exportSink,
+        openFolder: () => beginExportFolder(args.outputDirectory)
+      })
     case 'export-settings':
       return args.options === undefined ? loadExportSettings() : saveExportSettings(args)
     case 'history-undo':
@@ -1796,80 +1801,13 @@ async function execute(command, args) {
           return execute('export', previous)
         }
         case 'export':
-        case 'preview': {
-          const media = isVideo(p) ? 'video' : 'photo',
-            options = command === 'export' ? normalizeExportSettings(args, media) : null,
-            finished = (result) => (options ? { ...result, exportSettings: { media, options } } : result)
-          if (options) args = options
-          const format =
-            command === 'preview'
-              ? 'image/png'
-              : enumValue(args.format ?? (isVideo(p) ? 'video/mp4' : 'image/jpeg'), EXPORT_TYPES)
-          const colorSpace = validateExportColorSpace(format, args.colorSpace)
-          if (format.startsWith('video/')) {
-            if (!isVideo(p)) throw Error('Select a video')
-            await source(p.id)
-            return finished(await exportVideo((await original(p.id)).file, p, { ...args, format }))
-          }
-          if (format === 'original') return finished({ blob: (await original(p.id)).file, filename: p.name })
-          if (format === 'image/x-adobe-dng') {
-            return finished(await exportDng(p, (await original(p.id)).file))
-          }
-          if (format === 'original-settings')
-            return finished(await exportPackage(p, (await original(p.id)).file))
-          if (format === 'application/rdf+xml')
-            return finished({
-              blob: new Blob([exportXmp(p)], { type: format }),
-              filename: exportFilename(p.name, format)
-            })
-          const max =
-            args.maxSize === undefined
-              ? command === 'preview'
-                ? 1280
-                : Infinity
-              : number(args.maxSize, 1, Number.MAX_SAFE_INTEGER)
-          const metadataOptions =
-            command === 'export' && args.metadata && args.metadata !== 'none'
-              ? {
-                  policy: args.metadata,
-                  source: await metadata((await original(p.id)).file, { strict: true })
-                }
-              : undefined
-          const image = await source(p.id)
-          const recipe = command === 'preview' && compare ? neutralRecipe(p.edit) : p.edit
-          if (processingVersion(recipe) === 2) {
-            const frame = renderFrame(workingFrame(image), recipe, max)
-            if (command === 'export') {
-              applyFrameOutputSharpening(frame, args.outputSharpening)
-              applyFrameWatermark(frame, args.watermark)
-            }
-            return finished({
-              blob: await encodeFrame(
-                frame,
-                format,
-                number(args.quality ?? 0.92, 0, 1),
-                colorSpace,
-                metadataOptions
-              ),
-              filename: exportFilename(p.name, format)
-            })
-          }
-          const canvas = render(image, recipe, max)
-          if (command === 'export') {
-            applyOutputSharpening(canvas, args.outputSharpening)
-            applyWatermark(canvas, args.watermark)
-          }
-          return finished({
-            blob: await encodePhoto(
-              canvas,
-              format,
-              number(args.quality ?? 0.92, 0, 1),
-              colorSpace,
-              metadataOptions
-            ),
-            filename: exportFilename(p.name, format)
+        case 'preview':
+          return preparePhotoExport(p, args, {
+            original,
+            source: (id) => source(id, p.edit),
+            preview: command === 'preview',
+            comparison: compare
           })
-        }
         default:
           throw Error('Unknown command: ' + command)
       }
@@ -1884,13 +1822,13 @@ const ready = Promise.all([db.all('photos'), db.all('albums'), presets.load()]).
   ;[photos, albums] = values
   await draw()
 })
-export function run(command, args = {}, observe) {
+export function run(command, args = {}, observe, context) {
   const next = queue
     .then(() => ready)
     .then(async () => {
       validateArgs(command, args)
       const previous = libraryHistory.checkpoint(command, photos, albums, local.state())
-      const result = await execute(command, args)
+      const result = await execute(command, args, context)
       libraryHistory.record(previous, photos, albums)
       const unchangedPoll =
         (command === 'external-check' && !result.imported?.length) ||
@@ -2170,12 +2108,31 @@ $('export').onclick = () => {
     if (options.colorSpace) exportColorSelect.value = options.colorSpace
     exportMetadataSelect.value = options.metadata ?? 'none'
     exportSharpeningSelect.value = options.outputSharpening ?? 'none'
+    $('export-dialog').querySelector('h2').textContent = BATCH_EXPORT_MESSAGES.title(
+      organization.selection.size
+    )
     $('export-dialog').showModal()
   } catch (error) {
     notice(error.message)
   }
 }
-async function savePreparedExport(command, options) {
+function reserveExportFolder() {
+  const pending = beginExportFolder()
+  // The serialized dispatcher may still be finishing another command.
+  pending.catch(() => {})
+  return pending
+}
+async function savePreparedExport(command, options, exportSink) {
+  if (organization.selection.size > 1) {
+    const result = await run(
+      'export-selection',
+      command === 'export-previous' ? { previous: true } : options,
+      undefined,
+      { exportSink }
+    )
+    if (!result.cancelled) notice(BATCH_EXPORT_MESSAGES.complete(result.files.length))
+    return
+  }
   const result = await run(command, options)
   if (await saveExport(result.blob, result.filename)) {
     try {
@@ -2187,7 +2144,11 @@ async function savePreparedExport(command, options) {
 }
 previousExportButton.onclick = async () => {
   try {
-    await savePreparedExport('export-previous')
+    await savePreparedExport(
+      'export-previous',
+      undefined,
+      organization.selection.size > 1 ? reserveExportFolder() : undefined
+    )
   } catch (error) {
     if (error.code === 'EXPORT_SETTINGS_MISSING') $('export').click()
     else notice(error.message)
@@ -2250,6 +2211,16 @@ $('format').onchange = (e) => {
     $(id).closest('label').hidden = !renderOptions
   }
 }
+$('export-dialog')
+  .querySelector('form')
+  .addEventListener('submit', (event) => {
+    if (event.submitter?.value !== 'ok' || organization.selection.size < 2) return
+    event.preventDefault()
+    // Request directory permission during the actual user gesture, before queueing work.
+    const exportSink = reserveExportFolder()
+    $('export-dialog').close('')
+    savePreparedExport('export', readExportOptions(), exportSink).catch((error) => notice(error.message))
+  })
 $('export-dialog').onclose = async (e) => {
   const accepted = e.target.returnValue === 'ok'
   e.target.returnValue = ''

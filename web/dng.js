@@ -226,17 +226,22 @@ export async function isDng(file) {
   return false
 }
 
+export async function validateDngSource(file) {
+  const original = await isDng(file)
+  if (!original && !RAW_EXTENSIONS.includes((file.name || '').split('.').pop().toLowerCase()))
+    throw Error(
+      'DNG export requires an existing DNG or a decodable camera RAW; rendered images are not RAW sources'
+    )
+  return original
+}
+
 export async function exportDng(photo, file) {
-  if (await isDng(file))
+  if (await validateDngSource(file))
     return {
       blob: new Blob([file], { type: 'image/x-adobe-dng' }),
       filename: photo.name.replace(/\.[^.]+$/, '') + '.dng',
       mode: 'original-dng'
     }
-  if (!RAW_EXTENSIONS.includes((file.name || '').split('.').pop().toLowerCase()))
-    throw Error(
-      'DNG export requires an existing DNG or a decodable camera RAW; rendered images are not RAW sources'
-    )
   const frame = await decodePhotoLinear(file)
   return {
     blob: encodeLinearDng(frame, {

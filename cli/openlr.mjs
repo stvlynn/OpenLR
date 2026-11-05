@@ -45,6 +45,7 @@ const help = {
     '--args': 'JSON argument object; --body is an alias',
     '--dry-run': 'Validate and print the request without contacting the GUI',
     '--output': 'Destination for image bytes; refuses an existing file unless --force',
+    '--output-dir': 'Destination folder for export-selection; existing names receive numbered suffixes',
     '--force': 'Allow overwriting the output file',
     '--session': 'Agent session file; default is the platform user config/OpenLR/agent.json'
   },
@@ -162,7 +163,11 @@ export function parse(argv) {
       if (!Number.isFinite(timeout) || timeout <= 0)
         throw Error('Timeout must be a positive number of seconds')
     } else if (key === 'output') output = value
-    else if (key === 'capture') capture = value
+    else if (key === 'output-dir') {
+      if (command !== 'export-selection') throw Error('--output-dir requires export-selection')
+      if (!value.trim()) throw Error('--output-dir requires a directory path')
+      args.outputDirectory = path.resolve(value)
+    } else if (key === 'capture') capture = value
     else if (key === 'file' && command === 'import') files.push(value)
     else if (Object.hasOwn(parameters, key)) args[key] = parseValue(value, parameters[key])
     else throw new Error('Unknown option: --' + key)
@@ -171,6 +176,17 @@ export function parse(argv) {
     if (files.length && Object.hasOwn(args, 'files'))
       throw new Error('Use either import paths or --args files')
     if (files.length) args.files = files
+  }
+  if (command === 'export-selection') {
+    if (output || force)
+      throw Error(
+        'export-selection uses --output-dir and numbered filenames; --output and --force are not supported'
+      )
+    if (args.outputDirectory !== undefined) {
+      if (typeof args.outputDirectory !== 'string' || !args.outputDirectory.trim())
+        throw Error('--output-dir requires a directory path')
+      args.outputDirectory = path.resolve(args.outputDirectory)
+    }
   }
   // Edit values depend on the selected key; an aspect is an enum string.
   if (command === 'edit' && args.key === 'aspect' && typeof args.value === 'number')
@@ -342,8 +358,13 @@ export async function execute(request) {
     throw new Error('Cannot reach the live OpenLR GUI agent: ' + (error.cause?.message || error.message))
   }
   const envelope = await response.json()
-  if (!response.ok || !envelope.ok)
-    throw new Error(envelope.error?.message || envelope.error || 'Agent returned HTTP ' + response.status)
+  if (!response.ok || !envelope.ok) {
+    const error = new Error(
+      envelope.error?.message || envelope.error || 'Agent returned HTTP ' + response.status
+    )
+    if (envelope.error?.details) error.details = envelope.error.details
+    throw error
+  }
   const result = envelope.result
   if (capture) {
     if (!envelope.frame) throw Error('The desktop did not return a workspace image')
@@ -446,7 +467,13 @@ export async function main(argv = process.argv.slice(2)) {
     if (!result?.rawOutput) process.stdout.write(JSON.stringify(result ?? null, null, 2) + '\n')
   } catch (error) {
     process.stderr.write(
-      JSON.stringify({ error: { code: 'OPENLR_CLI_ERROR', message: error.message } }) + '\n'
+      JSON.stringify({
+        error: {
+          code: 'OPENLR_CLI_ERROR',
+          message: error.message,
+          ...(error.details ? { details: error.details } : {})
+        }
+      }) + '\n'
     )
     process.exitCode = 1
   }

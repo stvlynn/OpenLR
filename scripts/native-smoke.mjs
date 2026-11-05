@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
 import { createServer } from 'node:http'
-import { mkdtemp, readFile, writeFile, access, rm } from 'node:fs/promises'
+import { mkdtemp, mkdir, readdir, readFile, writeFile, access, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
@@ -1151,6 +1151,115 @@ try {
   )
   console.log(
     'Native output sharpening: both processing versions, five actual formats, pixel readback, previous settings, unchanged preview/recipe/original and preservation rejection passed.'
+  )
+  const batchDirectory = path.join(root, 'batch-exports'),
+    batchIds = [],
+    batchExpected = new Map(),
+    batchOriginals = new Map()
+  await mkdir(batchDirectory)
+  await writeFile(path.join(batchDirectory, 'shared.tif'), 'existing destination')
+  for (const version of [1, 2]) {
+    const directory = path.join(root, 'batch-source-' + version)
+    await mkdir(directory)
+    const sourcePath = path.join(directory, 'shared.png'),
+      sourceBytes = makePng({
+        width: 40,
+        height: 24,
+        bits: 8,
+        colorType: 2,
+        srgb: 0,
+        data: Array.from({ length: 40 * 24 * 3 }, (_, i) => 40 + version * 25 + (Math.floor(i / 3) % 40) * 2)
+      })
+    await writeFile(sourcePath, sourceBytes)
+    const imported = await call('import', sourcePath)
+    assert.deepEqual(imported.failed, [])
+    assert.equal(imported.added.length, 1)
+    const id = imported.added[0]
+    batchIds.push(id)
+    batchOriginals.set(id, sourceBytes)
+    await call('processing', '--version', String(version))
+    await call('edit', '--key', 'Exposure', '--value', String(version * 0.2))
+    const reference = await call(
+      'export',
+      '--format',
+      'image/tiff',
+      '--maxSize',
+      '20',
+      '--colorSpace',
+      'display-p3',
+      '--outputSharpening',
+      'standard',
+      '--output',
+      path.join(root, 'batch-reference-' + version + '.tif')
+    )
+    batchExpected.set(id, await readFile(reference.path))
+  }
+  await call('sort', '--order', 'name', '--direction', 'asc')
+  await call('select-many', '--ids', JSON.stringify([...batchIds].reverse()))
+  await call('view', '--mode', 'detail')
+  const batchBefore = await call('state'),
+    batchOrder = batchBefore.photos.filter((photo) => batchIds.includes(photo.id)).map((photo) => photo.id),
+    batchPreviewBefore = await call('preview', '--output', path.join(root, 'batch-before.png'))
+  const batchCapture = await call(
+      'export-selection',
+      '--format',
+      'image/tiff',
+      '--maxSize',
+      '20',
+      '--colorSpace',
+      'display-p3',
+      '--outputSharpening',
+      'standard',
+      '--output-dir',
+      batchDirectory,
+      '--capture',
+      path.join(root, 'batch-workspace.png')
+    ),
+    batchResult = batchCapture.result
+  assert.equal((await readFile(batchCapture.frame.path)).subarray(1, 4).toString(), 'PNG')
+  assert.equal(batchCapture.selected, batchBefore.selected)
+  assert.equal(batchResult.total, 2)
+  assert.equal(batchResult.cancelled, false)
+  assert.deepEqual(
+    batchResult.files.map((file) => file.id),
+    batchOrder
+  )
+  assert.equal(new Set(batchResult.files.map((file) => file.filename.toLowerCase())).size, 2)
+  assert.ok(batchResult.files.every((file) => file.filename.toLowerCase() !== 'shared.tif'))
+  assert.equal(await readFile(path.join(batchDirectory, 'shared.tif'), 'utf8'), 'existing destination')
+  for (const file of batchResult.files) {
+    const bytes = await readFile(file.path),
+      buffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
+      ifd = UTIF.decode(buffer)[0]
+    UTIF.decodeImage(buffer, ifd)
+    assert.deepEqual([ifd.width, ifd.height], [20, 12])
+    assert.deepEqual(bytes, batchExpected.get(file.id))
+    assert.equal(file.bytes, bytes.length)
+    assert.equal(path.dirname(file.path), batchDirectory)
+  }
+  const batchAfter = await call('state'),
+    batchPreviewAfter = await call('preview', '--output', path.join(root, 'batch-after.png'))
+  for (const key of ['selected', 'selection', 'photos', 'mode', 'compare'])
+    assert.deepEqual(batchAfter[key], batchBefore[key], key)
+  assert.deepEqual(await readFile(batchPreviewAfter.path), await readFile(batchPreviewBefore.path))
+  assert.equal((await call('export-settings')).photo.outputSharpening, 'standard')
+  const batchAgain = await call('export-selection', '--previous', 'true', '--output-dir', batchDirectory)
+  assert.equal(batchAgain.files.length, 2)
+  for (const file of batchAgain.files) assert.deepEqual(await readFile(file.path), batchExpected.get(file.id))
+  assert.equal((await readdir(batchDirectory)).length, 5)
+  for (const id of batchIds) {
+    await call('select', '--id', id)
+    const original = await call(
+      'export',
+      '--format',
+      'original',
+      '--output',
+      path.join(root, 'batch-original-' + id + '.png')
+    )
+    assert.deepEqual(await readFile(original.path), Buffer.from(batchOriginals.get(id)))
+  }
+  console.log(
+    'Native batch export: actual folder files, collision preservation, mixed processing versions, TIFF pixels, previous settings, unchanged selection/preview/recipes and original bytes passed.'
   )
   console.log(
     'Native GUI/CLI passed RAW, editing, PNG preview, original bytes, live observation, workspace capture, person segmentation, TIFF export and WebDAV sync.'

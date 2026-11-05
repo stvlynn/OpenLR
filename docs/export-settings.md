@@ -1,6 +1,6 @@
 # Reusing export settings
 
-**Export again** and Ctrl/Command-E export the active photo or video with its last completed settings. The native File menu's **Export with previous settings** and `export-previous` command use the same operation. Without usable settings, the GUI opens Export; the CLI reports `Choose export settings first`. Ordinary Export restores the last completed options, so cancelling a draft does not change the next export.
+**Export again** and Ctrl/Command-E export the active photo or video with its last completed settings, or the selected group when more than one item is selected. Group output uses the [batch export](batch-export.md) folder workflow. The native File menu's **Export with previous settings** and `export-previous` command use the same operation. Without usable settings, the GUI opens Export; the CLI reports `Choose export settings first`. Ordinary Export restores the last completed options, so cancelling a draft does not change the next export.
 
 Photos and videos have independent settings, retained across restart. Each record contains the effective format, supported quality and color space, and applicable long-edge size and watermark. Reuse renders the current asset and edits; it does not reuse an earlier image. Existing format constraints still apply, including RAW-only DNG output. Exporting a still frame from a video remains supported and updates the video slot.
 

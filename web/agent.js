@@ -49,7 +49,14 @@ export async function dispatch(command, args = {}, capture = false) {
     }
     return { ok: true, result }
   } catch (error) {
-    return { ok: false, error: { code: 'COMMAND_FAILED', message: error.message || String(error) } }
+    return {
+      ok: false,
+      error: {
+        code: 'COMMAND_FAILED',
+        message: error.message || String(error),
+        ...(error.details ? { details: error.details } : {})
+      }
+    }
   }
 }
 

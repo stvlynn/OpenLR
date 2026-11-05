@@ -1,12 +1,109 @@
 package main
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/base64"
 	"os"
 	"path/filepath"
 	"testing"
 )
+
+func TestFolderExportCollisionsAndCompletion(t *testing.T) {
+	d := &Desktop{}
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "PHOTO.png"), []byte("existing"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	folder, err := d.BeginExportFolder(context.Background(), root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.EndExportFolder(folder.ID)
+	for index, want := range []string{"photo-2.png", "photo-3.png", "旅行.png"} {
+		name := "photo.png"
+		if index == 2 {
+			name = want
+		}
+		transfer, err := d.BeginFolderExport(folder.ID, name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if transfer.Filename != want || transfer.Path != filepath.Join(root, want) {
+			t.Fatalf("unexpected result: %+v", transfer)
+		}
+		if _, err := os.Stat(transfer.Path); !os.IsNotExist(err) {
+			t.Fatal("destination exposed before completion")
+		}
+		if err := d.WriteExport(transfer.ID, base64.StdEncoding.EncodeToString([]byte(want))); err != nil {
+			t.Fatal(err)
+		}
+		if err := d.FinishExport(transfer.ID); err != nil {
+			t.Fatal(err)
+		}
+		data, err := os.ReadFile(transfer.Path)
+		if err != nil || string(data) != want {
+			t.Fatalf("output: %q %v", data, err)
+		}
+	}
+	existing, _ := os.ReadFile(filepath.Join(root, "PHOTO.png"))
+	if string(existing) != "existing" {
+		t.Fatal("existing destination overwritten")
+	}
+	entries, _ := os.ReadDir(root)
+	if len(entries) != 4 {
+		t.Fatal("temporary export files remained")
+	}
+}
+
+func TestFolderExportRaceAndCancellationPreserveFiles(t *testing.T) {
+	d := &Desktop{}
+	root := t.TempDir()
+	folder, err := d.BeginExportFolder(context.Background(), root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"../escape.jpg", "a/b.jpg", "a\\b.jpg", ".", ""} {
+		if _, err := d.BeginFolderExport(folder.ID, name); err == nil {
+			t.Fatalf("accepted filename %q", name)
+		}
+	}
+	transfer, err := d.BeginFolderExport(folder.ID, "race.png")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := d.WriteExport(transfer.ID, "ZXhwb3J0"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(transfer.Path, []byte("concurrent writer"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.FinishExport(transfer.ID); err == nil {
+		t.Fatal("replaced concurrent destination")
+	}
+	data, _ := os.ReadFile(transfer.Path)
+	if string(data) != "concurrent writer" {
+		t.Fatal("concurrent file changed")
+	}
+	partial, err := d.BeginFolderExport(folder.ID, "partial.png")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := d.WriteExport(partial.ID, "cGFydGlhbA=="); err != nil {
+		t.Fatal(err)
+	}
+	d.EndExportFolder(folder.ID)
+	if err := d.FinishExport(partial.ID); err == nil {
+		t.Fatal("closed transfer remained")
+	}
+	if _, err := d.BeginFolderExport(folder.ID, "later.png"); err == nil {
+		t.Fatal("closed folder remained")
+	}
+	entries, _ := os.ReadDir(root)
+	if len(entries) != 1 || entries[0].Name() != "race.png" {
+		t.Fatal("cancellation left partial output")
+	}
+}
 
 func TestExportStreamsBeyond64MiB(t *testing.T) {
 	d := &Desktop{exports: make(map[string]*exportFile)}

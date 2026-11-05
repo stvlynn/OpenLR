@@ -93,3 +93,7 @@ With the crop tool open, `state --summary true` exposes the uncommitted rectangl
 `crop-drag --grip new --x1 0.25 --y1 0.25 --x2 0.75 --y2 0.75` draws a draft covering the center half of the corrected canvas in each dimension when the aspect ratio is unlocked. Use `move` or a compass handle such as `se` to reposition or resize it. Aspect constraints and boundary handling are shared with pointer dragging. Add `--capture crop.png` to inspect the draft before committing.
 
 `crop-guide --type golden-spiral --orientation 1` selects a view-only composition guide through the same dispatcher as **Composition guide**. Full and summary `state` return `cropGuide:{type,orientation}` independently of `cropDraft`. Nine guide types and None are available; switching guides leaves draft, photo pixels and export unchanged. See [crop guides](crop-guides.md) for independent geometry definitions, orientation and session lifetime.
+
+## Selection export
+
+`export-selection --format image/png --output-dir ./exports --capture workspace.png` writes the selected visible group in display order, returns completed file paths/byte counts, and can capture the actual workspace. `--previous true` reuses each media slot. Single `export` still returns one active-photo file. See [batch export](batch-export.md) for IDs, mixed media, collisions, partial errors and completion semantics.

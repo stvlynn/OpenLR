@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -19,6 +20,7 @@ import (
 type Desktop struct {
 	mu      sync.Mutex
 	exports map[string]*exportFile
+	folders map[string]string
 	opened  []string
 	agent   *agentBroker
 }
@@ -50,8 +52,9 @@ func (d *Desktop) CaptureWorkspace(ctx context.Context) (string, error) {
 }
 
 type exportFile struct {
-	file *os.File
-	path string
+	file   *os.File
+	path   string
+	folder string
 }
 
 // BeginExport returns an opaque transfer ID, or an empty string on cancel.
@@ -80,6 +83,9 @@ func (d *Desktop) beginExport(path string) (string, error) {
 	}
 	id := hex.EncodeToString(token[:])
 	d.mu.Lock()
+	if d.exports == nil {
+		d.exports = make(map[string]*exportFile)
+	}
 	d.exports[id] = &exportFile{file: file, path: path}
 	d.mu.Unlock()
 	return id, nil
@@ -122,7 +128,150 @@ func (d *Desktop) FinishExport(id string) error {
 	if err := transfer.file.Close(); err != nil {
 		return err
 	}
+	if transfer.folder != "" {
+		return publishNewExport(tempPath, transfer.path)
+	}
 	return os.Rename(tempPath, transfer.path)
+}
+
+// publishNewExport never replaces a file created after filename selection.
+// Hard links publish complete bytes atomically. Filesystems without hard links
+// use an exclusive destination and bounded-memory copy, removing it on failure.
+func publishNewExport(source, destination string) error {
+	if err := os.Link(source, destination); err == nil {
+		return nil
+	} else if errors.Is(err, os.ErrExist) {
+		return err
+	}
+	input, err := os.Open(source)
+	if err != nil {
+		return err
+	}
+	defer input.Close()
+	output, err := os.OpenFile(destination, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		return err
+	}
+	completed := false
+	defer func() {
+		output.Close()
+		if !completed {
+			os.Remove(destination)
+		}
+	}()
+	if _, err = io.Copy(output, input); err != nil {
+		return err
+	}
+	if err = output.Sync(); err != nil {
+		return err
+	}
+	if err = output.Close(); err != nil {
+		return err
+	}
+	completed = true
+	return nil
+}
+
+type exportFolder struct {
+	ID   string `json:"id"`
+	Path string `json:"path"`
+}
+
+type folderExport struct {
+	ID       string `json:"id"`
+	Path     string `json:"path"`
+	Filename string `json:"filename"`
+}
+
+// BeginExportFolder authorizes only the chosen directory for one export run.
+func (d *Desktop) BeginExportFolder(ctx context.Context, directory string) (*exportFolder, error) {
+	if directory == "" {
+		paths, err := mygo.Dialog.Open(mygo.OpenDialogOptions{Parent: mygo.CallerWindow(ctx), Directory: true})
+		if err != nil {
+			return nil, err
+		}
+		if len(paths) == 0 {
+			return nil, nil
+		}
+		directory = paths[0]
+	}
+	root, err := filepath.Abs(directory)
+	if err != nil {
+		return nil, err
+	}
+	info, err := os.Stat(root)
+	if err != nil {
+		return nil, err
+	}
+	if !info.IsDir() {
+		return nil, errors.New("export destination must be a directory")
+	}
+	var token [24]byte
+	if _, err = rand.Read(token[:]); err != nil {
+		return nil, err
+	}
+	id := hex.EncodeToString(token[:])
+	d.mu.Lock()
+	if d.folders == nil {
+		d.folders = make(map[string]string)
+	}
+	d.folders[id] = root
+	d.mu.Unlock()
+	return &exportFolder{ID: id, Path: root}, nil
+}
+
+// BeginFolderExport resolves case-insensitive collisions without replacing files.
+func (d *Desktop) BeginFolderExport(folder, filename string) (*folderExport, error) {
+	if filename == "" || filename == "." || filename == ".." || strings.ContainsAny(filename, "/\\\x00") {
+		return nil, errors.New("export filename must be a basename")
+	}
+	d.mu.Lock()
+	root, ok := d.folders[folder]
+	d.mu.Unlock()
+	if !ok {
+		return nil, errors.New("unknown export folder")
+	}
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return nil, err
+	}
+	used := make(map[string]bool)
+	for _, entry := range entries {
+		used[strings.ToLower(entry.Name())] = true
+	}
+	ext := filepath.Ext(filename)
+	stem := strings.TrimSuffix(filename, ext)
+	chosen := filename
+	for number := 2; used[strings.ToLower(chosen)]; number++ {
+		chosen = fmt.Sprintf("%s-%d%s", stem, number, ext)
+	}
+	destination := filepath.Join(root, chosen)
+	id, err := d.beginExport(destination)
+	if err != nil {
+		return nil, err
+	}
+	d.mu.Lock()
+	if _, ok := d.folders[folder]; !ok {
+		d.mu.Unlock()
+		d.CancelExport(id)
+		return nil, errors.New("export folder was closed")
+	}
+	d.exports[id].folder = folder
+	d.mu.Unlock()
+	return &folderExport{ID: id, Path: destination, Filename: chosen}, nil
+}
+
+func (d *Desktop) EndExportFolder(folder string) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	delete(d.folders, folder)
+	for id, transfer := range d.exports {
+		if transfer.folder == folder {
+			transfer.file.Close()
+			os.Remove(transfer.file.Name())
+			delete(d.exports, id)
+		}
+	}
 }
 
 // CancelExport discards a partial export and preserves an existing destination.
@@ -139,6 +288,7 @@ func (d *Desktop) CancelExport(id string) {
 func (d *Desktop) cancelAll() {
 	d.mu.Lock()
 	defer d.mu.Unlock()
+	clear(d.folders)
 	for id, transfer := range d.exports {
 		transfer.file.Close()
 		os.Remove(transfer.file.Name())

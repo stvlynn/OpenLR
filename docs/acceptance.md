@@ -78,3 +78,10 @@ Windows／Node 24.9／Chrome 155 的 `OPENLR_TEST_CMS=1 OPENLR_TEST_METADATA=1 n
 随后，提交 `04b3475` 的 [三端 CI 42006040430](https://github.com/stvlynn/OpenLR/actions/runs/42006040430) 在 Windows、Ubuntu 24.04、macOS 15 Intel 全部通过，各平台实际运行七组原生套件及新增输出锐化矩阵。Windows CI 浏览器测试共 242 项、通过 234、跳过 8 项可选本地模型／色彩／ExifTool oracle；本地对应 242 项全执行通过。远程 ExifTool 未安装时明确跳过独立元数据 oracle，但仍实际执行 30 个 CLI 文件导出／重导入；本地 Windows 与 WSL 的独立 oracle 已通过。macOS 构建为 universal，实际运行环境为 Intel，不等同于 Apple Silicon 验收。
 
 2026-11-05 局部工具分发补充：真实 Chrome 复现 GUI 在裁剪中选择 Brush 仅改变下拉值、没有画笔交互层及变化通知，而 CLI `local-tool` 正确退出裁剪。GUI 现通过同一 dispatcher，内部 `setMode` 仅负责应用状态，避免递归；完整和简要 `state` 新增选定模式 `localTool`，不改变 `localSelection` 的已有形状。新浏览器测试验证裁剪／比较切换、单次通知、真实指针笔画、模式切换不改配方、原件保持不变及 Grid 下选定模式的可观察性。最终本地 Windows 全量 **243/243、零跳过**，Windows／WSL Linux 重新打包后各七组原生套件通过。新增 CLI 检查覆盖退出裁剪／比较、全部工具的完整／简要状态、真实截图和配方不变；远程最终平台结论以此修复提交的 Actions 运行记录为准。
+
+
+2026-11-05 多选导出补充：GUI Export N／Export again 与 CLI `export-selection` 共用单张照片准备和逐张文件夹写入，保持活动照片、编辑历史、选择与视频播放位置。支持混合媒体原件、裁剪起点的视频静帧、照片／视频独立设置，以及 CLI `--capture` 的实际工作区截图。已有文件使用编号后缀保护；部分失败返回实际完成清单，清理错误不覆盖主错误，全部完成后一次写入两个设置槽。96 MiB 传输消融中，逐张分块的 RSS 增量约 53 MiB，全组 base64 JSON 约 472 MiB，现有 zipSync 约 192 MiB；这不代表编解码器总内存上限。
+
+Windows／Node 24.9／Chrome 155 的 `OPENLR_TEST_CMS=1 OPENLR_TEST_METADATA=1 npm test` 通过 **252/252、零跳过**。浏览器专项验证两种处理版本、成片字节／像素／ICC、GUI 多选与复用、混合视频、原件／预览不变、排队编辑隔离、取消与部分失败、设置原子提交及错误清理。另用 Chrome 实际 OPFS 写入流验证冲突名、Unicode、读回和写失败；普通浏览器目录 API 无独占创建，不能保证外部并发同名写入安全，失败时可能保留新建空占位文件。原生适配器真实文件测试验证无覆盖发布及竞态。1024×768 下批量导出对话框已截图检查。
+
+最终 Windows 安装包与 WSL Ubuntu 24.04／WebKitGTK 2.52.6 构建通过，两个环境各七组原生 GUI/CLI 套件全部通过；Linux Go test、race、vet 通过。新增真实 CLI 用同名源、不同处理版本导出 TIFF，保留已有目标，检查尺寸／字节／像素、再次导出及真实 PNG 截图，选择、配方、预览和原件不变。系统文件夹选择器由程序化目标替代，未声称自动操作 OS 选择器；Xvfb 结果不证明物理显示器/GPU。现阶段没有运行中批量取消／进度查询，CLI 超时不取消后端写入。合同与来源见[批量导出](batch-export.md)和[研究](../research/batch-export.md)，远程三端以本提交 Actions 实际记录为准。

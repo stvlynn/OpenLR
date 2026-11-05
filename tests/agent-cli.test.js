@@ -49,6 +49,81 @@ test('offline discovery and dry runs validate real command arguments', async () 
   assert.throws(() => parse(['state', '--unexpected', 'true']), /Unknown option/)
 })
 
+test('batch CLI passes one folder request and preserves exact partial-completion errors', async (t) => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'openlr-batch-transport-'))
+  t.after(() => rm(directory, { recursive: true, force: true }))
+  const requests = [],
+    files = [{ id: 'one', path: path.join(directory, 'one.png'), filename: 'one.png', bytes: 123 }],
+    image = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])
+  let fail = false
+  const details = { completed: 1, total: 3, failed: { id: 'two', name: 'two.png' }, files }
+  const server = createServer(async (req, res) => {
+    const chunks = []
+    for await (const chunk of req) chunks.push(chunk)
+    requests.push(JSON.parse(Buffer.concat(chunks)))
+    res.setHeader('Content-Type', 'application/json')
+    res.end(
+      JSON.stringify(
+        fail
+          ? { ok: false, error: { message: 'Destination full', details } }
+          : {
+              ok: true,
+              result: { files, total: 1, cancelled: false },
+              ...(requests.at(-1).capture
+                ? {
+                    selected: 'one',
+                    frame: {
+                      kind: 'file',
+                      filename: 'workspace.png',
+                      mimeType: 'image/png',
+                      bytes: image.length,
+                      base64: image.toString('base64')
+                    }
+                  }
+                : {})
+            }
+      )
+    )
+  })
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+  t.after(() => new Promise((resolve) => server.close(resolve)))
+  const session = path.join(directory, 'agent.json')
+  await writeFile(
+    session,
+    JSON.stringify({ url: 'http://127.0.0.1:' + server.address().port, token: 'test', version: 1 })
+  )
+  const args = ['export-selection', '--format', 'image/png', '--output-dir', directory, '--session', session]
+  const dry = await execute(parse([...args, '--dry-run']))
+  assert.equal(dry.request.args.outputDirectory, directory)
+  assert.equal(requests.length, 0)
+  assert.deepEqual(await execute(parse(args)), { files, total: 1, cancelled: false })
+  assert.equal(requests.length, 1)
+  assert.equal(requests[0].args.outputDirectory, directory)
+  const capturePath = path.join(directory, 'workspace.png')
+  const captured = await execute(parse([...args, '--capture', capturePath]))
+  assert.deepEqual(captured.result, { files, total: 1, cancelled: false })
+  assert.equal(captured.selected, 'one')
+  assert.equal(captured.frame.path, capturePath)
+  assert.deepEqual(await readFile(capturePath), image)
+  assert.equal(requests.at(-1).capture, true)
+  assert.throws(() => parse([...args, '--force']), /numbered filenames/)
+  assert.throws(() => parse([...args, '--output', 'one.png']), /numbered filenames/)
+  assert.throws(() => parse(['export', '--output-dir', directory]), /requires export-selection/)
+  fail = true
+  await assert.rejects(execute(parse(args)), (error) => {
+    assert.equal(error.message, 'Destination full')
+    assert.deepEqual(error.details, details)
+    return true
+  })
+  const failed = await childScript(
+    `import { main } from ${JSON.stringify(new URL('../cli/openlr.mjs', import.meta.url).href)}; await main(${JSON.stringify(args)});`
+  )
+  assert.equal(failed.code, 1)
+  assert.deepEqual(JSON.parse(failed.stderr).error.details, details)
+  assert.equal(failed.stdout.length, 0)
+  assert.ok(requests.every((request) => request.command === 'export-selection'))
+})
+
 test('CLI uses the authenticated live transport, moves file bytes, and protects outputs', async (t) => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'openlr-agent-test-'))
   t.after(() => rm(directory, { recursive: true, force: true }))

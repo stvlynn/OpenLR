@@ -841,6 +841,25 @@ export const definitions = {
   )
 }
 
+definitions['export-selection'] = entry(
+  'Export the selected visible group sequentially to a folder, preserving the active editor',
+  {
+    ...definitions.export.parameters.properties,
+    ids: {
+      type: 'array',
+      items: { type: 'string' },
+      minItems: 1,
+      description: 'Visible photo IDs; defaults to the selected group in display order'
+    },
+    previous: {
+      type: 'boolean',
+      description: 'Use each media type’s last completed settings instead of new export options'
+    },
+    outputDirectory: string('Destination folder; omitted opens the folder chooser')
+  },
+  []
+)
+
 export const commands = Object.fromEntries(
   Object.entries(definitions).map(([name, definition]) => [
     name,

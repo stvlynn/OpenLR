@@ -71,8 +71,12 @@ export function loadExportSettings(storage = globalThis.localStorage) {
 }
 
 export function saveExportSettings({ media, options }, storage = globalThis.localStorage) {
-  const normalized = normalizeExportSettings(options, media),
-    result = { ...loadExportSettings(storage), [media]: normalized }
+  return saveExportSettingsBatch([{ media, options }], storage)
+}
+
+export function saveExportSettingsBatch(settings, storage = globalThis.localStorage) {
+  const result = { ...loadExportSettings(storage) }
+  for (const { media, options } of settings) result[media] = normalizeExportSettings(options, media)
   // One storage write commits the captured media slot without a second cleanup
   // operation that could fail after the settings have already changed.
   storage.setItem('export-settings', JSON.stringify(result))
