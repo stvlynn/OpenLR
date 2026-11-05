@@ -110,3 +110,9 @@ Windows 与 WSL Ubuntu 24.04／WebKitGTK 2.52.6 的最终桌面构建及各七�
 验收期间另行复现了拉直工具吞掉后续颜色取样点击的真实错误，包含尚未选参考点与已点击第一参考点两种情况。新增指针回归先在旧代码三秒内持续失败，加入既有工具退出清单后通过；未新增几何或取样实现。定向 `node --test tests/point-selection.test.js tests/point-color.test.js tests/optics-workflow.test.js` 为 **5/5、零跳过**。实际测试浏览器版本为 Chrome **156.0.8078.80**，此前验收历史中的浏览器版本不用于推断本轮环境。
 
 修复后的最终 Windows／Node 24.9／Chrome 156 全量 `OPENLR_TEST_CMS=1 OPENLR_TEST_METADATA=1 npm test` 为 **269/269、零跳过**。Windows WebView2 与 WSL Ubuntu 24.04／WebKitGTK 2.52.6 均重新构建，随后各七组原生 GUI／CLI 套件全部通过；新增原生检查包含完整／摘要选点、实际 PNG 窗口截图、不改配方与撤销顺序、删除／重置／换照片、无效与过期目标拒绝、原件逐字节一致。命令 schema、离线 dry-run 和代码格式检查通过。Linux 为 Xvfb／D-Bus 的真实原生 IPC 验收，不代表物理 GPU／显示器或 OS 文件选择器。macOS 的本轮结果仍须实际远程运行；前一提交 `41fba14` 的 [42018284168](https://github.com/stvlynn/OpenLR/actions/runs/42018284168) 因账户付款／限额未启动任何作业步骤，未计为通过。
+
+2026-11-05 异步 XMP 目标保护补充：实际浏览器审计复现了读取侧车期间切换照片导致改错目标，以及同一照片的新编辑被迟到配方覆盖。GUI 现于读取前捕获照片和编辑引用，通过共享 `apply-xmp` 在队列执行时检查；新增可选 `photoId` 也供 CLI 使用。未指定保护的 CLI 保持执行时活动照片语义，未引入新持久化版本、校验和门禁或第二套解析／保存路径。读取错误进入现有可见提示，成功或失败后清空文件输入以允许重试。研究及旧行为证据见[异步编辑目标](../research/async-edit-targets.md)。
+
+新增三项实际 Chrome 156.0.8078.80 文件输入测试明确注入读取等待／失败，未替换生产队列、XMP 解析或保存。换照片后独立重载检查两张照片均未变化；同照片新编辑保留且撤销仍回到真正的编辑；读取失败没有未处理异常，同文件重试可成功导入 Unicode 关键词、评级、旗标与曝光。CLI 有效／过期目标、撤销／重做与原件字节也通过定向检查。`node --test tests/xmp-target.test.js tests/process-version-transport.test.js tests/point-color.test.js` 为 **6/6、零跳过**。注入的时间安排用于确定性验证边界，不代表测量了物理磁盘延迟。
+
+最终 Windows／Node 24.9／Chrome 156 的 `OPENLR_TEST_CMS=1 OPENLR_TEST_METADATA=1 npm test` 通过 **272/272、零跳过**；代码格式与实际 CLI schema 检查通过。Windows WebView2 与 WSL Ubuntu 24.04／WebKitGTK 2.52.6 均完成桌面构建及各七组原生套件。新增原生验收从实际导出的 XMP 读回文本，检查过期照片拒绝、有效应用、真实 PNG 工作区截图、撤销／重做及原件逐字节不变；异步读取时间注入只在浏览器专项中使用。Linux 为 Xvfb／D-Bus 真实 GTK/WebKit 与 IPC，不代表物理显示器、GPU 或系统文件选择器操作。当前 macOS 仍须对应实际远程运行；前一提交 `509abb5` 的 [42020066091](https://github.com/stvlynn/OpenLR/actions/runs/42020066091) 因账户付款／限额未启动任何作业步骤，未计为通过。

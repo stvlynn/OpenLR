@@ -11,6 +11,11 @@ import { validateSoftMask } from './soft-mask.js'
 import { validateDepthSettings } from './depth-effects.js'
 import { escapeXml } from './xml.js'
 
+export const XMP_MESSAGES = {
+  changedPhoto: 'The selected photo changed; choose the sidecar again',
+  changedEdit: 'The photo was edited; choose the sidecar again'
+}
+
 const ns = {
   rdf: 'http://www.w3.org/1999/02/22-rdf-syntax-ns#',
   xmp: 'http://ns.adobe.com/xap/1.0/',

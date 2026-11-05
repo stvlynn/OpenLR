@@ -435,9 +435,11 @@ export const definitions = {
     },
     ['target']
   ),
-  'apply-xmp': entry('Apply an XMP sidecar to the active photo', { xml: string('XMP RDF/XML document') }, [
-    'xml'
-  ]),
+  'apply-xmp': entry(
+    'Apply an XMP sidecar to the active photo',
+    { xml: string('XMP RDF/XML document'), photoId: string('Optional intended-photo guard') },
+    ['xml']
+  ),
   sync: entry(
     'Synchronize the imported library with an explicitly selected WebDAV folder',
     {

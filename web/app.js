@@ -17,7 +17,7 @@ import { Presets } from './presets.js'
 import { LibraryHistory } from './library-history.js'
 import { preferences, setPreferences, mountPreferences, displayName, colorLabels } from './preferences.js'
 import { displayedPhotos, findStacks, smartMatch, stackMenu } from './stacks.js'
-import { readXmp } from './xmp.js'
+import { readXmp, XMP_MESSAGES } from './xmp.js'
 import { mountSync, synchronize } from './sync.js'
 import { metadata, describe } from './metadata.js'
 import { readExportOptions } from './export-options.js'
@@ -1697,6 +1697,9 @@ async function execute(command, args, context = {}) {
           break
         }
         case 'apply-xmp': {
+          if (args.photoId !== undefined && args.photoId !== p.id) throw Error(XMP_MESSAGES.changedPhoto)
+          if (context.expectedEdit !== undefined && context.expectedEdit !== p.edit)
+            throw Error(XMP_MESSAGES.changedEdit)
           const changes = readXmp(args.xml)
           await replace(p, changes)
           if (changes.edit) {
@@ -2007,9 +2010,19 @@ for (let i = 1; i <= 5; i++) $('rate').add(option(i, '★'.repeat(i)))
 $('files').accept = PHOTO_ACCEPT + ',video/*,.mov,.mkv,.xmp'
 $('apply-xmp').onclick = () => $('xmp-file').click()
 $('xmp-file').onchange = async (e) => {
-  const file = e.target.files[0]
-  if (file) await act('apply-xmp', { xml: await file.text() })
-  e.target.value = ''
+  const input = e.target,
+    file = input.files[0],
+    photo = active()
+  try {
+    if (!file) return
+    if (!photo) throw Error('Select a photo first')
+    const xml = await file.text()
+    await run('apply-xmp', { xml, photoId: photo.id }, undefined, { expectedEdit: photo.edit })
+  } catch (error) {
+    notice(error.message)
+  } finally {
+    input.value = ''
+  }
 }
 $('crop-tool').onclick = () => act('crop-tool')
 $('clear-crop').onclick = () => act('edit', { key: 'crop', value: null })

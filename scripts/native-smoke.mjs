@@ -948,6 +948,49 @@ try {
   console.log(
     'Native point selection: shared full/summary identity, actual capture, unchanged recipe and undo history, removal/reset/photo reconciliation, stale-target rejection and original bytes passed.'
   )
+  const xmpExport = await call(
+      'export',
+      '--format',
+      'application/rdf+xml',
+      '--output',
+      path.join(root, 'guarded.xmp')
+    ),
+    guardedXml = await readFile(xmpExport.path, 'utf8'),
+    xmpExpected = (await call('state')).photos.find((photo) => photo.id === rangeAsset).edit
+  await call('edit', '--key', 'Exposure', '--value', '3')
+  const xmpBefore = (await call('state')).photos.find((photo) => photo.id === rangeAsset).edit
+  await assert.rejects(
+    () => call('apply-xmp', '--xml', guardedXml, '--photoId', 'stale-photo'),
+    /changed|selected/i
+  )
+  assert.deepEqual((await call('state')).photos.find((photo) => photo.id === rangeAsset).edit, xmpBefore)
+  const xmpApplied = await call(
+    'apply-xmp',
+    '--xml',
+    guardedXml,
+    '--photoId',
+    rangeAsset,
+    '--capture',
+    path.join(root, 'guarded-xmp.png')
+  )
+  assert.equal(xmpApplied.selected, rangeAsset)
+  assert.equal((await readFile(xmpApplied.frame.path)).subarray(1, 4).toString(), 'PNG')
+  assert.deepEqual((await call('state')).photos.find((photo) => photo.id === rangeAsset).edit, xmpExpected)
+  await call('undo')
+  assert.deepEqual((await call('state')).photos.find((photo) => photo.id === rangeAsset).edit, xmpBefore)
+  await call('redo')
+  assert.deepEqual((await call('state')).photos.find((photo) => photo.id === rangeAsset).edit, xmpExpected)
+  const xmpOriginal = await call(
+    'export',
+    '--format',
+    'original',
+    '--output',
+    path.join(root, 'xmp-original.png')
+  )
+  assert.deepEqual(await readFile(xmpOriginal.path), rangeBytes)
+  console.log(
+    'Native XMP target guard: stale photo rejection before mutation, actual sidecar application and workspace capture, undo/redo and unchanged original bytes passed.'
+  )
   const colors = [
     [180, 60, 40],
     [45, 160, 70],
