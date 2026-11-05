@@ -1,6 +1,9 @@
+import { exportColorSpaces } from './export-color.js'
+
 export function readExportOptions() {
   const get = (id) => document.getElementById(id).value
   const args = { format: get('format'), quality: Number(get('quality')) / 100 }
+  if (exportColorSpaces(args.format).length) args.colorSpace = get('export-color-space')
   if (!['original', 'original-settings', 'application/rdf+xml', 'image/x-adobe-dng'].includes(args.format)) {
     if (get('export-size')) args.maxSize = Number(get('export-size'))
     if (get('watermark').trim()) args.watermark = get('watermark').trim()

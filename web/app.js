@@ -11,6 +11,8 @@ import { exportXmp, readXmp, exportPackage } from './xmp.js'
 import { mountSync, synchronize } from './sync.js'
 import { metadata, describe } from './metadata.js'
 import { readExportOptions, applyWatermark } from './export-options.js'
+import { COLOR_SPACES } from './color-spaces.js'
+import { exportColorSpaces, validateExportColorSpace, EXPORT_COLOR_MESSAGES } from './export-color.js'
 import * as db from './catalog.js'
 import * as local from './local.js'
 import * as external from './external.js'
@@ -1634,6 +1636,7 @@ async function execute(command, args) {
             command === 'preview'
               ? 'image/png'
               : enumValue(args.format ?? (isVideo(p) ? 'video/mp4' : 'image/jpeg'), EXPORT_TYPES)
+          const colorSpace = validateExportColorSpace(format, args.colorSpace)
           if (format.startsWith('video/')) {
             if (!isVideo(p)) throw Error('Select a video')
             await source(p.id)
@@ -1660,7 +1663,7 @@ async function execute(command, args) {
           const canvas = render(await source(p.id), command === 'preview' && compare ? {} : p.edit, max)
           if (command === 'export') applyWatermark(canvas, args.watermark)
           return {
-            blob: await encodePhoto(canvas, format, number(args.quality ?? 0.92, 0, 1)),
+            blob: await encodePhoto(canvas, format, number(args.quality ?? 0.92, 0, 1), colorSpace),
             filename: exportFilename(p.name, format)
           }
         }
@@ -1934,7 +1937,18 @@ $('video-position').onchange = (e) => act('video-seek', { time: Number(e.target.
 $('trim-apply').onclick = () =>
   act('video-trim', { start: Number($('trim-start').value), end: Number($('trim-end').value) })
 $('format').replaceChildren(...EXPORT_FORMATS.map((format) => option(format.value, format.label)))
+const exportColorLabel = document.createElement('label'),
+  exportColorSelect = document.createElement('select')
+exportColorSelect.id = 'export-color-space'
+exportColorLabel.append(EXPORT_COLOR_MESSAGES.label, exportColorSelect)
+$('format').closest('label').after(exportColorLabel)
 $('format').onchange = (e) => {
+  const spaces = exportColorSpaces(e.target.value),
+    previous = exportColorSelect.value
+  exportColorSelect.replaceChildren(...spaces.map((id) => option(id, COLOR_SPACES[id].label)))
+  exportColorSelect.value = spaces.includes(previous) ? previous : spaces[0] || ''
+  exportColorSelect.disabled = spaces.length < 2
+  exportColorLabel.hidden = !spaces.length
   const usesQuality = EXPORT_FORMATS.find((format) => format.value === e.target.value)?.quality
   $('quality').disabled = !usesQuality
   $('quality').closest('label').hidden = !usesQuality

@@ -1,4 +1,8 @@
 import UTIF from './vendor/codecs/utif.js'
+import { convertSrgbPixels, makeColorProfile } from './color-spaces.js'
+import { encodeColorPng, encodeColorTiff } from './color-containers.js'
+import { validateExportColorSpace } from './export-color.js'
+import { validateRgbProfile } from './color-profile.js'
 
 async function decoder(format) {
   if (format === 'image/avif') return import('./vendor/codecs/avif/decode.js')
@@ -47,7 +51,7 @@ function orientTiff(pixels, orientation) {
     }
   return new ImageData(out, w, h)
 }
-export async function processCodec({ operation, format, file, pixels, quality }) {
+export async function processCodec({ operation, format, file, pixels, quality, colorSpace = 'srgb' }) {
   try {
     if (operation === 'decode') {
       const bytes = await file.arrayBuffer()
@@ -84,6 +88,27 @@ export async function processCodec({ operation, format, file, pixels, quality })
           for (let i = 0; i < rgba.length; i += 4)
             for (let c = 0; c < 3; c++)
               rgba[i + c] = rgba[i + 3] ? Math.min(255, Math.round((rgba[i + c] * 255) / rgba[i + 3])) : 0
+        const profile = image.t34675
+        if (profile?.length) {
+          const profileData = validateRgbProfile(Uint8Array.from(profile))
+          if (interpretation !== 2) throw Error('Unsupported TIFF color profile layout')
+          // The browser applies the embedded RGB ICC through its PNG decoder. No relabeling of samples.
+          const tagged = encodeColorPng({ width: image.width, height: image.height, data: rgba }, profileData)
+          const managed = await createImageBitmap(new Blob([tagged], { type: 'image/png' }))
+          try {
+            const canvas =
+              typeof OffscreenCanvas === 'function'
+                ? new OffscreenCanvas(image.width, image.height)
+                : document.createElement('canvas')
+            canvas.width = image.width
+            canvas.height = image.height
+            const ctx = canvas.getContext('2d')
+            ctx.drawImage(managed, 0, 0)
+            rgba.set(ctx.getImageData(0, 0, image.width, image.height).data)
+          } finally {
+            managed.close()
+          }
+        }
         result = orientTiff(
           new ImageData(
             new Uint8ClampedArray(rgba.buffer, rgba.byteOffset, rgba.byteLength),
@@ -94,15 +119,17 @@ export async function processCodec({ operation, format, file, pixels, quality })
         )
       } else result = await (await decoder(format)).default(bytes)
       return { bitmap: await createImageBitmap(result) }
+    } else if (operation === 'prepare-color') {
+      validateExportColorSpace(format, colorSpace)
+      const converted = convertSrgbPixels(pixels, colorSpace)
+      return { bytes: converted.data.buffer, profile: makeColorProfile(colorSpace) }
     } else if (operation === 'encode') {
+      validateExportColorSpace(format, colorSpace)
       let bytes
-      if (format === 'image/tiff') {
-        // ImageData is straight RGBA; write unassociated-alpha and LONG dimensions.
-        UTIF.ttypes[256] = UTIF.ttypes[257] = UTIF.ttypes[278] = 4
-        bytes = UTIF.encodeImage(pixels.data.buffer, pixels.width, pixels.height, {
-          t338: [2],
-          t305: ['OpenLR / UTIF.js']
-        })
+      if (format === 'image/tiff' || format === 'image/png') {
+        const converted = convertSrgbPixels(pixels, colorSpace),
+          profile = makeColorProfile(colorSpace)
+        bytes = (format === 'image/tiff' ? encodeColorTiff : encodeColorPng)(converted, profile)
       } else {
         const module = await encoder(format)
         // A quality of one selects a true lossless path for reliable archival round trips.
@@ -110,6 +137,11 @@ export async function processCodec({ operation, format, file, pixels, quality })
         bytes = await module.default(pixels, options)
       }
       if (!bytes?.byteLength) throw Error('The image encoder returned no data')
+      if (ArrayBuffer.isView(bytes))
+        bytes =
+          bytes.byteOffset === 0 && bytes.byteLength === bytes.buffer.byteLength
+            ? bytes.buffer
+            : bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)
       return { bytes }
     } else throw Error('Unknown image codec operation')
   } catch (error) {

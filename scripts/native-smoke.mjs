@@ -7,6 +7,7 @@ import path from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import { execute, parse, watch } from '../cli/openlr.mjs'
 import { makeDng } from '../tests/fixtures/dng.mjs'
+import { png as fixturePng } from '../tests/fixtures/merge-scene.js'
 
 const executable = process.argv[2]
 if (!executable) throw Error('Pass the path to a built OpenLR executable')
@@ -189,6 +190,56 @@ try {
     dav.closeAllConnections()
     dav.close()
   }
+  const colors = [
+    [180, 60, 40],
+    [45, 160, 70],
+    [50, 70, 190],
+    [128, 128, 128]
+  ]
+  const colorPixels = new Uint8ClampedArray(160 * 80 * 4)
+  for (let y = 0; y < 80; y++)
+    for (let x = 0; x < 160; x++) colorPixels.set([...colors[Math.floor(x / 40)], 255], (y * 160 + x) * 4)
+  const colorSource = path.join(root, 'color-source.png')
+  const colorBytes = fixturePng({ width: 160, height: 80, data: colorPixels })
+  await writeFile(colorSource, colorBytes)
+  const colorAsset = (await call('import', colorSource)).added[0]
+  const colorResults = []
+  for (const colorSpace of ['srgb', 'display-p3', 'adobe-rgb', 'prophoto-rgb', 'rec2020']) {
+    for (const [format, extension] of [
+      ['image/png', 'png'],
+      ['image/tiff', 'tif'],
+      ['image/jpeg', 'jpg']
+    ]) {
+      await call('select', '--id', colorAsset)
+      const file = await call(
+        'export',
+        '--format',
+        format,
+        '--colorSpace',
+        colorSpace,
+        '--quality',
+        '1',
+        '--output',
+        path.join(root, `${colorSpace}.${extension}`)
+      )
+      if (colorSpace !== 'srgb' || format === 'image/tiff')
+        assert.ok((await readFile(file.path)).includes(Buffer.from(format === 'image/png' ? 'iCCP' : 'acsp')))
+      const imported = await call('import', file.path)
+      assert.equal(imported.failed.length, 0)
+      const errors = []
+      for (let i = 0; i < colors.length; i++) {
+        const { color } = await call('sample-color', '--x', String((i + 0.5) / 4), '--y', '0.5')
+        colors[i].forEach((value, c) =>
+          errors.push(Math.abs(parseInt(color.slice(c * 2 + 1, c * 2 + 3), 16) - value))
+        )
+      }
+      const maximum = Math.max(...errors)
+      assert.ok(maximum <= (format === 'image/jpeg' ? 5 : 3), `${colorSpace} ${format}: ${maximum}`)
+      colorResults.push({ colorSpace, format, maximum })
+    }
+  }
+  assert.deepEqual(await readFile(colorSource), colorBytes)
+  console.log('Native color-managed export/import:', JSON.stringify(colorResults))
   console.log(
     'Native GUI/CLI passed RAW, editing, PNG preview, original bytes, live observation, workspace capture, person segmentation, TIFF export and WebDAV sync.'
   )

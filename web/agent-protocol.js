@@ -1,6 +1,8 @@
 import { controls } from './adjustments.js'
 import { validCrop } from './geometry.js'
 import { CROP_GUIDES } from './crop-guides.js'
+import { COLOR_SPACES } from './color-spaces.js'
+import { validateExportColorSpace } from './export-color.js'
 import { LOCAL_CONTROLS, validateLocalTool, validateLocalChanges } from './local-tools.js'
 import { EXPORT_TYPES } from './formats.js'
 import { AI_TARGETS } from './ai-models.js'
@@ -795,6 +797,9 @@ export const definitions = {
         description: 'Longest edge in pixels. Defaults to original size.'
       },
       watermark: string('Optional text at lower right'),
+      colorSpace: string('Output RGB encoding; JPEG/PNG/TIFF support all spaces, AVIF/JXL support sRGB', {
+        enum: Object.keys(COLOR_SPACES)
+      }),
       quality: number('JPEG/AVIF/JPEG XL quality; 1 selects lossless AVIF/JXL', 0, 1)
     },
     [],
@@ -873,6 +878,8 @@ export function validateArgs(command, args) {
     if (rule.oneOf && !rule.oneOf.some((choice) => typeof value === choice.type))
       throw new Error('Invalid value for ' + key)
   }
+  if (command === 'export' && args.format !== undefined)
+    validateExportColorSpace(args.format, args.colorSpace)
   if (command === 'edit') {
     const { key, value } = args
     if (Object.hasOwn(edits, key)) {

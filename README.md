@@ -27,6 +27,8 @@ npm run desktop
 
 可以用 [独立审阅服务](docs/shared-albums.md) 共享相册并收取评论，通过 [外部编辑器](docs/external-editors.md) 编辑 TIFF 副本，也能从 [Classic 目录或 Photos 导出文件](docs/catalog-migration.md) 迁移到图库。
 
+JPEG、PNG 和 TIFF 可选择 [输出色彩空间](docs/export-color.md)，将当前 sRGB 编辑结果转换为 Display P3、Adobe RGB、ProPhoto RGB 或 Rec.2020 SDR，并写入匹配的 ICC 配置文件。
+
 ## Agent CLI
 
 安装包附带单文件 Node CLI。也可以在工作区运行以下命令。GUI 和 CLI 操作同一份实时状态。
