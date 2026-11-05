@@ -1,4 +1,10 @@
-import { GRADING_WHEELS, validateColorGrading } from './color-grading.js'
+import {
+  GRADING_FIELDS,
+  GRADING_MESSAGES,
+  GRADING_WHEELS,
+  validateColorGrading,
+  validateColorGradingPatch
+} from './color-grading.js'
 import { controls } from './adjustments.js'
 import { validCrop } from './geometry.js'
 import { CROP_GUIDES } from './crop-guides.js'
@@ -864,19 +870,27 @@ export const definitions = {
     },
     ['mode']
   ),
-  'grading-set': entry(
-    'Replace color grading; an empty value resets grading',
-    {
-      value: {
-        type: 'object',
-        description:
-          'Wheels shadows/midtones/highlights/global (hue 0–360, saturation 0–100, luminance -100–100), balance -100–100, blending 0–100'
-      },
-      photoId: string('Optional selected-photo guard'),
-      expectedValue: { type: 'object', description: 'Optional previous grading value; reject if changed' }
+  'grading-set': entry('Replace color grading or patch one field; an empty value resets grading', {
+    value: {
+      type: 'object',
+      description:
+        'Wheels shadows/midtones/highlights/global (hue 0–360, saturation 0–100, luminance -100–100), balance -100–100, blending 0–100'
     },
-    ['value']
-  ),
+    photoId: string('Selected-photo guard; required for a patch'),
+    expectedValue: { type: 'object', description: 'Optional previous full grading; reject if changed' },
+    patch: {
+      type: 'object',
+      description:
+        'Change a single field with its previous numeric value. Requires photoId and replaces value and expectedValue.',
+      properties: {
+        field: string('Grading field', { enum: GRADING_FIELDS }),
+        value: { type: 'number', description: 'New field value' },
+        expectedValue: { type: 'number', description: 'Previous field value; reject if changed' }
+      },
+      required: ['field', 'value', 'expectedValue'],
+      additionalProperties: false
+    }
+  }),
   'curve-channel': entry(
     'Select the point-curve channel without changing edits',
     {
@@ -1083,8 +1097,14 @@ export function validateArgs(command, args) {
     if (args.point !== undefined) validateLocalChanges('repair', { source: args.point })
   }
   if (command === 'grading-set') {
-    validateColorGrading(args.value)
-    if (args.expectedValue !== undefined) validateColorGrading(args.expectedValue)
+    if (args.patch !== undefined) {
+      if (!args.photoId || Object.hasOwn(args, 'value') || Object.hasOwn(args, 'expectedValue'))
+        throw Error(GRADING_MESSAGES.invalid)
+      validateColorGradingPatch(args.patch)
+    } else {
+      validateColorGrading(args.value)
+      if (args.expectedValue !== undefined) validateColorGrading(args.expectedValue)
+    }
   }
   if (command === 'curve-set') {
     validateCurvePoints(args.points)

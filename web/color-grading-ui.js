@@ -10,9 +10,11 @@ export function mountColorGrading(run, preview = () => {}) {
   const wheels = el('div', { className: 'grading-wheels' })
   panel.append(mode, wheels)
   const cards = new Map(),
-    controls = []
+    controls = [],
+    pendingNumbers = new Map()
   let current = null,
-    gesture = null
+    gesture = null,
+    draft = null
   const equal = (a, b) => JSON.stringify(a) === JSON.stringify(b)
   const clamp = (n, low, high) => Math.max(low, Math.min(high, n))
   const wrap = (n) => ((n % 360) + 360) % 360
@@ -62,9 +64,15 @@ export function mountColorGrading(run, preview = () => {}) {
       )
     }
     for (const control of controls) {
-      if (!control.dataset.key) continue
+      if (!control.dataset.key || control === draft?.control) continue
       const target = control.dataset.wheel ? value?.[control.dataset.wheel] : value
-      control.value = target ? String(target[control.dataset.key]) : ''
+      const pending = pendingNumbers.get(control)
+      const displayed =
+        !gesture && pending && pending.photoId === current?.photoId
+          ? pending.value
+          : target?.[control.dataset.key]
+      const text = displayed === undefined ? '' : String(displayed)
+      if (control.value !== text) control.value = text
     }
   }
   function cancel() {
@@ -75,13 +83,14 @@ export function mountColorGrading(run, preview = () => {}) {
     if (previous) preview(null)
     draw()
   }
-  function submit(value, source = current) {
-    if (!source) return
-    return Promise.resolve(
-      run('grading-set', { value, photoId: source.photoId, expectedValue: source.value })
-    ).finally(() => {
+  function commit(args, settle) {
+    return Promise.resolve(run('grading-set', args)).finally(() => {
+      settle?.()
       if (!gesture) draw()
     })
+  }
+  function submit(value, source = current) {
+    if (source) return commit({ value, photoId: source.photoId, expectedValue: source.value })
   }
   function begin(control, pointer) {
     if (!current) return false
@@ -123,14 +132,35 @@ export function mountColorGrading(run, preview = () => {}) {
     controls.push(input)
     row.append(input)
     parent.append(row)
+    input.oninput = () => {
+      if (!current || !panel.open || draft?.control === input) return
+      const target = wheel ? current.value[wheel] : current.value
+      const pending = pendingNumbers.get(input)
+      // The dispatcher runs an earlier local commit before this draft can commit.
+      const expectedValue = pending?.photoId === current.photoId ? pending.value : target[key]
+      draft = { control: input, photoId: current.photoId, expectedValue }
+    }
     input.onchange = () => {
-      if (!current) return
+      if (draft?.control !== input) return
+      const { photoId, expectedValue } = draft
+      draft = null
       const number = Number(input.value)
-      if (input.value === '' || !Number.isFinite(number) || number < low || number > high) return draw()
+      if (!panel.open || input.value === '' || !Number.isFinite(number) || number < low || number > high)
+        return draw(gesture?.value ?? current?.value)
+      const pending = { photoId, value: number }
+      pendingNumbers.set(input, pending)
       cancel()
-      const value = structuredClone(current.value)
-      ;(wheel ? value[wheel] : value)[key] = key === 'hue' ? wrap(number) : number
-      submit(value)
+      commit(
+        { photoId, patch: { field: wheel ? `${wheel}.${key}` : key, value: number, expectedValue } },
+        () => {
+          if (pendingNumbers.get(input) === pending) pendingNumbers.delete(input)
+        }
+      )
+    }
+    input.onblur = () => {
+      if (draft?.control !== input) return
+      draft = null
+      draw(gesture?.value ?? current?.value)
     }
     if (!range) return
     const slider = el('input', { id, type: 'range', min: low, max: high, step: 1 })
@@ -187,9 +217,10 @@ export function mountColorGrading(run, preview = () => {}) {
       preview(gesture.source, gesture.value)
     }
     canvas.onpointerdown = (event) => {
-      if (event.button !== 0 || !begin(canvas, event.pointerId)) return
+      if (event.button !== 0 || !current) return
       event.preventDefault()
       canvas.focus()
+      if (!begin(canvas, event.pointerId)) return
       canvas.setPointerCapture(event.pointerId)
       point(event)
     }
@@ -234,22 +265,27 @@ export function mountColorGrading(run, preview = () => {}) {
   }
   mode.onchange = () => {
     const value = mode.value
+    draft = null
     cancel()
     run('grading-mode', { mode: value })
   }
   panel.addEventListener(
     'keydown',
     (event) => {
-      if (event.key === 'Escape' && gesture) {
+      if (event.key === 'Escape' && (gesture || draft)) {
         event.preventDefault()
         event.stopPropagation()
+        draft = null
         cancel()
       }
     },
     true
   )
   panel.addEventListener('toggle', () => {
-    if (!panel.open) cancel()
+    if (!panel.open) {
+      draft = null
+      cancel()
+    }
   })
   const anchor = document.getElementById('tone-curves')
   if (anchor) anchor.after(panel)
@@ -258,6 +294,7 @@ export function mountColorGrading(run, preview = () => {}) {
     const next = photo
       ? { photoId: photo.id, edit: photo.edit, value: colorGradingValue(photo.edit), mode: selection.mode }
       : null
+    if (!panel.open || next?.photoId !== current?.photoId || next?.mode !== current?.mode) draft = null
     if (
       gesture &&
       (!next ||

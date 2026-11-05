@@ -2,6 +2,7 @@ import { readViewport, moveViewport, VIEWPORT_MESSAGES } from './viewport.js'
 import { mountColorGrading } from './color-grading-ui.js'
 import {
   colorGradingValue,
+  patchColorGrading,
   setColorGrading,
   GRADING_MESSAGES,
   validateColorGradingRecipe
@@ -492,7 +493,7 @@ async function draw() {
   if (curvePhoto !== (p?.id ?? '')) curveIndex = 0
   curvePhoto = p?.id ?? ''
   curveIndex = Math.min(curveIndex, curvePoints(curveSource?.edit ?? {}, curveChannel).length - 1)
-  updateColorGrading(curveSource, { mode: gradingMode })
+  updateColorGrading(detail && inspector && !p?.deleted ? curveSource : null, { mode: gradingMode })
   updateToneCurves(curveSource, { channel: curveChannel, index: curveIndex })
   if (!detail || bitmapId !== selected) {
     localToolsUI?.unmount()
@@ -1933,14 +1934,15 @@ async function execute(command, args, context = {}) {
           return { mode: gradingMode }
         case 'grading-set': {
           if (args.photoId !== undefined && args.photoId !== p.id) throw Error(GRADING_MESSAGES.changedPhoto)
-          const previous = colorGradingValue(p.edit)
           if (
             args.expectedValue !== undefined &&
             JSON.stringify(colorGradingValue({ colorGrading: args.expectedValue })) !==
-              JSON.stringify(previous)
+              JSON.stringify(colorGradingValue(p.edit))
           )
             throw Error(GRADING_MESSAGES.changedEdit)
-          const edit = setColorGrading(p.edit, args.value)
+          const edit = args.patch
+            ? patchColorGrading(p.edit, args.patch)
+            : setColorGrading(p.edit, args.value)
           if (JSON.stringify(edit.colorGrading) !== JSON.stringify(p.edit.colorGrading)) {
             await replace(p, { edit })
             rememberEdit(p)

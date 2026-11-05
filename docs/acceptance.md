@@ -17,6 +17,10 @@
 
 ## 补充验证
 
+- **颜色分级连续数值输入（2026-11-06）**。原先两个受控保存时序及无关更新测试均复现丢失输入；修复后定向 13/13 通过，最终中性更新清理后再核对 10/10。消融八例确认草稿保护和字段更新缺一不可，见[控制审计](../research/cli-control-audit.md#sequential-grading-input-follow-up)。完整实际 Chrome 运行 **339/339 通过、无跳过**，约 375.5 秒；本次通过忽略目录的被动视频诊断 preload 执行，保持原 bitmap 调用与返回 promise，不能作为未加诊断的性能结果。新 Windows MyGo 构建和主原生 smoke 通过，新增实际 CLI `grading-set --patch`、同字段冲突拒绝和两步撤销检查。日志 `.workspace/grading-input-*`、`.workspace/grading-full-instrumented.log`。其余六组本地原生套件未重跑；该修复的新提交尚无远程三平台结果。
+
+- **`535d0f5` 三平台验收终态**。[Actions 42093258967](https://github.com/stvlynn/OpenLR/actions/runs/42093258967) 首次执行全部成功，Windows 浏览器 325 通过、8 项可选资源跳过、0 失败，共 333 项；Windows、Linux、macOS Intel 完成原生套件和打包。本项代码包含 clipping 状态与放映退出修正，尚不包含后续颜色分级输入竞争修复。它不能推翻 `a70cb9b` 的分级失败或上一轮本地视频导入失败；两者的证据仍保留。
+
 - **显示状态与放映退出（2026-11-06）**。新增 Chrome 检查验证 clipping 的完整／摘要状态、实际红蓝提示像素、导出不带提示、真实按钮／快捷键和取色器清理；放映测试在旧代码上复现 Grid 仍保持播放，修正后验证 GUI Escape、命令切换、再次播放和停止后的定时器行为。新 Windows 构建及主原生 smoke 通过，包含实际 CLI 状态读回和退出放映。完整浏览器运行 **333 项，332 通过、1 失败、无跳过**：失败为混合媒体批量导出测试在视频导入时收到 `createImageBitmap` 不可用源错误，见[调查记录](../research/video-poster-failure.md)。本次新增两项及颜色分级测试通过；不能将这次完整运行称为全绿。日志 `.workspace/display-state-*`。
 
 - **`a70cb9b` 远程失败记录**。[Actions 42091276291](https://github.com/stvlynn/OpenLR/actions/runs/42091276291) 首次执行 Linux、macOS 原生成功；Windows 浏览器 322 通过、1 失败、8 跳过，共 331 项，未进入原生构建。颜色分级测试在连续修改 Balance／Blending 后等待最终值超时。控制实际存储完成时机的 Chrome 调查已复现第二次旧状态提交被拒绝和未提交文本被重绘覆盖两条路径；远程日志不能区分当时是哪条。本项没有通过重跑或增加超时宣称修复。

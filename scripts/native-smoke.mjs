@@ -1324,6 +1324,41 @@ try {
     (await call('state')).photos.find((photo) => photo.id === gradingAsset).edit,
     gradingBefore
   )
+  await call(
+    'grading-set',
+    '--photoId',
+    gradingAsset,
+    '--patch',
+    '{"field":"balance","value":-25,"expectedValue":0}'
+  )
+  await call(
+    'grading-set',
+    '--photoId',
+    gradingAsset,
+    '--patch',
+    '{"field":"blending","value":80,"expectedValue":50}'
+  )
+  const patchedGrading = (await call('state')).photos.find((photo) => photo.id === gradingAsset).edit
+    .colorGrading
+  assert.equal(patchedGrading.balance, -25)
+  assert.equal(patchedGrading.blending, 80)
+  await assert.rejects(
+    () =>
+      call(
+        'grading-set',
+        '--photoId',
+        gradingAsset,
+        '--patch',
+        '{"field":"balance","value":10,"expectedValue":0}'
+      ),
+    /changed/i
+  )
+  await call('undo')
+  await call('undo')
+  assert.deepEqual(
+    (await call('state')).photos.find((photo) => photo.id === gradingAsset).edit,
+    gradingBefore
+  )
   const gradingOriginal = await call(
     'export',
     '--format',

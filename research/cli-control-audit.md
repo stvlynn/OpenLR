@@ -28,6 +28,21 @@ The first Chrome acceptance checks discovery and dry-run typing, nonnegative val
 
 ### Sequential grading input follow-up
 
+The repair extends the existing `grading-set` operation with an exclusive single-field patch, checked against a required photo ID and canonical previous scalar. It merges at execution into the current recipe; full replacements and wheel gestures retain full grading guards. Numeric drafts retain their initial field expectation across unrelated redraws, and a pending local same-field value supplies the expectation for a subsequent local draft. A conflicting external value still fails rather than being overwritten. Focused dirty text survives redraw until commit/cancel or target/view changes. Existing validators and the same history/persistence path remain the owners of grading rules.
+
+Context7 `/mdn/content` confirmed that [input events](https://github.com/mdn/content/blob/main/files/en-us/web/api/element/input_event/index.md) observe user edits while programmatic value assignment does not emit an input event; [change events](https://github.com/mdn/content/blob/main/files/en-us/web/api/htmlelement/change_event/index.md) represent commitment. This supports recording a draft before blur and avoiding redraw assignment over it, rather than expecting another change event to repair erased text.
+
+A real Chrome 156 / Node 24.9.0 Windows ablation independently compared dispatcher values and IndexedDB records. Eight cases held only the completion notification of a real Balance -25 write and changed Blending to 80. Values below are final persisted Blending; Balance was -25 in every case. No synthetic save result, arbitrary delay or retry replaced storage. Baseline routed the `535d0f5` UI, draft-only retained full-snapshot submission, patch-only removed draft redraw protection, and combined used the repaired UI.
+
+| Variant | Blur Blending before Balance completion | Blur after completion |
+| --- | ---: | ---: |
+| Baseline | 50 | 50 |
+| Draft preservation only | 50 | 80 |
+| Field patch only | 80 | 50 |
+| Combined | 80 | 80 |
+
+Both changes are needed: early blur requires field-scoped merging, late blur requires retaining input text. Ignored evidence is `.workspace/grading-numeric-ablation.mjs/.log`. The tracked `tests/color-grading-input.test.js` additionally covers successive same-field commits, undo/redo/reload, unrelated changes, real same-field conflicts, invalid patches, photo guards, and draft cancellation. This is correctness evidence, not a rendering-performance benchmark. The original failure and proposal record follows.
+
 Windows run 42091276291 failed `color-grading-workflow.test.js:147`, waiting for Balance -25 and Blending 80 after adjacent numeric changes. A real Chrome 156 reproduction holds the completion callback of the actual IndexedDB photo write: Balance commits -25, then Blending is focused and filled with 80 before that callback is released. If Blending blurs first, both trusted change events fire but its full snapshot has the old expected grading value, so the dispatcher rejects the second change; final persisted values are -25/50 and a stale-edit notice appears. If Balance completes while Blending remains focused, redraw changes that unsaved DOM value back to 50; subsequent blur emits no second change and no notice appears. Both branches are asserted in ignored `.workspace/grading-numeric-race.mjs` with `.log`. The remote log cannot identify which branch caused its timeout.
 
 This needs a product fix, not a test delay: numeric field updates could merge into the latest recipe through the central dispatcher with a photo identity and same-field expected-value guard, retaining full-snapshot guards for wheel gestures. Focused dirty numeric drafts must also survive same-photo redraws. An alternative is sequencing full snapshots against anticipated prior local results, but that adds predecessor/failure reconciliation and still needs draft preservation. These are proposals, not implemented behavior; no stale-edit protection was removed.

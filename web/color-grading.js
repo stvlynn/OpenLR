@@ -1,6 +1,12 @@
 import { decodeSrgb } from './color-spaces.js'
 
 export const GRADING_WHEELS = ['shadows', 'midtones', 'highlights', 'global']
+const wheelFields = ['hue', 'saturation', 'luminance']
+const sharedFields = ['balance', 'blending']
+export const GRADING_FIELDS = [
+  ...sharedFields,
+  ...GRADING_WHEELS.flatMap((wheel) => wheelFields.map((field) => `${wheel}.${field}`))
+]
 export const GRADING_MESSAGES = {
   title: 'Color grading',
   modes: {
@@ -33,20 +39,14 @@ function bounded(value, fallback, minimum, maximum) {
 }
 
 export function validateColorGrading(value) {
-  if (
-    !record(value) ||
-    Object.keys(value).some((key) => ![...GRADING_WHEELS, 'balance', 'blending'].includes(key))
-  )
+  if (!record(value) || Object.keys(value).some((key) => ![...GRADING_WHEELS, ...sharedFields].includes(key)))
     throw Error(GRADING_MESSAGES.invalid)
   const result = {}
   for (const name of GRADING_WHEELS) {
     const wheel = value[name]
     if (wheel === undefined) result[name] = wheelDefaults()
     else {
-      if (
-        !record(wheel) ||
-        Object.keys(wheel).some((key) => !['hue', 'saturation', 'luminance'].includes(key))
-      )
+      if (!record(wheel) || Object.keys(wheel).some((key) => !wheelFields.includes(key)))
         throw Error(GRADING_MESSAGES.invalid)
       const hue = bounded(wheel.hue, 0, 0, 360)
       result[name] = {
@@ -87,6 +87,35 @@ export function setColorGrading(edit, value) {
     delete result.colorGrading
   else result.colorGrading = grading
   return result
+}
+
+export function validateColorGradingPatch(patch) {
+  if (
+    !record(patch) ||
+    Object.keys(patch).some((key) => !['field', 'value', 'expectedValue'].includes(key)) ||
+    !GRADING_FIELDS.includes(patch.field) ||
+    !Number.isFinite(patch.value) ||
+    !Number.isFinite(patch.expectedValue)
+  )
+    throw Error(GRADING_MESSAGES.invalid)
+
+  const [name, field] = patch.field.split('.')
+  const canonical = (value) => {
+    const grading = validateColorGrading(field ? { [name]: { [field]: value } } : { [name]: value })
+    return field ? grading[name][field] : grading[name]
+  }
+  return { value: canonical(patch.value), expectedValue: canonical(patch.expectedValue), name, field }
+}
+
+export function patchColorGrading(edit, patch) {
+  const { name, field, value, expectedValue } = validateColorGradingPatch(patch)
+  const grading = colorGradingValue(edit)
+  const target = field ? grading[name] : grading
+  const key = field ?? name
+  if (target[key] !== expectedValue) throw Error(GRADING_MESSAGES.changedEdit)
+  if (target[key] === value) return edit
+  target[key] = value
+  return setColorGrading(edit, grading)
 }
 
 // Full-saturation/value encoded sRGB hue wheel, shared with the editor display.
