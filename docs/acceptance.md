@@ -17,6 +17,8 @@
 
 ## 补充验证
 
+- **`38f35af` 远程验收进度**。[Actions 42073613235](https://github.com/stvlynn/OpenLR/actions/runs/42073613235) 的 Linux 构建及七组原生套件通过；Windows 浏览器套件为 307 通过、1 失败、8 跳过，新增拉直测试通过。失败在 `export-previous-workflow.test.js` 的视频导入，返回 `createImageBitmap` 图像源不可用，尚未证明根因；本地独立执行该文件 4/4 通过。没有提高超时、改变断言或添加推测性的解码重试。源码已经等待 `loadeddata`；Context7 的 HTMLMediaElement 就绪状态资料不能解释该次失败的实际浏览器状态。macOS 原生套件在本次记录时仍运行，未计为通过。Windows 单作业重跑请求被 GitHub 拒绝；整轮终态和后续失败作业复查仍待完成。日志保存在忽略目录 `.workspace/straighten-*`。
+
 - **拉直参考会话（2026-11-06）**。`tests/straighten-session.test.js` 用真实 Chrome 核对首点的 full/summary 回读及变更通知、输入焦点下 Escape、按钮与带照片身份的 CLI 取消、过期请求拒绝、退出视图、重新拉直和撤销；几何相关定向测试 8/8，通过后完整浏览器回归 316/316，无失败或跳过，约 210 秒。Windows 本次 MyGo 构建的 `build/windows-amd64/OpenLR.exe` 通过主原生 smoke，包括实际 CLI 状态、取消、PNG 截图和配方不变。首次原生命令误用了较旧的 `build/release` 产物，因不认识新增 `photoId` 参数而失败；核对构建路径和时间后改用实际新产物通过，未将旧产物失败当作功能通过。本项不声称原生鼠标手势或本次其他六组原生套件已在本地重跑；公开 Actions 的旧版本结果仍保留独立版本边界。
 
 - **输出色彩空间**。JPEG/PNG/TIFF/AVIF/JPEG XL 的五种空间经过像素转换及 ICC 封装；5,265 色独立 Little CMS 对照与 25 种文件往返检查实际执行。AVIF/JPEG XL 绑定从固定源代码重建，额外验证真实码流、ICC、无损样本及线程/SIMD，见 [AVIF 实验](../research/avif-color-binding.md) 和 [JPEG XL 实验](../research/jxl-color-binding.md)。Windows 原生 GUI/CLI 对四个中间调色块重导入采样，PNG/TIFF/AVIF/JPEG XL 最大误差 2、JPEG 最大误差 4 个通道等级。此为目标编码，不是恢复 RAW 广色域；定义与剩余范围见 [输出颜色](export-color.md)。
