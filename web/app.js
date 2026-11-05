@@ -577,6 +577,7 @@ function snapshot() {
     cropDraft: cropDraft(),
     cropGuide: { ...cropSurface.guide },
     localSelection: localToolsUI?.selection(),
+    localTool: localToolsUI?.getMode() ?? 'off',
     film,
     zoom,
     albums,
@@ -759,6 +760,7 @@ async function execute(command, args) {
         cropDraft: cropDraft(),
         cropGuide: { ...cropSurface.guide },
         localSelection: localToolsUI?.selection(),
+        localTool: localToolsUI?.getMode() ?? 'off',
         photo: photo
           ? {
               id: photo.id,

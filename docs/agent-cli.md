@@ -86,6 +86,8 @@ An observer can sample a color, inspect lens profiles or migration reports, and 
 
 `local-select --id <mask-id> --path "[1,0]"` selects a nested component in the same editor control as the person using the GUI. Omit the path to select the whole mask or repair. Both forms of `state` report `localSelection` with its root ID, component path and overlay visibility. `mask-preview` follows the selected component; an explicit `--id` exports coverage of that whole mask.
 
+`local-tool --tool brush` uses the same activation as the GUI selector, opening Detail and leaving crop/compare/sampling. Both state shapes return `localTool` for the selected mode independently of `localSelection`; it can remain selected in Grid, so inspect `mode` as well. Use `off`, `brush`, `linear`, `radial`, `clone` or `heal`. Activation itself does not modify the recipe, and live observers receive the committed presentation change.
+
 With the crop tool open, `state --summary true` exposes the uncommitted rectangle as normalized `cropDraft` coordinates. A completed pointer drag wakes observers. `crop-nudge --dx 1 --dy 0` moves the draft by one preview pixel, like the Right arrow. Use `crop-tool` to commit or `crop-cancel` to discard it.
 
 `crop-drag --grip new --x1 0.25 --y1 0.25 --x2 0.75 --y2 0.75` draws a draft covering the center half of the corrected canvas in each dimension when the aspect ratio is unlocked. Use `move` or a compass handle such as `se` to reposition or resize it. Aspect constraints and boundary handling are shared with pointer dragging. Add `--capture crop.png` to inspect the draft before committing.

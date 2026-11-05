@@ -711,6 +711,33 @@ try {
   )
   assert.deepEqual(selectedMask.result, localSelection)
   assert.equal((await readFile(selectedMask.frame.path)).subarray(1, 4).toString(), 'PNG')
+  const beforeTool = await call('state'),
+    beforeToolEdit = beforeTool.photos.find((photo) => photo.id === beforeTool.selected).edit
+  await call('crop-tool')
+  const activatedTool = await call(
+    'local-tool',
+    '--tool',
+    'brush',
+    '--capture',
+    path.join(root, 'local-brush.png')
+  )
+  assert.equal((await readFile(activatedTool.frame.path)).subarray(1, 4).toString(), 'PNG')
+  assert.equal((await call('state')).cropping, false)
+  await call('compare')
+  for (const tool of ['linear', 'radial', 'clone', 'heal', 'off']) {
+    await call('local-tool', '--tool', tool)
+    const full = await call('state'),
+      summary = await call('state', '--summary', 'true')
+    assert.equal(full.localTool, tool)
+    assert.equal(summary.localTool, tool)
+    assert.equal(full.mode, 'detail')
+    assert.equal(full.compare, false)
+    assert.deepEqual(full.photos.find((photo) => photo.id === full.selected).edit, beforeToolEdit)
+  }
+  await call('local-select', '--id', localSelection.id)
+  console.log(
+    'Native local tools: shared activation exits crop/compare, full/summary tool identity, actual capture and unchanged recipe passed.'
+  )
   const sample = await call('export', '--format', 'image/tiff', '--output', path.join(root, 'astronaut.tif'))
   assert.ok((await readFile(sample.path)).length > 100000)
   const objects = new Map()

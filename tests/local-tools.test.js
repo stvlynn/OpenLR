@@ -108,6 +108,7 @@ test('UI brush and shared commands alter real pixels, survive reload, undo, expo
   })
   await page.getByText('Masks & local repair', { exact: true }).click()
   await page.getByLabel('Local tool', { exact: true }).selectOption('brush')
+  await page.evaluate(() => window.openlr.run('state'))
   const canvas = page.locator('#stage canvas'),
     bounds = await canvas.boundingBox()
   await page.mouse.move(bounds.x + bounds.width * 0.5, bounds.y + bounds.height * 0.5)

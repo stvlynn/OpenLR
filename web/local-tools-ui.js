@@ -461,16 +461,7 @@ export function createLocalToolsUI({ container, run, getActive, notify }) {
     )
   list.onchange = () => chooseAdjustment([])
   component.onchange = () => chooseAdjustment(selection().path)
-  mode.onchange = () => {
-    picking = false
-    draft = null
-    list.value = ''
-    sync()
-    status.textContent = ['clone', 'heal'].includes(mode.value)
-      ? 'Alt-click or choose a source, then drag the target.'
-      : 'Drag to create a new ' + mode.options[mode.selectedIndex].text + '.'
-    if (mounted) mounted.canvas.style.cursor = mode.value === 'off' ? 'zoom-in' : 'crosshair'
-  }
+  mode.onchange = () => run('local-tool', { tool: mode.value }).catch((error) => notify(error.message))
   choose.onclick = () => {
     picking = true
     status.textContent = 'Click the image to choose the source.'
@@ -786,7 +777,14 @@ export function createLocalToolsUI({ container, run, getActive, notify }) {
   sync()
   function setMode(value) {
     mode.value = value
-    mode.onchange()
+    picking = false
+    draft = null
+    list.value = ''
+    sync()
+    status.textContent = ['clone', 'heal'].includes(value)
+      ? 'Alt-click or choose a source, then drag the target.'
+      : 'Drag to create a new ' + mode.options[mode.selectedIndex].text + '.'
+    if (mounted) mounted.canvas.style.cursor = value === 'off' ? 'zoom-in' : 'crosshair'
     panel.open = value !== 'off'
   }
   const selectMask = (id) => {
@@ -802,6 +800,7 @@ export function createLocalToolsUI({ container, run, getActive, notify }) {
     sync,
     mount,
     setMode,
+    getMode: () => mode.value,
     unmount,
     selectMask,
     setOverlay,

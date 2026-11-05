@@ -74,3 +74,7 @@ Windows、Ubuntu 24.04、macOS 15 Intel 对提交 ee08007 的原生 GUI/CLI 验�
 Windows／Node 24.9／Chrome 155 的 `OPENLR_TEST_CMS=1 OPENLR_TEST_METADATA=1 npm test` 最终通过 **242/242、零跳过**。新增浏览器矩阵读回两处理版本×五格式×四强度的 40 个实际文件，核对 None 字节恒等、像素变化、ICC、版权、透明度与 TIFF16 低位；均匀照片带水印的 None／High 字节一致，验证了水印后的内容没有被锐化。GUI 实际下载、重载、取消和复用通过，1024×768 对话框截图已检查。最初测试夹具以错误类型提供 PNG chunk 导致夹具生成失败，修正测试数据后重跑通过，未为此修改生产逻辑。
 
 最终 Windows 安装包及 Ubuntu 24.04／WSL2／WebKitGTK 2.52.6 的 deb／tar.gz 构建通过，两个平台各七组原生套件全部通过。新增 CLI 矩阵实际导出并重导入两处理版本×五格式，采样 TIFF 像素验证成片变化，并检查上次设置逐字节复用、预览／配方／原件不变及拒绝不支持的组合。复现算法与来源见[研究](../research/output-sharpening.md)，行为和资源边界见[输出锐化](output-sharpening.md)。本轮不据此推断未重新执行的 macOS、物理打印或全部照片的最优锐化强度。
+
+随后，提交 `04b3475` 的 [三端 CI 42006040430](https://github.com/stvlynn/OpenLR/actions/runs/42006040430) 在 Windows、Ubuntu 24.04、macOS 15 Intel 全部通过，各平台实际运行七组原生套件及新增输出锐化矩阵。Windows CI 浏览器测试共 242 项、通过 234、跳过 8 项可选本地模型／色彩／ExifTool oracle；本地对应 242 项全执行通过。远程 ExifTool 未安装时明确跳过独立元数据 oracle，但仍实际执行 30 个 CLI 文件导出／重导入；本地 Windows 与 WSL 的独立 oracle 已通过。macOS 构建为 universal，实际运行环境为 Intel，不等同于 Apple Silicon 验收。
+
+2026-11-05 局部工具分发补充：真实 Chrome 复现 GUI 在裁剪中选择 Brush 仅改变下拉值、没有画笔交互层及变化通知，而 CLI `local-tool` 正确退出裁剪。GUI 现通过同一 dispatcher，内部 `setMode` 仅负责应用状态，避免递归；完整和简要 `state` 新增选定模式 `localTool`，不改变 `localSelection` 的已有形状。新浏览器测试验证裁剪／比较切换、单次通知、真实指针笔画、模式切换不改配方、原件保持不变及 Grid 下选定模式的可观察性。最终本地 Windows 全量 **243/243、零跳过**，Windows／WSL Linux 重新打包后各七组原生套件通过。新增 CLI 检查覆盖退出裁剪／比较、全部工具的完整／简要状态、真实截图和配方不变；远程最终平台结论以此修复提交的 Actions 运行记录为准。
