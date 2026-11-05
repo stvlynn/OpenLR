@@ -3,6 +3,9 @@ import { convertSrgbPixels, makeColorProfile } from './color-spaces.js'
 import { encodeColorPng, encodeColorTiff } from './color-containers.js'
 import { validateExportColorSpace } from './export-color.js'
 import { validateRgbProfile } from './color-profile.js'
+import { readTiff, tiffEncodedPixels, orientTiffPixels } from './tiff.js'
+import { convertInputPixels } from './input-color.js'
+import { rgba8ToLinearFrame } from './pixel-frame.js'
 
 async function managedRgb(pixels, profile) {
   // Reuse the host CMS for native RGB samples from both TIFF and AVIF.
@@ -22,73 +25,69 @@ async function managedRgb(pixels, profile) {
     bitmap.close()
   }
 }
-function orientTiff(pixels, orientation) {
-  if (!orientation || orientation === 1) return pixels
-  const { width, height, data } = pixels,
-    swapped = orientation >= 5 && orientation <= 8,
-    w = swapped ? height : width,
-    h = swapped ? width : height,
-    out = new Uint8ClampedArray(w * h * 4)
-  for (let y = 0; y < height; y++)
-    for (let x = 0; x < width; x++) {
-      let u = x,
-        v = y
-      if (orientation === 2) u = width - 1 - x
-      if (orientation === 3) {
-        u = width - 1 - x
-        v = height - 1 - y
-      }
-      if (orientation === 4) v = height - 1 - y
-      if (orientation === 5) {
-        u = y
-        v = x
-      }
-      if (orientation === 6) {
-        u = height - 1 - y
-        v = x
-      }
-      if (orientation === 7) {
-        u = height - 1 - y
-        v = width - 1 - x
-      }
-      if (orientation === 8) {
-        u = y
-        v = width - 1 - x
-      }
-      out.set(data.subarray((y * width + x) * 4, (y * width + x) * 4 + 4), (v * w + u) * 4)
+async function displayFrame(bitmap, provenance) {
+  try {
+    const canvas =
+      typeof OffscreenCanvas === 'function'
+        ? new OffscreenCanvas(bitmap.width, bitmap.height)
+        : document.createElement('canvas')
+    canvas.width = bitmap.width
+    canvas.height = bitmap.height
+    const context = canvas.getContext('2d')
+    context.drawImage(bitmap, 0, 0)
+    return {
+      ...rgba8ToLinearFrame(context.getImageData(0, 0, bitmap.width, bitmap.height)),
+      provenance: { ...provenance, precision: 'rgba8-display' }
     }
-  return new ImageData(out, w, h)
+  } finally {
+    bitmap.close()
+  }
 }
+
+function normalizedAvif(decoded) {
+  const { width, height, data, bitDepth } = decoded
+  if (
+    ![8, 10, 12, 16].includes(bitDepth) ||
+    !Number.isSafeInteger(width) ||
+    width < 1 ||
+    !Number.isSafeInteger(height) ||
+    height < 1 ||
+    !Number.isSafeInteger(width * height * 4) ||
+    data.length !== width * height * 4
+  )
+    throw Error('Invalid AVIF sample layout')
+  const maximum = 2 ** bitDepth - 1
+  return { width, height, data: Float32Array.from(data, (value) => value / maximum) }
+}
+
 export async function processCodec({ operation, format, file, pixels, quality, colorSpace = 'srgb' }) {
   try {
-    if (operation === 'decode') {
-      const bytes = await file.arrayBuffer()
-      let result
+    if (operation === 'decode' || operation === 'decode-frame') {
+      const working = operation === 'decode-frame',
+        bytes = await file.arrayBuffer()
+      let result,
+        provenance = { decoder: format, compatibilityReason: 'display-decoder' }
       if (format === 'image/tiff') {
-        const header = new Uint8Array(bytes, 0, Math.min(8, bytes.byteLength))
-        if (
-          header.length < 8 ||
-          !(
-            (header[0] === 73 && header[1] === 73 && header[2] === 42 && header[3] === 0) ||
-            (header[0] === 77 && header[1] === 77 && header[2] === 0 && header[3] === 42)
-          )
-        )
-          throw Error('Invalid or unsupported TIFF header')
-        const ifds = UTIF.decode(bytes),
-          image = ifds.find((ifd) => ifd.t256?.[0] > 0 && ifd.t257?.[0] > 0)
-        if (!image) throw Error('No TIFF image was found')
-        if (image.t50706 || image.t262?.[0] === 32803) throw Error('A sensor DNG must use the RAW decoder')
-        const interpretation = image.t262?.[0] ?? 2,
-          bits = image.t258?.[0] ?? 1
-        if (
-          ![0, 1, 2, 3, 5].includes(interpretation) ||
-          (image.t339?.[0] ?? 1) !== 1 ||
-          image.t284?.[0] === 2 ||
-          ![1, 2, 4, 8, 16].includes(bits) ||
-          (interpretation === 3 && bits !== 8)
-        )
-          throw Error('Unsupported TIFF pixel layout')
-        UTIF.decodeImage(bytes, image)
+        const image = readTiff(bytes),
+          interpretation = image.t262?.[0] ?? 2
+        if (working) {
+          const encoded = tiffEncodedPixels(image)
+          provenance = { decoder: 'utif', sourceBits: encoded.sourceBits ?? image.t258?.[0] ?? 1 }
+          if (!encoded.reason) {
+            const profile = image.t34675?.length ? Uint8Array.from(image.t34675) : undefined
+            if (profile && ![2, 3].includes(interpretation))
+              throw Error('Unsupported TIFF color profile layout')
+            const converted = convertInputPixels(encoded, {
+              profile,
+              provenance: {
+                ...provenance,
+                precision: encoded.sourceBits > 8 ? 'uint16-source' : 'integer-source'
+              }
+            })
+            if (converted.frame) return { frame: orientTiffPixels(converted.frame, image.t274?.[0]) }
+            provenance.compatibilityReason = converted.reason
+          } else provenance.compatibilityReason = encoded.reason
+        }
         const rgba = UTIF.toRGBA8(image)
         if (!image.width || !image.height || rgba.length !== image.width * image.height * 4)
           throw Error('Invalid TIFF pixel data')
@@ -108,7 +107,7 @@ export async function processCodec({ operation, format, file, pixels, quality, c
             ).data
           )
         }
-        result = orientTiff(
+        const oriented = orientTiffPixels(
           new ImageData(
             new Uint8ClampedArray(rgba.buffer, rgba.byteOffset, rgba.byteLength),
             image.width,
@@ -116,20 +115,52 @@ export async function processCodec({ operation, format, file, pixels, quality, c
           ),
           image.t274?.[0]
         )
+        result = new ImageData(oriented.data, oriented.width, oriented.height)
       } else if (format === 'image/avif') {
-        const { decodeAvif } = await import('./color-codecs.js'),
-          decoded = await decodeAvif(bytes)
+        const { decodeAvif } = await import('./color-codecs.js')
+        let decoded = await decodeAvif(bytes, working ? 16 : 8)
+        if (working) {
+          const encoded = normalizedAvif(decoded)
+          const sourceSpace =
+            [1, 2].includes(decoded.colorPrimaries) && [2, 13].includes(decoded.transferCharacteristics)
+              ? 'srgb'
+              : decoded.colorPrimaries === 12 && decoded.transferCharacteristics === 13
+                ? 'display-p3'
+                : null
+          provenance = {
+            decoder: 'libavif',
+            sourceBits: decoded.sourceBitDepth,
+            colorPrimaries: decoded.colorPrimaries,
+            transferCharacteristics: decoded.transferCharacteristics
+          }
+          if (decoded.icc.length || sourceSpace) {
+            const converted = convertInputPixels(encoded, {
+              profile: decoded.icc,
+              sourceSpace: sourceSpace ?? 'srgb',
+              provenance: { ...provenance, precision: 'integer-source' }
+            })
+            if (converted.frame) return { frame: converted.frame }
+            provenance.compatibilityReason = converted.reason
+          } else provenance.compatibilityReason = 'avif-cicp'
+          // Only the explicit compatibility path reduces samples for the host CMS.
+          decoded = {
+            ...decoded,
+            bitDepth: 8,
+            data: Uint8ClampedArray.from(decoded.data, (value) => (value * 255) / 65535)
+          }
+        }
         if (decoded.icc.length) result = await managedRgb(decoded, decoded.icc)
         else if ([1, 2].includes(decoded.colorPrimaries) && [2, 13].includes(decoded.transferCharacteristics))
           result = new ImageData(decoded.data, decoded.width, decoded.height)
         else {
-          // Other CICP transfers (including HDR) require the host's original-file decoder.
-          return { bitmap: await createImageBitmap(file) }
+          const bitmap = await createImageBitmap(file)
+          return working ? { frame: await displayFrame(bitmap, provenance) } : { bitmap }
         }
       } else if (format === 'image/jxl')
         result = await (await import('./vendor/codecs/jxl/decode.js')).default(bytes)
       else throw Error('Unsupported image format')
-      return { bitmap: await createImageBitmap(result) }
+      const bitmap = await createImageBitmap(result)
+      return working ? { frame: await displayFrame(bitmap, provenance) } : { bitmap }
     } else if (operation === 'prepare-color') {
       validateExportColorSpace(format, colorSpace)
       const converted = convertSrgbPixels(pixels, colorSpace)

@@ -98,6 +98,16 @@ export async function decodePhotoFrame(file) {
     )
     return frame
   }
+  const format = photoFormat(file)
+  if (CODEC_TYPES.includes(format)) {
+    const { frame } = await runImageWorker(
+      new URL('./codec-worker.js', import.meta.url),
+      { operation: 'decode-frame', format, file },
+      [],
+      async (message) => (await import('./codec-kernel.js')).processCodec(message)
+    )
+    return frame
+  }
   const bitmap = await decodePhoto(file)
   try {
     const canvas = document.createElement('canvas')

@@ -1,6 +1,7 @@
 import { mkdir, readdir, readFile, writeFile, copyFile } from 'node:fs/promises'
 import path from 'node:path'
 import { createHash } from 'node:crypto'
+import { patchUtif } from './patch-utif.mjs'
 
 const root = 'web/vendor/codecs'
 await mkdir(root, { recursive: true })
@@ -28,10 +29,10 @@ await writeFile(
     pako +
     '\nexport default module.exports;\n'
 )
-const utif = await readFile('node_modules/utif/UTIF.js', 'utf8')
+const utif = patchUtif((await readFile('node_modules/utif/UTIF.js', 'utf8')).replaceAll('\r\n', '\n'))
 await writeFile(
   path.join(root, 'utif.js'),
-  "// ESM adapter around unmodified UTIF CommonJS source.\nimport pako from './pako.js';\nconst module={exports:{}};const require=name=>{if(name==='pako')return pako;throw Error('Unknown dependency: '+name)};\n" +
+  "// ESM adapter around pinned UTIF CommonJS source with documented OpenLR corrections.\nimport pako from './pako.js';\nconst module={exports:{}};const require=name=>{if(name==='pako')return pako;throw Error('Unknown dependency: '+name)};\n" +
     utif +
     '\nexport default module.exports;\n'
 )

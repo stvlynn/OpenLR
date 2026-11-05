@@ -22,7 +22,7 @@ The shared queue validates command arguments before executing an action or recor
 
 ## Arguments and output
 
-`processing --version 2` selects Linear processing for the active still photo; `--version 1` selects Original processing. Optional `--photoId` guards the intended selection. Both the detail selector and CLI use this command. `state` includes the stored `edit.processVersion` (absence means 1). Switching is undoable; reset and neutral comparison preserve the chosen version. Linear `export --format image/tiff` writes genuine 16-bit target-space samples, while PNG/JPEG/AVIF/JPEG XL use target-space 8-bit output. See [processing contracts and limits](linear-working-frames.md).
+`processing --version 2` selects Linear processing for the active still photo; `--version 1` selects Original processing. Optional `--photoId` guards the intended selection. Both the detail selector and CLI use this command. `state` includes the stored `edit.processVersion` (absence means 1). Full and summary state also expose `processing:{version,input}`: `input` contains the matching decoded source's actual precision/depth and transform or compatibility provenance, or `null` while no matching source is cached. The detail Info text shows that decoded precision. Inspect this field to distinguish native TIFF/AVIF samples from `rgba8-display` compatibility; Float32 storage alone does not recover source bits. Switching is undoable; reset and neutral comparison preserve the chosen version. Linear `export --format image/tiff` writes genuine 16-bit target-space samples, while PNG/JPEG/AVIF/JPEG XL use target-space 8-bit output. See [processing contracts and limits](linear-working-frames.md).
 
 Both desktop commands and CLI-only commands such as `watch` appear in CLI search. Use `schema watch` for its invocation and output format. After the import path delimiter (`--`), even `--help` is a literal filename.
 
@@ -54,7 +54,7 @@ See [catalog organization](catalog-organization.md) for multi-selection, batch m
 
 ## Shared-session transport
 
-Rendered JPEG/PNG/TIFF/AVIF/JPEG XL accept `export --colorSpace display-p3` (also `srgb`, `adobe-rgb`, `prophoto-rgb`, `rec2020`). Pixels are actually converted and paired with generated ICC profiles. Preservation formats and video reject explicit color-space requests. GUI choices and CLI dispatch use the same capability owner. See [output color](export-color.md) for exact definitions, re-import and the current 8-bit sRGB editing boundary.
+Rendered JPEG/PNG/TIFF/AVIF/JPEG XL accept `export --colorSpace display-p3` (also `srgb`, `adobe-rgb`, `prophoto-rgb`, `rec2020`). Pixels are actually converted and paired with generated ICC profiles. Preservation formats and video reject explicit color-space requests. GUI choices and CLI dispatch use the same capability owner. See [output color](export-color.md) for exact definitions, input/re-import color handling and the distinct Original/Linear precision boundaries.
 
 Disk-backed Local commands (`local-folders`, `local-open`, `local-browse`, `library`) are documented in [Local folders](local-folders.md). [External editor](external-editors.md) commands (`external-editor`, `external-edit`, `external-check`) return a stable saved TIFF as a new derived photo. [Tethered capture](tethered-capture.md) adds `camera-list`, `tether`, and `camera-capture`; explicitly enabled camera simulators are always labeled as such.
 

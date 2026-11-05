@@ -9,6 +9,9 @@ import { execute, parse, watch } from '../cli/openlr.mjs'
 import { makeDng } from '../tests/fixtures/dng.mjs'
 import { png as fixturePng } from '../tests/fixtures/merge-scene.js'
 import UTIF from '../web/vendor/codecs/utif.js'
+import { encodeColorTiff } from '../web/color-containers.js'
+import { makeColorProfile } from '../web/color-spaces.js'
+import { defaultOptions as avifOptions } from '../web/vendor/codecs/avif/meta.js'
 
 const executable = process.argv[2]
 if (!executable) throw Error('Pass the path to a built OpenLR executable')
@@ -46,6 +49,64 @@ function hasImageSignature(bytes, format) {
     bytes.subarray(0, 2).equals(Buffer.from([255, 10])) ||
     bytes.subarray(0, 12).equals(Buffer.from([0, 0, 0, 12, 74, 88, 76, 32, 13, 10, 135, 10]))
   )
+}
+function readTiff16(bytes) {
+  const buffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
+    ifd = UTIF.decode(buffer)[0]
+  UTIF.decodeImage(buffer, ifd)
+  assert.deepEqual(ifd.t258, [16, 16, 16, 16])
+  const view = new DataView(ifd.data.buffer, ifd.data.byteOffset, ifd.data.byteLength)
+  return {
+    width: ifd.width,
+    height: ifd.height,
+    samples: Uint16Array.from({ length: view.byteLength / 2 }, (_, i) => view.getUint16(i * 2, true))
+  }
+}
+async function highDepthInputs() {
+  const width = 128,
+    height = 8,
+    pixels = (depth) => {
+      const maximum = 2 ** depth - 1,
+        data = new Uint16Array(width * height * 4)
+      for (let p = 0; p < width * height; p++) {
+        const value = Math.floor(maximum / 4) + (p % width)
+        data.set([value, value, value, maximum], p * 4)
+      }
+      data.set([1, 2, 3, 1], 0)
+      data[7] = 0
+      return { width, height, data }
+    },
+    tiff = pixels(16),
+    sources = [
+      {
+        name: 'input16.tif',
+        bits: 16,
+        precision: 'uint16-source',
+        pixels: tiff,
+        bytes: encodeColorTiff(tiff, makeColorProfile('srgb'))
+      }
+    ],
+    encoderUrl = new URL('../web/vendor/codecs/avif/codec/enc/avif_enc.js', import.meta.url),
+    { default: createEncoder } = await import(encoderUrl),
+    encoder = await createEncoder({ wasmBinary: await readFile(new URL('avif_enc.wasm', encoderUrl)) })
+  for (const bits of [10, 12]) {
+    const frame = pixels(bits),
+      bytes = encoder.encode(new Uint8Array(frame.data.buffer), width, height, {
+        ...avifOptions,
+        quality: 100,
+        subsample: 3,
+        speed: 10,
+        bitDepth: bits,
+        icc: new Uint8Array(),
+        colorPrimaries: 1,
+        transferCharacteristics: 13,
+        matrixCoefficients: 0,
+        fullRange: true
+      })
+    assert.ok(bytes?.length, `generated AVIF${bits} encoding`)
+    sources.push({ name: `input${bits}.avif`, bits, precision: 'integer-source', pixels: frame, bytes })
+  }
+  return sources
 }
 try {
   const end = Date.now() + 45000
@@ -331,6 +392,78 @@ try {
   )
   assert.deepEqual(await readFile(colorSource), colorBytes)
   console.log('Native color-managed export/import:', JSON.stringify(colorResults))
+  const inputResults = []
+  for (const source of await highDepthInputs()) {
+    const inputPath = path.join(root, source.name),
+      originalBytes = Buffer.from(source.bytes),
+      originalSamples = source.pixels.data.slice()
+    await writeFile(inputPath, originalBytes)
+    const imported = await call('import', inputPath)
+    assert.deepEqual(imported.failed, [])
+    assert.equal(imported.added.length, 1)
+    await call('view', '--mode', 'detail')
+    await call('processing', '--version', '2')
+    const active = await call('state', '--summary', 'true')
+    assert.equal(active.selected, imported.added[0])
+    assert.equal(active.processing.version, 2)
+    assert.equal(active.processing.input.sourceBits, source.bits)
+    assert.equal(active.processing.input.precision, source.precision)
+    assert.equal(active.processing.input.compatibilityReason, undefined)
+    const output = await call(
+        'export',
+        '--format',
+        'image/tiff',
+        '--colorSpace',
+        'srgb',
+        '--output',
+        path.join(root, source.name + '-linear.tif')
+      ),
+      decoded = readTiff16(await readFile(output.path))
+    assert.deepEqual([decoded.width, decoded.height], [source.pixels.width, source.pixels.height])
+    assert.equal(decoded.samples.length, originalSamples.length)
+    let maximumError = 0,
+      lowSamples = 0,
+      hiddenDifference = false
+    const byteGroups = new Map(),
+      maximum = 2 ** source.bits - 1
+    for (let i = 0; i < decoded.samples.length; i++) {
+      maximumError = Math.max(
+        maximumError,
+        Math.abs(decoded.samples[i] - Math.round((originalSamples[i] * 65535) / maximum))
+      )
+      if (i % 4 === 0) {
+        const sample = decoded.samples[i],
+          byte = Math.round(sample / 257)
+        if (sample % 257) lowSamples++
+        if (byteGroups.has(byte) && byteGroups.get(byte) !== sample) hiddenDifference = true
+        byteGroups.set(byte, sample)
+      }
+    }
+    assert.ok(maximumError <= 4, `${source.name}: TIFF16 source code error ${maximumError}`)
+    assert.ok(lowSamples > 100, `${source.name}: low source bits retained`)
+    assert.equal(hiddenDifference, true, `${source.name}: differences within one display byte retained`)
+    const preserved = await call(
+      'export',
+      '--format',
+      'original',
+      '--output',
+      path.join(root, 'original-' + source.name)
+    )
+    assert.deepEqual(await readFile(preserved.path), originalBytes)
+    assert.deepEqual(await readFile(inputPath), originalBytes)
+    assert.deepEqual(source.pixels.data, originalSamples)
+    inputResults.push({
+      format: source.name.split('.').at(-1),
+      sourceBits: source.bits,
+      decodedPrecision: active.processing.input.precision,
+      colorTransform: active.processing.input.colorTransform,
+      maximumTiff16CodeError: maximumError,
+      lowSamples,
+      hiddenDifference,
+      originalPreserved: true
+    })
+  }
+  console.log('Native high-depth input → Linear → TIFF16:', JSON.stringify(inputResults))
   console.log(
     'Native GUI/CLI passed RAW, editing, PNG preview, original bytes, live observation, workspace capture, person segmentation, TIFF export and WebDAV sync.'
   )

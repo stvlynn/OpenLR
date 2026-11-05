@@ -86,8 +86,8 @@
       "sha256": "e353001f776bc9d1958077ad2c68e63020226755c3d2b043636f666d5cea267d"
     },
     "utif.js": {
-      "bytes": 58507,
-      "sha256": "20cdd625ff0fa25e5f02904ed8bd23647635163ac0c0fd171280006521da3e8f"
+      "bytes": 60162,
+      "sha256": "9543d87319297bff10f3c6b170feb0f720f96a5a0f720aadcf33f03f88198390"
     },
     "wasm-feature-detect.js": {
       "bytes": 3381,

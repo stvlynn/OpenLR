@@ -1,6 +1,7 @@
-// ESM adapter around unmodified UTIF CommonJS source.
+// ESM adapter around pinned UTIF CommonJS source with documented OpenLR corrections.
 import pako from './pako.js';
 const module={exports:{}};const require=name=>{if(name==='pako')return pako;throw Error('Unknown dependency: '+name)};
+// OpenLR changes (2026-11-05): correct tile stride/count, honor compression, and validate block/LZW/PackBits bounds and decoded lengths.
 
 
 
@@ -124,7 +125,7 @@ UTIF.decodeImage = function(buff, img, ifds)
 	}
 	var bipl = Math.ceil(img.width*bipp/8)*8;
 	var soff = img["t273"];  if(soff==null) soff = img["t324"];
-	var bcnt = img["t279"];  if(cmpr==1 && soff.length==1) bcnt = [img.height*(bipl>>>3)];  if(bcnt==null) bcnt = img["t325"];
+	var bcnt = img["t279"];  if(cmpr==1 && soff.length==1 && img["t322"]==null) bcnt = [img.height*(bipl>>>3)];  if(bcnt==null) bcnt = img["t325"];
 	var bytes = new Uint8Array(img.height*(bipl>>>3)), bilen = 0;
 
 	if(img["t322"]!=null) // tiled
@@ -161,16 +162,20 @@ UTIF.decode._decompress = function(img,ifds, data, off, len, cmpr, tgt, toff, fo
 {
 	//console.log("compression", cmpr);
 	//var time = Date.now();
+	var bps = (img["t258"]?Math.min(32,img["t258"][0]):1);
+	var noc = (img["t277"]?img["t277"][0]:1), bpp=(bps*noc)>>>3, h = (img["t323"] ? img["t323"][0] : img["t278"] ? img["t278"][0] : img.height), bpl = Math.ceil(bps*noc*(img["t322"] ? img["t322"][0] : img.width)/8);
+	var padded = h*bpl, expected = Math.min(tgt.length-toff, padded);
+	if(!Number.isSafeInteger(off) || !Number.isSafeInteger(len) || off<0 || len<0 || off+len>data.length) throw Error("Invalid TIFF block input bounds");
 	if(false) {}
-	else if(cmpr==1 || (len==tgt.length && cmpr!=32767)) for(var j=0; j<len; j++) tgt[toff+j] = data[off+j];
+	else if(cmpr==1) { if(len!==expected && len!==padded) throw Error("Incomplete TIFF uncompressed block"); for(var j=0; j<expected; j++) tgt[toff+j] = data[off+j]; }
 	else if(cmpr==3) UTIF.decode._decodeG3 (data, off, len, tgt, toff, img.width, fo);
 	else if(cmpr==4) UTIF.decode._decodeG4 (data, off, len, tgt, toff, img.width, fo);
-	else if(cmpr==5) UTIF.decode._decodeLZW(data, off, tgt, toff);
+	else if(cmpr==5) UTIF.decode._decodeLZW(data, off, len, tgt, toff, expected, padded);
 	else if(cmpr==6) UTIF.decode._decodeOldJPEG(img, data, off, len, tgt, toff);
 	else if(cmpr==7) UTIF.decode._decodeNewJPEG(img, data, off, len, tgt, toff);
-	else if(cmpr==8) {  var src = new Uint8Array(data.buffer,off,len);  var bin = pako["inflate"](src);  for(var i=0; i<bin.length; i++) tgt[toff+i]=bin[i];  }
+	else if(cmpr==8) {  var src = new Uint8Array(data.buffer,off,len);  var bin = pako["inflate"](src); if(bin.length!==expected && bin.length!==padded) throw Error("Incomplete TIFF Deflate block"); for(var i=0; i<expected; i++) tgt[toff+i]=bin[i];  }
 	else if(cmpr==32767) UTIF.decode._decodeARW(img, data, off, len, tgt, toff);
-	else if(cmpr==32773) UTIF.decode._decodePackBits(data, off, len, tgt, toff);
+	else if(cmpr==32773) UTIF.decode._decodePackBits(data, off, len, tgt, toff, expected, padded);
 	else if(cmpr==32809) UTIF.decode._decodeThunder (data, off, len, tgt, toff);
 	else if(cmpr==34713) //for(var j=0; j<len; j++) tgt[toff+j] = data[off+j];
 		UTIF.decode._decodeNikon   (img,ifds, data, off, len, tgt, toff);
@@ -178,8 +183,7 @@ UTIF.decode._decompress = function(img,ifds, data, off, len, cmpr, tgt, toff, fo
 	
 	//console.log(Date.now()-time);
 	
-	var bps = (img["t258"]?Math.min(32,img["t258"][0]):1);
-	var noc = (img["t277"]?img["t277"][0]:1), bpp=(bps*noc)>>>3, h = (img["t278"] ? img["t278"][0] : img.height), bpl = Math.ceil(bps*noc*img.width/8);
+	// Block geometry is computed before decoding.
 	
 	// convert to Little Endian  /*
 	if(bps==16 && !img.isLE && img["t33422"]==null)  // not DNG
@@ -653,15 +657,19 @@ UTIF.decode._decodeOldJPEG = function(img, data, off, len, tgt, toff)
 	if(img["t262"] && img["t262"][0] == 6)  img["t262"][0] = 2;
 }
 
-UTIF.decode._decodePackBits = function(data, off, len, tgt, toff)
+UTIF.decode._decodePackBits = function(data, off, len, tgt, toff, expected, padded)
 {
-	var sa = new Int8Array(data.buffer), ta = new Int8Array(tgt.buffer), lim = off+len;
+	var sa = new Int8Array(data.buffer), ta = new Int8Array(tgt.buffer), lim = off+len, start = toff;
 	while(off<lim)
 	{
-		var n = sa[off];  off++;
+		var n = sa[off]; off++;
+		var count = n>=0 ? n+1 : n>=-127 ? 1-n : 0;
+		if((n>=0 && off+count>lim) || (n>=-127 && n<0 && off>=lim)) throw Error("Truncated TIFF PackBits run");
+		if(toff-start+count>padded) throw Error("TIFF PackBits output exceeds block size");
 		if(n>=0  && n<128)    for(var i=0; i< n+1; i++) {  ta[toff]=sa[off];  toff++;  off++;   }
 		if(n>=-127 && n<0) {  for(var i=0; i<-n+1; i++) {  ta[toff]=sa[off];  toff++;           }  off++;  }
 	}
+	if(toff-start!==expected && toff-start!==padded) throw Error("Incomplete TIFF PackBits block");
 }
 
 UTIF.decode._decodeThunder = function(data, off, len, tgt, toff)
@@ -821,7 +829,7 @@ UTIF.decode._writeBits = function(bits, tgt, boff)
 	for(var i=0; i<bits.length; i++) tgt[(boff+i)>>>3] |= (bits[i]<<(7-((boff+i)&7)));
 }
 
-UTIF.decode._decodeLZW = function(data, off, tgt, toff)
+UTIF.decode._decodeLZW = function(data, off, len, tgt, toff, expected, padded)
 {
 	if(UTIF.decode._lzwTab==null)
 	{
@@ -831,12 +839,14 @@ UTIF.decode._decodeLZW = function(data, off, tgt, toff)
 	}
 	var copy = UTIF.decode._copyData;
 	var tab = UTIF.decode._lzwTab[0], tln=UTIF.decode._lzwTab[1], chr=UTIF.decode._lzwTab[2], totl = 258, chrl = 258<<2;
-	var bits = 9, boff = off<<3;  // offset in bits
+	var bits = 9, boff = off*8, end = (off+len)*8, start = toff;
+	if(off<0 || len<0 || off+len>data.length) throw Error("Invalid TIFF LZW input bounds");
 
 	var ClearCode = 256, EoiCode = 257;
 	var v = 0, Code = 0, OldCode = 0;
 	while(true)
 	{
+		if(boff+bits>end) throw Error("Truncated TIFF LZW stream: missing EOI");
 		v = (data[boff>>>3]<<16) | (data[(boff+8)>>>3]<<8) | data[(boff+16)>>>3];
 		Code = ( v>>(24-(boff&7)-bits) )    &   ((1<<bits)-1);  boff+=bits;
 
@@ -845,11 +855,14 @@ UTIF.decode._decodeLZW = function(data, off, tgt, toff)
 		{
 			bits=9;  totl = 258;  chrl = 258<<2;
 
+			if(boff+bits>end) throw Error("Truncated TIFF LZW clear code");
 			v = (data[boff>>>3]<<16) | (data[(boff+8)>>>3]<<8) | data[(boff+16)>>>3];
 			Code = ( v>>(24-(boff&7)-bits) )    &   ((1<<bits)-1);  boff+=bits;
 			if(Code==EoiCode) break;
+			if(Code>255) throw Error("Invalid TIFF LZW initial code");
 			tgt[toff]=Code;  toff++;
 		}
+		else if(Code>totl || bits>12) throw Error("Invalid TIFF LZW dictionary code");
 		else if(Code<totl)
 		{
 			var cd = tab[Code], cl = tln[Code];
@@ -884,8 +897,10 @@ UTIF.decode._decodeLZW = function(data, off, tgt, toff)
 			}
 			if(totl+1==(1<<bits)) bits++;
 		}
+		if(toff-start>padded) throw Error("TIFF LZW output exceeds block size");
 		OldCode = Code;
 	}
+	if(toff-start!==expected && toff-start!==padded) throw Error("Incomplete TIFF LZW block");
 }
 
 UTIF.decode._copyData = function(s,so,t,to,l) {  for(var i=0;i<l;i+=4) {  t[to+i]=s[so+i];  t[to+i+1]=s[so+i+1];  t[to+i+2]=s[so+i+2];  t[to+i+3]=s[so+i+3];  }  }

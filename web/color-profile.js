@@ -19,6 +19,20 @@ function signature(view, at) {
   )
 }
 
+/** Forward ICC.1:2022 table 68 curve, with already validated coefficients.
+ * This evaluates normalized unsigned input; named-space signed extensions belong
+ * to color-spaces.js and must not be imposed on arbitrary ICC curves.
+ */
+export function evaluateParametricCurve(type, parameters, x) {
+  const [gamma, a, b, c, d, e, f] = parameters
+  if (type === 0) return x ** gamma
+  // Rounding at x=-b/a can leave a tiny negative residue. Validation checks
+  // the real power base over the entire active [0,1] branch before evaluation.
+  const power = () => Math.max(0, a * x + b) ** gamma
+  if (type <= 2) return x < -b / a ? (type === 2 ? c : 0) : power() + (type === 2 ? c : 0)
+  return x < d ? c * x + (type === 4 ? f : 0) : power() + (type === 4 ? e : 0)
+}
+
 function validateParametricCurve(view, at, size) {
   if (size < 12) invalid('truncated parametric curve')
   const type = view.getUint16(at + 8),
@@ -30,14 +44,6 @@ function validateParametricCurve(view, at, size) {
   const [gamma, a, b, c, d, e, f] = parameters
   if (!parameters.every(Number.isFinite) || gamma <= 0 || (type > 0 && a <= 0))
     invalid('undefined parametric curve')
-  const valueAt = (x) => {
-    if (type === 0) return x ** gamma
-    // At x=-b/a floating arithmetic can produce a tiny negative residual;
-    // the active-domain check below rejects actual negative bases separately.
-    const power = () => Math.max(0, a * x + b) ** gamma
-    if (type <= 2) return x < -b / a ? (type === 2 ? c : 0) : power() + (type === 2 ? c : 0)
-    return x < d ? c * x + (type === 4 ? f : 0) : power() + (type === 4 ? e : 0)
-  }
   // Check both pieces at their active endpoints and the branch point. With a>0
   // these bound the power base on the complete [0,1] input domain, not a sample grid.
   const threshold = type === 0 ? 0 : type <= 2 ? -b / a : d
@@ -45,7 +51,8 @@ function validateParametricCurve(view, at, size) {
   if (type > 0 && highStart <= 1 && a * highStart + b < -1e-12) invalid('negative parametric power base')
   const points = [0, 1]
   if (threshold >= 0 && threshold <= 1) points.push(threshold)
-  if (!points.every((x) => Number.isFinite(valueAt(x)))) invalid('non-finite parametric curve result')
+  if (!points.every((x) => Number.isFinite(evaluateParametricCurve(type, parameters, x))))
+    invalid('non-finite parametric curve result')
   if (type >= 3) {
     // The lower branch's boundary limit also matters when it differs from the upper branch.
     const lowEnd = Math.min(1, threshold)

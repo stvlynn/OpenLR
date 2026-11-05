@@ -57,9 +57,9 @@ export async function encodeProfiled(format, pixels, profile, quality, colorSpac
   return result
 }
 
-export async function decodeAvif(bytes) {
+export async function decodeAvif(bytes, bitDepth = 8) {
   const module = await load('avif-dec', () => import('./vendor/codecs/avif/codec/dec/avif_dec.js')),
-    result = module.decodeWithColor(new Uint8Array(bytes), 8)
+    result = module.decodeWithColor(new Uint8Array(bytes), bitDepth)
   if (!result) throw Error('Invalid AVIF image')
   return result
 }

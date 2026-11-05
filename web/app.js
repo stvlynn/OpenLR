@@ -9,6 +9,7 @@ import {
   PROCESS_MESSAGES
 } from './process-version.js'
 import { workingFrame } from './working-frames.js'
+import { inputPrecisionDescription } from './input-color.js'
 import { isVideo, openVideo, clipRange, exportVideo } from './video.js'
 import { PHOTO_ACCEPT, RAW_PREVIEW_VERSION, isRawPhoto } from './decode.js'
 import { whenVisible } from './thumbnail-visibility.js'
@@ -495,6 +496,8 @@ async function draw() {
   }
   if (detail) paintStage(await source(p.id), p.edit)
   else stopPlayback()
+  const precision = inputPrecisionDescription(processingState(p)?.input)
+  if (precision) $('info').textContent += '\n' + precision
   const video = detail && isVideo(p) && playingMedia
   $('video-bar').hidden = !video
   if (video) {
@@ -508,6 +511,13 @@ async function draw() {
 }
 function cropDraft() {
   return cropping && cropSurface.owner === selected ? { ...cropSurface.box } : null
+}
+function processingState(photo = active()) {
+  if (!photo) return null
+  const version = processingVersion(photo.edit)
+  const provenance =
+    bitmapId === photo.id && bitmapVersion === version ? workingFrame(bitmap)?.provenance : null
+  return { version, input: provenance ? { ...provenance } : null }
 }
 function snapshot() {
   const items = visible().map(({ thumbnail, ...p }) => p)
@@ -524,6 +534,7 @@ function snapshot() {
           }
         : null,
     codecDiagnostics: getImageWorkerDiagnostics(),
+    processing: processingState(),
     selected,
     scope,
     mode,
@@ -695,6 +706,7 @@ async function execute(command, args) {
         mode,
         visibleCount: visible().length,
         selectionCount: organization.selection.size,
+        processing: processingState(),
         cropDraft: cropDraft(),
         cropGuide: { ...cropSurface.guide },
         localSelection: localToolsUI?.selection(),

@@ -139,6 +139,56 @@ function definitionOf(id) {
   return DEFINITIONS[id]
 }
 
+/** Compose a source linear-RGB -> relative D50 XYZ matrix with the existing
+ * D50 XYZ -> linear sRGB definition. ICC colorants are already D50-adapted;
+ * callers must not apply their chad matrix again. No clipping or quantization.
+ */
+export function matrixToLinearSrgb(sourceToXyzD50) {
+  if (!sourceToXyzD50 || sourceToXyzD50.length !== 9 || !Array.from(sourceToXyzD50).every(Number.isFinite))
+    throw new TypeError('RGB matrix must contain nine finite D50 XYZ coefficients')
+  return product(DEFINITIONS.srgb.fromXYZ, sourceToXyzD50)
+}
+
+/** Normalized encoded named-space input -> signed linear sRGB, without an
+ * encoded-sRGB roundtrip. Codecs must establish the source transfer/primaries;
+ * a CICP Rec.2020 primary code alone does not identify our gamma-2.4 space.
+ */
+export function createNamedInputTransform(source = 'srgb') {
+  const definition = definitionOf(source),
+    matrix = TRANSFORMS[source].srgb
+  return {
+    convert(r, g, b, out, offset = 0) {
+      if (
+        !Number.isFinite(r) ||
+        r < 0 ||
+        r > 1 ||
+        !Number.isFinite(g) ||
+        g < 0 ||
+        g > 1 ||
+        !Number.isFinite(b) ||
+        b < 0 ||
+        b > 1
+      )
+        throw new RangeError('RGB input components must be finite normalized values in [0,1]')
+      if (
+        !out ||
+        !Number.isSafeInteger(offset) ||
+        offset < 0 ||
+        offset + 3 > out.length ||
+        !(Array.isArray(out) || out instanceof Float32Array || out instanceof Float64Array)
+      )
+        throw new TypeError('RGB conversion requires float-capable output storage')
+      const x = decode(r, definition),
+        y = decode(g, definition),
+        z = decode(b, definition)
+      out[offset] = matrix[0] * x + matrix[1] * y + matrix[2] * z
+      out[offset + 1] = matrix[3] * x + matrix[4] * y + matrix[5] * z
+      out[offset + 2] = matrix[6] * x + matrix[7] * y + matrix[8] * z
+      return out
+    }
+  }
+}
+
 export function decodeSrgb(value) {
   const magnitude = Math.abs(value)
   return magnitude <= 0.04045 ? value / 12.92 : Math.sign(value) * ((magnitude + 0.055) / 1.055) ** 2.4
