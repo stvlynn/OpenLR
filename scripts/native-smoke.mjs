@@ -1904,6 +1904,49 @@ try {
   console.log(
     'Native export controls: actual live chunk progress and screenshot, queued edit isolation, cancellation, completed-file preservation, temporary cleanup and unchanged export settings passed.'
   )
+  const viewportFile = path.join(root, 'viewport.png'),
+    viewportBytes = makePng({
+      width: 2400,
+      height: 1800,
+      bits: 8,
+      colorType: 2,
+      srgb: 0,
+      data: new Uint8Array(2400 * 1800 * 3).fill(130)
+    })
+  await writeFile(viewportFile, viewportBytes)
+  const viewportId = (await call('import', viewportFile)).added[0]
+  await call('view', '--mode', 'detail')
+  if (!(await call('state')).zoom) await call('zoom')
+  const viewportBefore = await call('state'),
+    bounds = await call('viewport')
+  assert.ok(bounds.maxX > 100 && bounds.maxY > 100)
+  const viewportMoved = await call('viewport', '--x', '100', '--y', '80', '--photoId', viewportId)
+  assert.equal(viewportMoved.x, 100)
+  assert.equal(viewportMoved.y, 80)
+  assert.deepEqual((await call('state', '--summary', 'true')).viewport, viewportMoved)
+  await assert.rejects(call('viewport', '--x', '0', '--photoId', 'stale'), /selected photo changed/)
+  const clamped = await call('viewport', '--x', '1000000')
+  // CSSOM extents are integer-rounded while native DPI scroll offsets can be fractional.
+  assert.ok(Math.abs(clamped.x - clamped.maxX) <= 1)
+  assert.equal((await call('viewport', '--x', '2000000')).x, clamped.x)
+  assert.equal(clamped.y, 80)
+  const viewportShot = await call('screenshot', '--output', path.join(root, 'viewport-shot.png'))
+  assert.equal((await readFile(viewportShot.path)).subarray(1, 4).toString(), 'PNG')
+  assert.deepEqual(
+    (await call('state')).photos.find((p) => p.id === viewportId).edit,
+    viewportBefore.photos.find((p) => p.id === viewportId).edit
+  )
+  const viewportOriginal = await call(
+    'export',
+    '--format',
+    'original',
+    '--output',
+    path.join(root, 'viewport-original.png')
+  )
+  assert.deepEqual(await readFile(viewportOriginal.path), Buffer.from(viewportBytes))
+  console.log(
+    'Native viewport passed actual scrolling, clamping, selected-photo guard, state readback, PNG capture and unchanged recipe/original.'
+  )
   console.log(
     'Native GUI/CLI passed RAW, editing, PNG preview, original bytes, live observation, workspace capture, person segmentation, TIFF export and WebDAV sync.'
   )

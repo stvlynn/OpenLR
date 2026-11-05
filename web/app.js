@@ -1,3 +1,4 @@
+import { readViewport, moveViewport, VIEWPORT_MESSAGES } from './viewport.js'
 import { mountColorGrading } from './color-grading-ui.js'
 import {
   colorGradingValue,
@@ -661,6 +662,7 @@ function snapshot() {
     colorGrading: { mode: gradingMode },
     film,
     zoom,
+    viewport: mode === 'detail' && active() ? readViewport($('stage')) : null,
     albums,
     photos: items,
     local: local.state(),
@@ -795,6 +797,12 @@ async function execute(command, args, context = {}) {
     organization.selection.size === 1
   const nextId = advance ? visible()[visible().findIndex((row) => row.id === selected) + 1]?.id : null
   switch (command) {
+    case 'viewport': {
+      if (args.photoId !== undefined && args.photoId !== p?.id) throw Error(VIEWPORT_MESSAGES.changed)
+      if (mode !== 'detail' || !p) throw Error(VIEWPORT_MESSAGES.detail)
+      if (args.x === undefined && args.y === undefined) return readViewport($('stage'))
+      return moveViewport($('stage'), args)
+    }
     case 'export-selection':
       return exportSelection({
         visible: visible(),
@@ -856,6 +864,7 @@ async function execute(command, args, context = {}) {
         scope,
         mode,
         visibleCount: visible().length,
+        viewport: mode === 'detail' && photo ? readViewport($('stage')) : null,
         selectionCount: organization.selection.size,
         processing: processingState(),
         cropDraft: cropDraft(),
@@ -2061,6 +2070,7 @@ export function run(command, args = {}, observe, context) {
       const result = await execute(command, args, context)
       libraryHistory.record(previous, photos, albums)
       const unchangedPoll =
+        (command === 'viewport' && args.x === undefined && args.y === undefined) ||
         (command === 'external-check' && !result.imported?.length) ||
         (command === 'export-settings' && args.options === undefined)
       if (
@@ -2188,6 +2198,7 @@ $('clear-crop').onclick = () => act('edit', { key: 'crop', value: null })
 function notifyWorkspaceChange() {
   window.dispatchEvent(new Event('openlr-change'))
 }
+$('stage').addEventListener('scroll', notifyWorkspaceChange, { passive: true })
 const cropSurface = new CropSurface($('stage'), () => act('crop-tool'), notifyWorkspaceChange)
 function updateCropGuideControls() {
   $('crop-guide').value = cropSurface.guide.type

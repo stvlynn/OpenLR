@@ -182,3 +182,9 @@ Windows／Node 24.9／Chrome 156.0.8078.80 的完整 `OPENLR_TEST_CMS=1 OPENLR_T
 Windows／Node 24.9／Chrome 156.0.8078.80 全量 `OPENLR_TEST_CMS=1 OPENLR_TEST_METADATA=1 npm test` 完成 **309/309，零失败、零跳过**。Windows WebView2 和 WSL Ubuntu 24.04／WebKitGTK 2.52.6 均完成重新构建及各七组原生套件；Windows 安装包生成成功。更新后的原生断言同时检查分析与 Original 编码 worker 没有启动回退，实际 TIFF 像素、CLI 截图、撤销、侧车重启及原件保持检查通过。Linux 仍使用 Xvfb／D-Bus，物理 GPU、系统选择器、真实相机及真实外部目录的既有限制不变。
 
 集成后 24MP Original 缓存调整耗时仍约 1.683/1.696s，主线程最大心跳间隔降到 81/85ms；首次源转换仍阻塞约 1.717s。单次活动渲染进程峰值从先前约 1.195GB 增至 1.572GB，保留为实际代价，详见[性能记录](dehaze-performance.md)。macOS 本轮未执行；`51508cf` 的 [CI 42043897131](https://github.com/stvlynn/OpenLR/actions/runs/42043897131) 三个作业均为零步骤，macOS 注释明确报告账户付款／额度问题，不记作代码测试失败或验收通过。
+
+2026-11-05 视口 CLI 补充：[命令／控件审计](../research/cli-control-audit.md)发现放大后的照片只能由用户滚动，agent 无法读取或移动相同视口。新增 `viewport` 通过中央 dispatcher 使用原 DOM 滚动位置，返回实际坐标、尺寸与边界；完整／摘要 state 同步报告，鼠标滚动通知现有 watch。照片配方、缩放和输出范围不变，未新增界面控件。
+
+Windows／Node 24.9／Chrome 156 全量 `OPENLR_TEST_CMS=1 OPENLR_TEST_METADATA=1 npm test` 为 **310/310、零跳过**；新增测试后续仅做格式修正，单项实际浏览器复核通过。测试包含发现／dry-run、参数边界、实际鼠标滚动、state、过期照片拒绝、边界与未提供轴保持、配方保持和 Grid 拒绝。Windows WebView2 与 WSL Ubuntu 24.04／WebKitGTK 2.52.6 均重新构建并通过 `scripts/native-smoke.mjs`，实际 CLI 滚动、PNG 工作区截图、原件逐字节保持通过。本轮运行的是两端主原生 smoke，不重述为七组全套；上一轮七组结果另见上文。
+
+首次原生脚本因新增变量重名在启动前报语法错误，修复后运行；Windows 首次实际执行发现 CSSOM 整数宽度与 DPI 下小数滚动终点相差约 .6 CSS 像素。断言依据整数 extent／小数 offset 的 API 语义改为最多 1px 取整差，并额外验证请求更远坐标仍停在同一终点，复跑通过；生产代码未为测试伪造滚动值。Linux 原断言即通过。当前 macOS、完整模块命令覆盖与最终干净检出验收仍未完成。
