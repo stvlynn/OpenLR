@@ -17,10 +17,16 @@ header strong {
   letter-spacing: -0.7px;
 }
 header input[type='search'] {
+  flex: 1 1 360px;
+  min-width: 0;
   border-radius: 18px;
   padding: 6px 14px 6px 34px;
   background: #17191b url('vendor/icons/search.svg') no-repeat 11px center;
   background-size: 15px;
+}
+header button {
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 header #import {
   background: #374751;

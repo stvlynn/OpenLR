@@ -21,6 +21,12 @@ import { exportXmp, readXmp, exportPackage } from './xmp.js'
 import { mountSync, synchronize } from './sync.js'
 import { metadata, describe } from './metadata.js'
 import { readExportOptions, applyWatermark, applyFrameWatermark } from './export-options.js'
+import {
+  normalizeExportSettings,
+  loadExportSettings,
+  saveExportSettings,
+  EXPORT_SETTINGS_MESSAGES
+} from './export-settings.js'
 import { COLOR_SPACES } from './color-spaces.js'
 import { exportColorSpaces, validateExportColorSpace, EXPORT_COLOR_MESSAGES } from './export-color.js'
 import * as db from './catalog.js'
@@ -410,6 +416,7 @@ async function draw() {
   document.querySelector('aside').hidden = !detail || !inspector || p?.deleted
   $('actions').hidden = !p
   $('export').disabled = !p
+  $('export-previous').disabled = !p
   $('detail').disabled = !p
   syncTiles($('gallery'), detail ? [] : list)
   syncTiles($('film'), detail && film ? list : [])
@@ -677,6 +684,8 @@ async function execute(command, args) {
     organization.selection.size === 1
   const nextId = advance ? visible()[visible().findIndex((row) => row.id === selected) + 1]?.id : null
   switch (command) {
+    case 'export-settings':
+      return args.options === undefined ? loadExportSettings() : saveExportSettings(args)
     case 'history-undo':
     case 'history-redo': {
       const backwards = command === 'history-undo',
@@ -1756,8 +1765,18 @@ async function execute(command, args) {
           if (!data.radiance) throw Error('The selected photo has no merged HDR radiance')
           return { blob: data.radiance, filename: p.name.replace(/\.[^.]+$/, '') + '.hdr' }
         }
+        case 'export-previous': {
+          const previous = loadExportSettings()[isVideo(p) ? 'video' : 'photo']
+          if (!previous)
+            throw Object.assign(Error(EXPORT_SETTINGS_MESSAGES.missing), { code: 'EXPORT_SETTINGS_MISSING' })
+          return execute('export', previous)
+        }
         case 'export':
         case 'preview': {
+          const media = isVideo(p) ? 'video' : 'photo',
+            options = command === 'export' ? normalizeExportSettings(args, media) : null,
+            finished = (result) => (options ? { ...result, exportSettings: { media, options } } : result)
+          if (options) args = options
           const format =
             command === 'preview'
               ? 'image/png'
@@ -1766,20 +1785,19 @@ async function execute(command, args) {
           if (format.startsWith('video/')) {
             if (!isVideo(p)) throw Error('Select a video')
             await source(p.id)
-            return exportVideo((await original(p.id)).file, p, { ...args, format })
+            return finished(await exportVideo((await original(p.id)).file, p, { ...args, format }))
           }
-          if (format === 'original') return { blob: (await original(p.id)).file, filename: p.name }
+          if (format === 'original') return finished({ blob: (await original(p.id)).file, filename: p.name })
           if (format === 'image/x-adobe-dng') {
-            if (args.maxSize !== undefined || args.watermark)
-              throw Error('DNG preserves RAW pixels; use a rendered format for resizing or watermarks')
-            return exportDng(p, (await original(p.id)).file)
+            return finished(await exportDng(p, (await original(p.id)).file))
           }
-          if (format === 'original-settings') return exportPackage(p, (await original(p.id)).file)
+          if (format === 'original-settings')
+            return finished(await exportPackage(p, (await original(p.id)).file))
           if (format === 'application/rdf+xml')
-            return {
+            return finished({
               blob: new Blob([exportXmp(p)], { type: format }),
               filename: exportFilename(p.name, format)
-            }
+            })
           const max =
             args.maxSize === undefined
               ? command === 'preview'
@@ -1791,17 +1809,17 @@ async function execute(command, args) {
           if (processingVersion(recipe) === 2) {
             const frame = renderFrame(workingFrame(image), recipe, max)
             if (command === 'export') applyFrameWatermark(frame, args.watermark)
-            return {
+            return finished({
               blob: await encodeFrame(frame, format, number(args.quality ?? 0.92, 0, 1), colorSpace),
               filename: exportFilename(p.name, format)
-            }
+            })
           }
           const canvas = render(image, recipe, max)
           if (command === 'export') applyWatermark(canvas, args.watermark)
-          return {
+          return finished({
             blob: await encodePhoto(canvas, format, number(args.quality ?? 0.92, 0, 1), colorSpace),
             filename: exportFilename(p.name, format)
-          }
+          })
         }
         default:
           throw Error('Unknown command: ' + command)
@@ -1825,7 +1843,9 @@ export function run(command, args = {}, observe) {
       const previous = libraryHistory.checkpoint(command, photos, albums, local.state())
       const result = await execute(command, args)
       libraryHistory.record(previous, photos, albums)
-      const unchangedPoll = command === 'external-check' && !result.imported?.length
+      const unchangedPoll =
+        (command === 'external-check' && !result.imported?.length) ||
+        (command === 'export-settings' && args.options === undefined)
       if (
         !unchangedPoll &&
         !(result?.blob instanceof Blob) &&
@@ -2079,14 +2099,48 @@ $('album-dialog').onclose = (e) => {
     act('album', { name: $('album-name').value, smart: $('smart-album').checked })
   e.target.returnValue = ''
 }
+const previousExportButton = document.createElement('button')
+previousExportButton.id = 'export-previous'
+previousExportButton.textContent = EXPORT_SETTINGS_MESSAGES.previous
+previousExportButton.title = EXPORT_SETTINGS_MESSAGES.previousDescription
+previousExportButton.setAttribute('aria-label', EXPORT_SETTINGS_MESSAGES.previousDescription)
+previousExportButton.disabled = true
+$('export').after(previousExportButton)
 $('export').onclick = () => {
-  const video = isVideo(active())
-  for (const item of $('format').options)
-    item.hidden = item.disabled = item.value.startsWith('video/') && !video
-  if (video) $('format').value = 'video/mp4'
-  else if ($('format').value.startsWith('video/')) $('format').value = 'image/jpeg'
-  $('format').dispatchEvent(new Event('change'))
-  $('export-dialog').showModal()
+  try {
+    const media = isVideo(active()) ? 'video' : 'photo',
+      previous = loadExportSettings()[media],
+      options = previous ?? normalizeExportSettings({}, media)
+    for (const item of $('format').options)
+      item.hidden = item.disabled = item.value.startsWith('video/') && media !== 'video'
+    $('format').value = options.format
+    $('format').dispatchEvent(new Event('change'))
+    $('quality').value = Math.round((options.quality ?? 0.92) * 100)
+    $('export-size').value = options.maxSize ?? ''
+    $('watermark').value = options.watermark ?? ''
+    if (options.colorSpace) exportColorSelect.value = options.colorSpace
+    $('export-dialog').showModal()
+  } catch (error) {
+    notice(error.message)
+  }
+}
+async function savePreparedExport(command, options) {
+  const result = await run(command, options)
+  if (await saveExport(result.blob, result.filename)) {
+    try {
+      await run('export-settings', result.exportSettings)
+    } catch (error) {
+      throw Error(EXPORT_SETTINGS_MESSAGES.rememberFailed + error.message)
+    }
+  }
+}
+previousExportButton.onclick = async () => {
+  try {
+    await savePreparedExport('export-previous')
+  } catch (error) {
+    if (error.code === 'EXPORT_SETTINGS_MISSING') $('export').click()
+    else notice(error.message)
+  }
 }
 $('play-video').onclick = () => act(playingMedia?.video.paused ? 'video-play' : 'video-pause')
 $('video-position').onchange = (e) => act('video-seek', { time: Number(e.target.value) })
@@ -2124,9 +2178,7 @@ $('export-dialog').onclose = async (e) => {
   e.target.returnValue = ''
   if (!accepted) return
   try {
-    const options = readExportOptions()
-    const { blob, filename } = await run('export', options)
-    if (await saveExport(blob, filename)) localStorage.setItem('last-export', JSON.stringify(options))
+    await savePreparedExport('export', readExportOptions())
   } catch (err) {
     notice(err.message)
   }
@@ -2151,17 +2203,8 @@ document.onkeydown = (e) => {
   else if (mod && key === 'z') act(e.shiftKey ? 'history-redo' : 'history-undo')
   else if (mod && key === 'f') $('search').focus()
   else if (mod && e.shiftKey && key === 'i') choosePhotos()
-  else if (mod && key === 'e') {
-    let previous
-    try {
-      previous = JSON.parse(localStorage.getItem('last-export'))
-    } catch {}
-    if (previous)
-      run('export', previous)
-        .then(({ blob, filename }) => saveExport(blob, filename))
-        .catch((err) => notice(err.message))
-    else $('export').click()
-  } else if (!mod && key === 'e' && e.shiftKey) $('export').click()
+  else if (mod && key === 'e') previousExportButton.click()
+  else if (!mod && key === 'e' && e.shiftKey) $('export').click()
   else if (!mod && ['e', 'd', 'g'].includes(key))
     act('view', { mode: key === 'g' ? 'grid' : 'detail', inspector: key !== 'd' })
   else if (!mod && key === 'p') act('panel', { name: e.shiftKey ? 'Presets' : 'photos' })

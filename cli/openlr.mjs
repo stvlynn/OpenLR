@@ -350,7 +350,23 @@ export async function execute(request) {
     return { result, selected: envelope.selected, frame: await writeImage(envelope.frame, capture, force) }
   }
   if (result?.kind !== 'file') return result
-  return writeImage(result, output, force)
+  const saved = await writeImage(result, output, force)
+  if (['export', 'export-previous'].includes(command) && result.exportSettings) {
+    try {
+      await execute({
+        command: 'export-settings',
+        args: result.exportSettings,
+        session,
+        timeout: request.timeout
+      })
+    } catch (error) {
+      const destination = saved.rawOutput
+        ? 'Export bytes were written to stdout'
+        : 'File was saved to ' + saved.path
+      throw new Error(destination + ', but export settings could not be remembered: ' + error.message)
+    }
+  }
+  return saved
 }
 async function writeImage(result, output, force) {
   if (typeof result.base64 !== 'string') throw new Error('Invalid image response')
@@ -360,7 +376,22 @@ async function writeImage(result, output, force) {
   if (output === '-') {
     if (process.stdout.isTTY)
       throw new Error('Use --output <file> for images, or redirect --output - to a file')
-    process.stdout.write(bytes)
+    await new Promise((resolve, reject) => {
+      const failed = (error) => reject(error)
+      process.stdout.once('error', failed)
+      try {
+        process.stdout.write(bytes, (error) => {
+          if (error) reject(error)
+          else {
+            process.stdout.removeListener('error', failed)
+            resolve()
+          }
+        })
+      } catch (error) {
+        process.stdout.removeListener('error', failed)
+        reject(error)
+      }
+    })
     return { rawOutput: true }
   }
   if (output) destination = path.resolve(output)

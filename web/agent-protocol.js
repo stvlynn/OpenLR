@@ -801,6 +801,19 @@ export const definitions = {
     [],
     { returns: 'image/png' }
   ),
+  'export-previous': entry('Export the current photo or video using its remembered export settings', {}, [], {
+    returns: 'image'
+  }),
+  'export-settings': entry(
+    'Read remembered photo/video export settings, or replace one media slot explicitly',
+    {
+      media: string('Settings slot', { enum: ['photo', 'video'] }),
+      options: {
+        type: 'object',
+        description: 'Export options using the same fields as export; provide media with options'
+      }
+    }
+  ),
   export: entry(
     'Export selected photo bytes without opening a native save dialog',
     {
@@ -808,6 +821,7 @@ export const definitions = {
       maxSize: {
         type: 'integer',
         minimum: 1,
+        maximum: Number.MAX_SAFE_INTEGER,
         description: 'Longest edge in pixels. Defaults to original size.'
       },
       watermark: string('Optional text at lower right'),
@@ -894,6 +908,11 @@ export function validateArgs(command, args) {
   }
   if (command === 'export' && args.format !== undefined)
     validateExportColorSpace(args.format, args.colorSpace)
+  if (command === 'export-settings') {
+    if (Object.hasOwn(args, 'media') !== Object.hasOwn(args, 'options'))
+      throw Error('Provide media and options together')
+    if (args.options !== undefined) validateArgs('export', args.options)
+  }
   if (command === 'edit') {
     const { key, value } = args
     if (Object.hasOwn(edits, key)) {

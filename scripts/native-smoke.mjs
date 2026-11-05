@@ -293,6 +293,51 @@ try {
   assert.deepEqual([png.readUInt32BE(16), png.readUInt32BE(20)], [96, 128])
   const exported = await call('export', '--format', 'original', '--output', path.join(root, 'original.dng'))
   assert.deepEqual(await readFile(exported.path), data)
+  assert.deepEqual(await call('export-settings'), { photo: { format: 'original' }, video: null })
+  const repeatedOriginal = await call('export-previous', '--output', path.join(root, 'previous-original.dng'))
+  assert.deepEqual(await readFile(repeatedOriginal.path), data)
+  const exportOptions = { format: 'image/png', colorSpace: 'display-p3', maxSize: 64, watermark: 'Proof' },
+    configuredExport = await call(
+      'export',
+      '--format',
+      exportOptions.format,
+      '--colorSpace',
+      exportOptions.colorSpace,
+      '--maxSize',
+      String(exportOptions.maxSize),
+      '--watermark',
+      exportOptions.watermark,
+      '--output',
+      path.join(root, 'remembered.png')
+    ),
+    configuredBytes = await readFile(configuredExport.path)
+  assert.deepEqual(await call('export-settings'), { photo: exportOptions, video: null })
+  assert.deepEqual([configuredBytes.readUInt32BE(16), configuredBytes.readUInt32BE(20)], [48, 64])
+  const repeatedExport = await call('export-previous', '--output', path.join(root, 'previous.png'))
+  assert.deepEqual(await readFile(repeatedExport.path), configuredBytes)
+  await assert.rejects(
+    call('export', '--format', 'image/jpeg', '--quality', '0.5', '--output', repeatedExport.path),
+    /EEXIST/
+  )
+  assert.deepEqual(await readFile(repeatedExport.path), configuredBytes)
+  assert.deepEqual(await call('export-settings'), { photo: exportOptions, video: null })
+  const afterRefusal = await call(
+    'export-previous',
+    '--output',
+    path.join(root, 'previous-after-refusal.png')
+  )
+  assert.deepEqual(await readFile(afterRefusal.path), configuredBytes)
+  const preservedExport = await call(
+    'export',
+    '--format',
+    'original',
+    '--output',
+    path.join(root, 'preserved-export-original.dng')
+  )
+  assert.deepEqual(await readFile(preservedExport.path), data)
+  console.log(
+    'Native previous export: shared settings, original bytes, rendered options and refused-write retention passed'
+  )
   await call('copy-edits')
   const historyBytes = makePng({
       width: 8,

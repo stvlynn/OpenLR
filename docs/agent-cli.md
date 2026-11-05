@@ -56,6 +56,8 @@ See [catalog organization](catalog-organization.md) for multi-selection, batch m
 
 ## Shared-session transport
 
+`export-previous --output next.png` reuses the current media type's last completed settings. `export-settings` inspects the independent photo/video slots; supplying `--media photo --options '{"format":"image/png"}'` explicitly configures one. The CLI remembers settings after its output write succeeds, including stdout completion, and leaves them unchanged on a refused overwrite or write failure. File responses for `export` and `export-previous` include captured `exportSettings`; direct browser API callers acknowledge their own save through `export-settings`. See [reuse and completion semantics](export-settings.md), including browser-download limits and legacy preference handling.
+
 Rendered JPEG/PNG/TIFF/AVIF/JPEG XL accept `export --colorSpace display-p3` (also `srgb`, `adobe-rgb`, `prophoto-rgb`, `rec2020`). Pixels are actually converted and paired with generated ICC profiles. Preservation formats and video reject explicit color-space requests. GUI choices and CLI dispatch use the same capability owner. See [output color](export-color.md) for exact definitions, input/re-import color handling and the distinct Original/Linear precision boundaries.
 
 Disk-backed Local commands (`local-folders`, `local-open`, `local-browse`, `library`) are documented in [Local folders](local-folders.md). [External editor](external-editors.md) commands (`external-editor`, `external-edit`, `external-check`) return a stable saved TIFF as a new derived photo. [Tethered capture](tethered-capture.md) adds `camera-list`, `tether`, and `camera-capture`; explicitly enabled camera simulators are always labeled as such.

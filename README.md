@@ -43,6 +43,7 @@ node cli/openlr.mjs edit --key Exposure --value 0.5 --capture workspace.png
 node cli/openlr.mjs state --summary true
 node cli/openlr.mjs preview --output preview.png
 node cli/openlr.mjs export --format image/png --output edited.png
+node cli/openlr.mjs export-previous --output next.png
 ```
 
 `--capture` 在一次命令中返回操作数据和窗口截图路径。单独使用 `screenshot` 可查看当前窗口，`preview` 可读取照片渲染结果。`schema`、`--help` 和 `--dry-run` 可离线使用。更多示例见 [CLI 文档](docs/agent-cli.md)。

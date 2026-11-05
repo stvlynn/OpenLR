@@ -4,6 +4,7 @@ import { createServer } from 'node:http'
 import { mkdtemp, writeFile, readFile, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
+import { spawn } from 'node:child_process'
 import { parse, execute } from '../cli/openlr.mjs'
 
 test('offline discovery and dry runs validate real command arguments', async () => {
@@ -30,6 +31,12 @@ test('offline discovery and dry runs validate real command arguments', async () 
   assert.equal(parse(['open', '--app', '--help']).app, '--help')
   assert.ok(parse(['cli', 'search', 'exposure']).local.some((result) => result.command === 'edit'))
   assert.equal(parse(['schema', 'export']).local.parameters.properties.format.enum[1], 'image/png')
+  assert.equal(parse(['export-previous', '--dry-run']).command, 'export-previous')
+  assert.ok(
+    parse(['cli', 'search', 'previous export']).local.some((result) => result.command === 'export-previous')
+  )
+  assert.throws(() => parse(['export-previous', '--format', 'image/png']), /Unknown option/)
+  assert.throws(() => parse(['export-settings', '--media', 'photo']), /together|both/i)
   assert.deepEqual(
     (await execute(parse(['edit', '--key', 'Exposure', '--value', '0.5', '--dry-run']))).request,
     { command: 'edit', args: { key: 'Exposure', value: 0.5 } }
@@ -109,5 +116,193 @@ test('transport failures remain failures, without inventing local GUI state', as
   await assert.rejects(
     execute(parse(['state', '--session', path.join(directory, 'missing.json')])),
     /Start OpenLR first/
+  )
+})
+
+async function exportSession(t, behavior = {}) {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'openlr-export-completion-'))
+  t.after(() => rm(directory, { recursive: true, force: true }))
+  const image = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
+    settings = { media: 'photo', options: { format: 'image/png', colorSpace: 'display-p3', quality: 0.92 } },
+    requests = []
+  const server = createServer(async (req, res) => {
+    const chunks = []
+    for await (const chunk of req) chunks.push(chunk)
+    const request = JSON.parse(Buffer.concat(chunks))
+    requests.push(request)
+    res.setHeader('Content-Type', 'application/json')
+    if (request.command === 'export-settings') {
+      try {
+        await behavior.onAcknowledge?.(request)
+        if (behavior.failAcknowledgment) throw Error('Settings store unavailable')
+        res.end(JSON.stringify({ ok: true, result: { photo: settings.options, video: null } }))
+      } catch (error) {
+        res.end(JSON.stringify({ ok: false, error: { message: error.message } }))
+      }
+    } else {
+      res.end(
+        JSON.stringify({
+          ok: true,
+          result: {
+            kind: 'file',
+            filename: 'completed.png',
+            mimeType: 'image/png',
+            bytes: image.length + (behavior.incomplete ? 1 : 0),
+            base64: image.toString('base64'),
+            exportSettings: settings
+          }
+        })
+      )
+    }
+  })
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+  t.after(() => new Promise((resolve) => server.close(resolve)))
+  const session = path.join(directory, 'agent.json')
+  await writeFile(
+    session,
+    JSON.stringify({
+      url: 'http://127.0.0.1:' + server.address().port,
+      token: 'export-test-session',
+      version: 1
+    })
+  )
+  return { directory, session, image, settings, requests }
+}
+
+test('CLI remembers the resolved export snapshot only after a successful output write', async (t) => {
+  const behavior = {},
+    { directory, session, image, settings, requests } = await exportSession(t, behavior),
+    output = path.join(directory, 'completed.png')
+  behavior.onAcknowledge = async () => assert.deepEqual(await readFile(output), image)
+  const request = parse(['export', '--format', 'image/png', '--output', output, '--session', session])
+  assert.equal((await execute(request)).path, output)
+  assert.deepEqual(
+    requests.map((entry) => entry.command),
+    ['export', 'export-settings']
+  )
+  assert.deepEqual(requests.at(-1).args, settings)
+  assert.notDeepEqual(request.args, settings.options)
+  await assert.rejects(execute(request), /EEXIST/)
+  assert.equal(requests.filter((entry) => entry.command === 'export-settings').length, 1)
+  await execute({ ...request, force: true })
+  assert.equal(requests.filter((entry) => entry.command === 'export-settings').length, 2)
+  await assert.rejects(
+    execute({ ...request, output: path.join(directory, 'missing', 'failed.png') }),
+    /ENOENT/
+  )
+  behavior.incomplete = true
+  await assert.rejects(
+    execute({ ...request, output: path.join(directory, 'incomplete.png') }),
+    /Incomplete image/
+  )
+  behavior.incomplete = false
+  assert.equal(requests.filter((entry) => entry.command === 'export-settings').length, 2)
+  await execute(parse(['preview', '--output', path.join(directory, 'preview.png'), '--session', session]))
+  assert.equal(requests.filter((entry) => entry.command === 'export-settings').length, 2)
+  await execute(parse(['export-previous', '--output', output, '--force', '--session', session]))
+  assert.equal(requests.filter((entry) => entry.command === 'export-settings').length, 3)
+  behavior.onAcknowledge = undefined
+  const generated = await execute(parse(['export', '--session', session]))
+  t.after(() => rm(generated.path, { force: true }))
+  assert.deepEqual(await readFile(generated.path), image)
+  assert.equal(requests.filter((entry) => entry.command === 'export-settings').length, 4)
+})
+
+test('CLI acknowledgment failure reports the completed file and never rewrites it', async (t) => {
+  const { directory, session, image, requests } = await exportSession(t, { failAcknowledgment: true }),
+    output = path.join(directory, 'saved.png')
+  await assert.rejects(
+    execute(parse(['export', '--output', output, '--session', session])),
+    (error) =>
+      error.message.includes('File was saved to ' + output) &&
+      /export settings could not be remembered: Settings store unavailable/.test(error.message)
+  )
+  assert.deepEqual(await readFile(output), image)
+  assert.deepEqual(
+    requests.map((entry) => entry.command),
+    ['export', 'export-settings']
+  )
+})
+
+function childScript(code) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, ['--input-type=module', '--eval', code], {
+        stdio: ['ignore', 'pipe', 'pipe']
+      }),
+      stdout = [],
+      stderr = []
+    child.stdout.on('data', (chunk) => stdout.push(chunk))
+    child.stderr.on('data', (chunk) => stderr.push(chunk))
+    child.once('error', reject)
+    child.once('close', (code) =>
+      resolve({ code, stdout: Buffer.concat(stdout), stderr: Buffer.concat(stderr).toString() })
+    )
+  })
+}
+
+test('CLI stdout export awaits stream completion before remembering settings', async (t) => {
+  const behavior = {},
+    { directory, session, image, requests } = await exportSession(t, behavior),
+    marker = path.join(directory, 'stdout-finished')
+  behavior.onAcknowledge = async () => assert.equal(await readFile(marker, 'utf8'), 'finished')
+  const result = await childScript(`
+    import { execute, parse } from ${JSON.stringify(new URL('../cli/openlr.mjs', import.meta.url).href)};
+    import { writeFile } from 'node:fs/promises';
+    const original = process.stdout.write.bind(process.stdout);
+    process.stdout.write = (bytes, callback) => original(bytes, () => {
+      setTimeout(async () => {
+        await writeFile(${JSON.stringify(marker)}, 'finished');
+        callback();
+      }, 30);
+    });
+    await execute(parse(${JSON.stringify(['export', '--output', '-', '--session', session])}));
+  `)
+  assert.equal(result.code, 0, result.stderr)
+  assert.deepEqual(result.stdout, image)
+  assert.deepEqual(
+    requests.map((entry) => entry.command),
+    ['export', 'export-settings']
+  )
+})
+
+test('failed stdout writes do not remember an export, and acknowledgment errors report stdout completion', async (t) => {
+  const behavior = {},
+    { session, image, requests } = await exportSession(t, behavior),
+    invocation = `await execute(parse(${JSON.stringify(['export', '--output', '-', '--session', session])}));`
+  const failed = await childScript(`
+    import { execute, parse } from ${JSON.stringify(new URL('../cli/openlr.mjs', import.meta.url).href)};
+    process.stdout.write = (_bytes, callback) => {
+      queueMicrotask(() => {
+        const error = Error('Simulated stdout failure');
+        callback(error);
+        process.stdout.emit('error', error);
+      });
+      return true;
+    };
+    try { ${invocation} }
+    catch (error) { process.stderr.write(error.message); process.exitCode = 1; }
+  `)
+  assert.equal(failed.code, 1)
+  assert.match(failed.stderr, /Simulated stdout failure/)
+  assert.equal(failed.stdout.length, 0)
+  assert.deepEqual(
+    requests.map((entry) => entry.command),
+    ['export']
+  )
+  behavior.failAcknowledgment = true
+  const saved = await childScript(`
+    import { execute, parse } from ${JSON.stringify(new URL('../cli/openlr.mjs', import.meta.url).href)};
+    try { ${invocation} }
+    catch (error) { process.stderr.write(error.message); process.exitCode = 1; }
+  `)
+  assert.equal(saved.code, 1)
+  assert.deepEqual(saved.stdout, image)
+  assert.match(
+    saved.stderr,
+    /Export bytes were written to stdout, but export settings could not be remembered/
+  )
+  assert.deepEqual(
+    requests.map((entry) => entry.command),
+    ['export', 'export', 'export-settings']
   )
 })

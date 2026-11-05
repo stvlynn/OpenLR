@@ -31,6 +31,7 @@ func installMenu() {
 			action("Tethered capture…", "tether"),
 			action("Edit copy externally…", "external-edit"), action("Choose external editor…", "external-editor"),
 			mygo.Separator(), action("Create album…", "new-album"), action("Export…", "export-dialog"),
+			action("Export with previous settings", "export-previous"),
 			mygo.Separator(), {Role: mygo.RoleClose},
 		}},
 		{Label: "Edit", Submenu: []*mygo.MenuItem{

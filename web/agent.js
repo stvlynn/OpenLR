@@ -40,7 +40,10 @@ export async function dispatch(command, args = {}, capture = false) {
           filename: result.filename,
           mimeType: result.blob.type || 'application/octet-stream',
           bytes: result.blob.size,
-          base64: await encodeBlob(result.blob)
+          base64: await encodeBlob(result.blob),
+          ...(['export', 'export-previous'].includes(command) && result.exportSettings
+            ? { exportSettings: result.exportSettings }
+            : {})
         }
       }
     }
@@ -88,6 +91,7 @@ if (globalThis.mygo?.call) {
       if (id === 'open-files') await receiveOpened()
       else if (id === 'choose-photos') document.getElementById('import').click()
       else if (id === 'export-dialog') document.getElementById('export').click()
+      else if (id === 'export-previous') document.getElementById('export-previous').click()
       else if (['new-album', 'grid', 'detail'].includes(id)) document.getElementById(id).click()
       else await run(id)
     } catch (error) {
