@@ -1,6 +1,31 @@
 # Independent delivery review
 
-Reviewed 2026-11-05 on Windows with Node 24.9.0, Go 1.27.3 and WebView2. This review does not push changes or set the overall project goal status.
+Reviewed 2026-11-05 on Windows with Node 24.9.0, Go 1.27.3 and WebView2. The current tracked-snapshot review below supersedes the older reproduction revision, while preserving its historical findings. This is delivery evidence, not an overall completeness claim.
+
+## Current tracked-snapshot reproduction
+
+Commit **`afbdcb8348d0e26de1775d3c308ab3bc5c91ff17`** was exported using `git archive --format=tar`, then extracted into a newly created ignored directory. Before installation, neither `node_modules` nor generated `resources/cli/openlr.mjs` existed there. No untracked application files, downloaded optional model weights, ExifTool checkout, Python CMS packages or prior build output were copied into that snapshot.
+
+The explicitly selected external Go 1.27.3 toolchain used existing Go module/build caches, and Node 24.9.0/Chrome 156 were installed host prerequisites. This is not an offline or empty-toolchain-cache reproduction. From the snapshot, the following commands actually completed:
+
+| Check | Result |
+| --- | --- |
+| `npm ci` | 61 packages installed from the committed lockfile; npm reported zero vulnerabilities at that run. |
+| `go test ./...` | Root and independent review-service tests passed; command/fixture packages had no tests. |
+| `go vet ./...` | Exit zero. |
+| `node scripts/desktop.mjs build -platform windows/amd64 -o build/release` | MyGo built the application, generated the bundled CLI/resources and created the NSIS installer. |
+| `npm test` with default optional-tool settings | 311 total: **304 passed, 7 skipped, 0 failed**. No skip is counted as success. |
+| `node scripts/native-suite.mjs build/release/windows-amd64/OpenLR.exe` | All seven native groups passed using the newly built application and helper binaries built from the snapshot. |
+
+The seven default-suite skips were sky segmentation, depth inference, denoise/super-resolution, independent Pillow container extraction, Pillow/Little CMS profile comparison, ExifTool metadata readback, and the independent libpng/gamma/chromaticity check. Their optional local resources were absent. The separate native LCMS float-input test did run using the installed host environment. Native metadata paths still checked output files, but the optional ExifTool oracle was not provisioned for this snapshot. Earlier fully provisioned test runs retain their own revision/environment scope; they do not convert these skips into passes.
+
+The snapshot's native suite verified real GUI/CLI transport, current dehaze workers, viewport scrolling/capture, DNG and high-depth processing, sidecar reopen, synthetic migration, a launched external-editor fixture, simulated camera capture, actual loopback review publication/comments/likes/revocation, panorama/HDR, CRW-to-linear-DNG and bundled subject/person inference. These remain the existing bounded contracts: no physical camera, genuine complete external catalog, native chooser interaction or public hosting was established.
+
+The generated package's `cli/openlr.mjs` was copied alone into another directory without an adjacent `web/` or `node_modules`. It successfully ran `viewport --x 50 --dry-run` and `cli search "color grading"`. Parsing/rebundling that isolated file with installed esbuild found exactly one input and six external imports, all Node builtins. An initial regex import scan incorrectly matched ordinary strings containing “import”; its assertion was discarded and replaced by the parser-backed check. This check and actual execution establish the tested standalone discovery path, not every hypothetical dynamic branch.
+
+The packaged AGPL text and `THIRD_PARTY_NOTICES.md` matched their canonical source files byte for byte. The native package also contained `SOURCE.md`, component license directory, CLI, icon, application and installer. No new digest requirement or runtime gate was introduced. Ignored evidence lives under `.workspace/delivery-afbdcb8*` and `.workspace/cli-isolated-afbdcb8/` on the tested machine.
+
+This closes the Windows clean tracked-snapshot reproduction gap through `afbdcb8`. It is not byte-for-byte binary reproducibility, a Linux clean-snapshot run, current macOS acceptance, code signing/notarization or proof of full product/interaction coverage. Later implementation changes require corresponding renewed verification; documentation-only recording does not alter the tested application.
 
 ## Reproduction evidence
 

@@ -192,3 +192,5 @@ Windows／Node 24.9／Chrome 156 全量 `OPENLR_TEST_CMS=1 OPENLR_TEST_METADATA=
 2026-11-05 审阅面板补充：功能模块命令审计发现桌面共享审阅区域直接输出协议 JSON。现在按照片显示署名、评论、时间和点赞人数，内部标识不展示，CLI 数据字段保持不变。新增真实 Chrome dispatcher 测试使用明确注入的原生接口夹具，验证结构化返回、HTML 样式评论作为文字、照片分组、空／撤销状态及窄栏无横向溢出；**1/1 通过**，1024×768 截图已实际查看。没有把注入边界记作真实服务器证据。
 
 Windows WebView2 和 WSL Ubuntu／WebKitGTK 均重新构建，并通过各自 `native-sharing-smoke.mjs`：仅本地独立服务器，实际发布编辑图、浏览器点赞／评论、GUI／CLI 回读、无权访问和撤销检查通过。Linux 首次单独调用时漏建服务可执行文件而等待超时；确认文件缺失且无遗留服务后执行 `go build -o build/openlr-share ./cmd/openlr-share`，复跑通过。此次没有重跑全量或七组原生套件，上一轮 310 项结果仍对应上一轮代码。当前 macOS与最终完整性限制不变。
+
+2026-11-05 干净交付复现：仅将已提交的 `afbdcb8` 以 Git archive 导出到新目录，不复制未跟踪依赖、模型或生成文件。`npm ci`、Go test/vet、MyGo Windows 安装包构建、独立目录中打包 CLI 发现／dry-run、许可证与来源清单逐字节比对均通过。默认浏览器套件 **311 项中 304 通过、7 跳过、零失败**；跳过的模型和独立校验工具资源清单见[交付审查](delivery-review.md)。使用该快照新构建程序及 helper 的 Windows 七组原生套件全部通过。外部 Go 工具链／缓存及已安装 Chrome 属于明确的宿主前提；没有声称离线空缓存构建、二进制确定性、当前 macOS或无跳过全覆盖。
