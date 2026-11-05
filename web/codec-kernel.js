@@ -5,7 +5,7 @@ import { validateExportColorSpace } from './export-color.js'
 import { validateRgbProfile } from './color-profile.js'
 import { readTiff, tiffEncodedPixels, orientTiffPixels } from './tiff.js'
 import { convertInputPixels } from './input-color.js'
-import { rgba8ToLinearFrame } from './pixel-frame.js'
+import { assertLinearFrame, rgba8ToLinearFrame } from './pixel-frame.js'
 import { orientPixels } from './pixel-orientation.js'
 
 async function managedRgb(pixels, profile) {
@@ -178,9 +178,32 @@ export async function processCodec({ operation, format, file, pixels, quality, c
           const bitmap = await createImageBitmap(file)
           return working ? { frame: await displayFrame(bitmap, provenance) } : { bitmap }
         }
-      } else if (format === 'image/jxl')
-        result = await (await import('./vendor/codecs/jxl/decode.js')).default(bytes)
-      else throw Error('Unsupported image format')
+      } else if (format === 'image/jxl') {
+        const { decodeJxl } = await import('./color-codecs.js'),
+          decoded = await decodeJxl(bytes, working)
+        if (working) {
+          const { width, height, data, originalICC, dataICC, colorSpace, ...metadata } = decoded
+          provenance = { decoder: 'libjxl', ...metadata }
+          if (!metadata.compatibilityReason) {
+            if (colorSpace !== 'srgb-linear') throw Error('Unexpected JPEG XL working color space')
+            return {
+              frame: assertLinearFrame({
+                width,
+                height,
+                data,
+                colorSpace,
+                provenance: {
+                  ...provenance,
+                  precision: metadata.sourceExponentBits > 0 ? 'float-source' : 'integer-source',
+                  outputBits: 32,
+                  colorTransform: 'skcms-linear-srgb'
+                }
+              })
+            }
+          }
+        }
+        result = new ImageData(decoded.data, decoded.width, decoded.height)
+      } else throw Error('Unsupported image format')
       const bitmap = await createImageBitmap(result)
       return working ? { frame: await displayFrame(bitmap, provenance) } : { bitmap }
     } else if (operation === 'prepare-color') {

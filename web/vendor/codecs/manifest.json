@@ -10,6 +10,7 @@
     "toolchain": "Emscripten 3.1.64",
     "avif": "scripts/codec-color/avif/sources.json",
     "jxlEncoder": "scripts/codec-color/jxl/sources.json",
+    "jxlDecoder": "scripts/codec-color/jxl/sources.json",
     "recipe": "scripts/codec-color/README.md"
   },
   "files": {
@@ -41,13 +42,13 @@
       "bytes": 410,
       "sha256": "d062b5f127754c61cebd2a9bf3ad381ad06494502eb931636561132c207a8570"
     },
-    "jxl/codec/dec/jxl_dec.js": {
-      "bytes": 36091,
-      "sha256": "418c583da1f045926cf58fba58bb9ab323bde2552ce6a8e37b839c5c8b52434f"
+    "jxl/codec/dec/jxl_color_dec.js": {
+      "bytes": 35236,
+      "sha256": "5f14cddae2f832fee66f0c4c657fad8e0e5f512d74657fa1d3f8d4c139f11b7b"
     },
-    "jxl/codec/dec/jxl_dec.wasm": {
-      "bytes": 849240,
-      "sha256": "165bde0f48f3bdc39c7806365db5bb3b777df67fefff48050841fb4430062433"
+    "jxl/codec/dec/jxl_color_dec.wasm": {
+      "bytes": 856750,
+      "sha256": "5495dcc1dddfd7a64a8c91811bfec5a5371f712f00542f80498e54f1d5522aad"
     },
     "jxl/codec/enc/jxl_color_enc.js": {
       "bytes": 39270,
@@ -72,14 +73,6 @@
     "jxl/codec/enc/jxl_color_enc_mt_simd.wasm": {
       "bytes": 2347781,
       "sha256": "eeadf01398a4ecaad856eacc24c108acaf9e887fba675bfe206a54930bcd1083"
-    },
-    "jxl/decode.js": {
-      "bytes": 1625,
-      "sha256": "c2c03340ece535c95fca6fbc926ab2246281e03627f0fc1c8a2df541301d68e8"
-    },
-    "jxl/utils.js": {
-      "bytes": 1275,
-      "sha256": "fca11cbdec71af34642e793b3e833efa3ceb37e3cbda430f5f6d3975695a71b0"
     },
     "pako.js": {
       "bytes": 221635,

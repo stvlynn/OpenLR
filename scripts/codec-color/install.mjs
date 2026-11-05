@@ -17,6 +17,7 @@ add('avif/output/enc', 'avif/codec/enc', 'avif_enc')
 add('avif/output/enc', 'avif/codec/enc', 'avif_enc_mt')
 add('avif/output/dec', 'avif/codec/dec', 'avif_dec')
 add('jxl/build', 'jxl/codec/enc', 'jxl_color_enc')
+add('jxl/build', 'jxl/codec/dec', 'jxl_color_dec')
 add('jxl/build-mt', 'jxl/codec/enc', 'jxl_color_enc_mt')
 add('jxl/build-mt-simd', 'jxl/codec/enc', 'jxl_color_enc_mt_simd')
 // Require the complete build before replacing any shipped runtime artifact.
@@ -36,6 +37,10 @@ const obsolete = [
   'avif/index.js',
   'avif/utils.js',
   'jxl/encode.js',
+  'jxl/decode.js',
+  'jxl/utils.js',
+  'jxl/codec/dec/jxl_dec.js',
+  'jxl/codec/dec/jxl_dec.wasm',
   'jxl/index.js',
   'jxl/meta.js'
 ]

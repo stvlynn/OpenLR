@@ -27,13 +27,15 @@ the environment helper also recognizes ignored local wheel installations used
 for validation (CMake 3.31.6, Ninja 1.11.1.4).
 
 The installer checks that every variant exists before replacing artifacts. It
-removes obsolete encoder wrappers/binaries and unused SDK worker placeholders and refreshes the existing asset
+removes obsolete codec wrappers/binaries and unused SDK worker placeholders and refreshes the existing asset
 inventory. `npm run build:codecs` refreshes npm-derived dependencies without
 overwriting rebuilt bindings. This is source reproducibility, not a claim that
 different environments produce byte-identical binaries.
 
 AVIF adapts Apache-2.0 jSquash bindings and retains their attribution/license.
-JPEG XL uses independent public API bindings; its inspector and optional
+JPEG XL uses independent public API bindings. One scalar decoder exposes both
+legacy byte and native FLOAT working output through the same libjxl core and
+already bundled skcms. Its inspector, high-depth fixture encoder and optional
 compression experiment interface are validation tools, not shipped runtime
 features. Libpng/zlib are pinned libjxl configuration prerequisites, absent from
 the actual encoder link inputs. Codec/library/Emscripten terms remain in
@@ -44,6 +46,7 @@ See [AVIF validation](../../research/avif-color-binding.md) and
 profile and independent CMS experiments. Application checks:
 
 ```sh
+node --test tests/jxl-input.test.js tests/jxl-workflow.test.js
 node --test tests/codecs.test.js tests/color-workflow.test.js tests/worker-fallback.test.js
 node scripts/native-smoke.mjs /path/to/OpenLR
 ```

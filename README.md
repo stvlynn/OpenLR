@@ -29,7 +29,7 @@ npm run desktop
 
 JPEG、PNG、TIFF、AVIF 和 JPEG XL 可选择 [输出色彩空间](docs/export-color.md)，将当前 sRGB 编辑结果转换为 Display P3、Adobe RGB、ProPhoto RGB 或 Rec.2020 SDR，并写入匹配的 ICC 配置文件。
 
-在详情页选择 **Processing → Linear**，或运行 `processing --version 2`，可对静态照片启用[浮点线性处理](docs/linear-working-frames.md)。RAW 保留宽色域 16-bit 解码样本；支持的 PNG/TIFF 整数样本和 AVIF 8/10/12-bit 源直接进入浮点帧，并按支持的 RGB 矩阵/TRC 配置或 SDR 色彩声明转换。TIFF 直接输出 16-bit，其他渲染格式在目标色彩空间量化为 8-bit。Info 和 `state` 显示实际解码精度；不支持的 ICC/CICP 路径可使用明确标注的 8-bit 兼容解码，JPEG XL 高位深输入尚未保留。原有照片和普通新导入默认保持原处理方式，切换可撤销，重置保留处理版本。
+在详情页选择 **Processing → Linear**，或运行 `processing --version 2`，可对静态照片启用[浮点线性处理](docs/linear-working-frames.md)。RAW 保留宽色域 16-bit 解码样本；支持的 PNG/TIFF 整数样本和 AVIF 8/10/12-bit 源直接进入浮点帧，并按支持的 RGB 矩阵/TRC 配置或 SDR 色彩声明转换。TIFF 直接输出 16-bit，其他渲染格式在目标色彩空间量化为 8-bit。Info 和 `state` 显示实际解码精度；不支持的 ICC/CICP 路径可使用明确标注的 8-bit 兼容解码，JPEG XL 按实际解码配置转换整数和浮点源；PQ/HLG 等边界明确使用兼容解码。原有照片和普通新导入默认保持原处理方式，切换可撤销，重置保留处理版本。
 
 ## Agent CLI
 

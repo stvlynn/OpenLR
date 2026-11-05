@@ -63,3 +63,10 @@ export async function decodeAvif(bytes, bitDepth = 8) {
   if (!result) throw Error('Invalid AVIF image')
   return result
 }
+
+export async function decodeJxl(bytes, working = false) {
+  const module = await load('jxl-dec', () => import('./vendor/codecs/jxl/codec/dec/jxl_color_dec.js')),
+    result = module[working ? 'decodeWorking' : 'decode'](new Uint8Array(bytes))
+  if (!result) throw Error('Invalid JPEG XL image')
+  return result
+}

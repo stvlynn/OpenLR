@@ -6,6 +6,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include "jxl_decode_core.h"
 
 using emscripten::val;
 val bytes(const std::vector<uint8_t>& data) {
@@ -75,6 +76,27 @@ val inspect(std::string image) {
   }
 }
 
+val inspectFloat(std::string image) {
+  OpenLRJxlDecoded decoded;
+  if (!OpenLRDecodeJxl(image, decoded)) return val::null();
+  auto result = val::object();
+  result.set("width", decoded.info.xsize); result.set("height", decoded.info.ysize);
+  result.set("sourceBits", decoded.info.bits_per_sample);
+  result.set("sourceExponentBits", decoded.info.exponent_bits_per_sample);
+  result.set("usesOriginalProfile", static_cast<bool>(decoded.info.uses_original_profile));
+  result.set("sourceAlphaPremultiplied", static_cast<bool>(decoded.info.alpha_premultiplied));
+  result.set("alphaBits", decoded.info.alpha_bits);
+  result.set("alphaExponentBits", decoded.info.alpha_exponent_bits);
+  result.set("intensityTarget", decoded.info.intensity_target);
+  result.set("originalICC", bytes(decoded.originalICC)); result.set("dataICC", bytes(decoded.dataICC));
+  result.set("originalTransferFunction", decoded.hasOriginalColor ? static_cast<int>(decoded.originalColor.transfer_function) : -1);
+  result.set("dataTransferFunction", decoded.hasDataColor ? static_cast<int>(decoded.dataColor.transfer_function) : -1);
+  result.set("data", val::global("Float32Array").new_(
+      emscripten::typed_memory_view(decoded.pixels.size(), decoded.pixels.data())));
+  return result;
+}
+
 EMSCRIPTEN_BINDINGS(openlr_jxl_inspector) {
   emscripten::function("inspect", &inspect);
+  emscripten::function("inspectFloat", &inspectFloat);
 }

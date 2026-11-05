@@ -9,11 +9,12 @@ import { execute, parse, watch } from '../cli/openlr.mjs'
 import { makeDng } from '../tests/fixtures/dng.mjs'
 import { makeTiff } from '../tests/fixtures/tiff.mjs'
 import { makePng, makePngFixture } from '../tests/fixtures/png.mjs'
+import { jxlInputCases } from '../tests/fixtures/jxl-input.mjs'
 import { deflateSync } from 'node:zlib'
 import { png as fixturePng } from '../tests/fixtures/merge-scene.js'
 import UTIF from '../web/vendor/codecs/utif.js'
 import { encodeColorTiff } from '../web/color-containers.js'
-import { makeColorProfile } from '../web/color-spaces.js'
+import { makeColorProfile, encodeSrgb } from '../web/color-spaces.js'
 import { defaultOptions as avifOptions } from '../web/vendor/codecs/avif/meta.js'
 
 const executable = process.argv[2]
@@ -203,6 +204,14 @@ async function highDepthInputs() {
     assert.ok(bytes?.length, `generated AVIF${bits} encoding`)
     sources.push({ name: `input${bits}.avif`, bits, precision: 'integer-source', pixels: frame, bytes })
   }
+  const jxl = jxlInputCases().srgb16
+  sources.push({
+    name: 'input16.jxl',
+    bits: 16,
+    precision: 'integer-source',
+    pixels: { width: jxl.width, height: jxl.height, data: jxl.data },
+    bytes: await readFile(new URL('../tests/fixtures/jxl/srgb16.jxl', import.meta.url))
+  })
   return sources
 }
 try {
@@ -562,6 +571,63 @@ try {
     })
   }
   console.log('Native high-depth input → Linear → TIFF16:', JSON.stringify(inputResults))
+  const jxlFloat = await readFile(new URL('../tests/fixtures/jxl/linear-float.jxl', import.meta.url)),
+    jxlFloatPath = path.join(root, 'linear-float.jxl')
+  await writeFile(jxlFloatPath, jxlFloat)
+  const jxlFloatImport = await call('import', jxlFloatPath)
+  assert.deepEqual(jxlFloatImport.failed, [])
+  assert.equal(jxlFloatImport.added.length, 1)
+  await call('view', '--mode', 'detail')
+  await call('processing', '--version', '2')
+  const jxlFloatState = await call('state', '--summary', 'true')
+  assert.equal(jxlFloatState.processing.input.sourceBits, 32)
+  assert.equal(jxlFloatState.processing.input.sourceExponentBits, 8)
+  assert.equal(jxlFloatState.processing.input.outputBits, 32)
+  assert.equal(jxlFloatState.processing.input.precision, 'float-source')
+  const clipped = await call(
+    'export',
+    '--format',
+    'image/tiff',
+    '--output',
+    path.join(root, 'jxl-float-terminal.tif')
+  )
+  assert.equal(readTiff16(await readFile(clipped.path)).samples[2], 65535)
+  await call('edit', '--key', 'Exposure', '--value', '-2')
+  const recoveredFloat = await call(
+      'export',
+      '--format',
+      'image/tiff',
+      '--output',
+      path.join(root, 'jxl-float-recovered.tif')
+    ),
+    recoveredBlue = readTiff16(await readFile(recoveredFloat.path)).samples[2],
+    expectedBlue = Math.round(encodeSrgb(1.5 / 4) * 65535),
+    floatCodeError = Math.abs(recoveredBlue - expectedBlue)
+  assert.ok(floatCodeError <= 4, `JPEG XL float highlight recovery code error ${floatCodeError}`)
+  assert.ok(
+    recoveredBlue > Math.round(encodeSrgb(1 / 4) * 65535) + 5000,
+    'source highlight was not clipped before the edit'
+  )
+  const preservedFloat = await call(
+    'export',
+    '--format',
+    'original',
+    '--output',
+    path.join(root, 'original-linear-float.jxl')
+  )
+  assert.deepEqual(await readFile(preservedFloat.path), jxlFloat)
+  assert.deepEqual(await readFile(jxlFloatPath), jxlFloat)
+  console.log(
+    'Native JPEG XL float highlight recovery:',
+    JSON.stringify({
+      sourceBits: 32,
+      sourceExponentBits: 8,
+      recoveredBlue,
+      expectedBlue,
+      maximumTiff16CodeError: floatCodeError,
+      originalPreserved: true
+    })
+  )
   console.log(
     'Native GUI/CLI passed RAW, editing, PNG preview, original bytes, live observation, workspace capture, person segmentation, TIFF export and WebDAV sync.'
   )

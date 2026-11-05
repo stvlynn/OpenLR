@@ -5,11 +5,11 @@ import { patchUtif } from './patch-utif.mjs'
 
 const root = 'web/vendor/codecs'
 await mkdir(root, { recursive: true })
-// Keep rebuilt color-capable bindings intact. Only the unchanged JPEG XL
-// decoder and small upstream metadata/helpers still come from npm.
+// Keep rebuilt color-capable encoder/decoder bindings intact. Only retained
+// package licenses and AVIF encoder metadata still come from npm.
 for (const [codec, files] of [
   ['avif', ['LICENSE', 'meta.js']],
-  ['jxl', ['LICENSE', 'decode.js', 'utils.js', 'codec/dec/jxl_dec.js', 'codec/dec/jxl_dec.wasm']]
+  ['jxl', ['LICENSE']]
 ]) {
   for (const name of files) {
     const destination = path.join(root, codec, name)
@@ -69,6 +69,7 @@ await writeFile(
         toolchain: 'Emscripten 3.1.64',
         avif: 'scripts/codec-color/avif/sources.json',
         jxlEncoder: 'scripts/codec-color/jxl/sources.json',
+        jxlDecoder: 'scripts/codec-color/jxl/sources.json',
         recipe: 'scripts/codec-color/README.md'
       },
       files: hashes

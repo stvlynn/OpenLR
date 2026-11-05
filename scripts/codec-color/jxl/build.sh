@@ -21,5 +21,5 @@ emcmake cmake -G Ninja -S "$repository/scripts/codec-color/jxl" -B "$build" \
   -DOPENLR_THREADS="$threads" -DOPENLR_SIMD="$simd" \
   -DOPENLR_JXL_EXPERIMENTS="${OPENLR_JXL_EXPERIMENTS:-OFF}"
 targets=(jxl_color_enc)
-if [[ "$variant" == st ]]; then targets+=(jxl_inspect); fi
+if [[ "$variant" == st ]]; then targets+=(jxl_inspect jxl_color_dec jxl_input_fixture); fi
 cmake --build "$build" --target "${targets[@]}" --parallel "${OPENLR_BUILD_JOBS:-4}"
