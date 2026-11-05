@@ -18,6 +18,8 @@ node cli/openlr.mjs export --format image/png --output edited.png
 
 Run the native OpenLR GUI before commands that read or change live state. `cli search`, `schema`, `--help`, and `--dry-run` work without it. `web/agent-protocol.js` owns the command definitions used by discovery and validation. `web/app.js` owns the implementation and the serialized command queue.
 
+The shared queue validates command arguments before executing an action or recording history. This also applies to direct `window.openlr.run` calls, so invalid crop coordinates or non-finite movement cannot corrupt the live draft through browser automation.
+
 ## Arguments and output
 
 Both desktop commands and CLI-only commands such as `watch` appear in CLI search. Use `schema watch` for its invocation and output format. After the import path delimiter (`--`), even `--help` is a literal filename.

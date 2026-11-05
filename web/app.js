@@ -1,4 +1,5 @@
 import { importBatch } from './import-library.js'
+import { validateArgs } from './agent-protocol.js'
 import { decodeFile } from './transfer.js'
 import { isVideo, openVideo, clipRange, exportVideo } from './video.js'
 import { decodePhoto, PHOTO_ACCEPT } from './decode.js'
@@ -1670,6 +1671,7 @@ export function run(command, args = {}, observe) {
   const next = queue
     .then(() => ready)
     .then(async () => {
+      validateArgs(command, args)
       const previous = libraryHistory.checkpoint(command, photos, albums, local.state())
       const result = await execute(command, args)
       libraryHistory.record(previous, photos, albums)

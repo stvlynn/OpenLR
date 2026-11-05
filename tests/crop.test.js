@@ -61,6 +61,24 @@ test('draw, resize, move, cancel and commit a crop using the workspace handles',
   const draft = () =>
     page.evaluate(async () => (await window.openlr.run('state', { summary: true })).cropDraft)
   const initial = await draft()
+  const invalid = await page.evaluate(async () => {
+    const { run } = window.openlr
+    const failures = []
+    for (const [command, args] of [
+      ['crop-nudge', { dx: NaN, dy: 0 }],
+      ['crop-drag', { grip: 'new', x1: -1, y1: 0, x2: 1, y2: 1 }]
+    ]) {
+      try {
+        await run(command, args)
+        failures.push(false)
+      } catch {
+        failures.push(true)
+      }
+    }
+    return { failures, draft: (await run('state')).cropDraft }
+  })
+  assert.deepEqual(invalid.failures, [true, true])
+  assert.deepEqual(invalid.draft, initial)
   await page.keyboard.press('ArrowRight')
   const nudged = await draft()
   assert.ok(nudged.x > initial.x)
