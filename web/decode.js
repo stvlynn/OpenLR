@@ -2,6 +2,7 @@ import { isVideo, poster } from './video.js'
 // One codec boundary for import, reopening originals, preview, and export.
 import { CODEC_TYPES, photoFormat } from './formats.js'
 import { runImageWorker } from './image-worker.js'
+import { rgba8ToLinearFrame } from './pixel-frame.js'
 export const RAW_EXTENSIONS = [
   '3fr',
   'ari',
@@ -71,8 +72,7 @@ export class PhotoDecodeError extends Error {
 }
 export async function decodePhotoLinear(file) {
   if (!file?.size) throw new PhotoDecodeError('EMPTY')
-  if (!isRawPhoto(file))
-    throw Error('Linear RAW decoding requires a camera RAW/DNG file')
+  if (!isRawPhoto(file)) throw Error('Linear RAW decoding requires a camera RAW/DNG file')
   return (
     await runImageWorker(
       new URL('./decode-worker.js', import.meta.url),
@@ -83,6 +83,33 @@ export async function decodePhotoLinear(file) {
       })
     )
   ).frame
+}
+// Working-image decoding is distinct from the linear sRGB DNG/HDR contract.
+export async function decodePhotoFrame(file) {
+  if (!file?.size) throw new PhotoDecodeError('EMPTY')
+  if (isRawPhoto(file)) {
+    const { frame } = await runImageWorker(
+      new URL('./decode-worker.js', import.meta.url),
+      { file, working: true },
+      [],
+      async ({ file }) => ({
+        frame: await (await import('./raw-kernel.js')).decodeRaw(file, { working: true })
+      })
+    )
+    return frame
+  }
+  const bitmap = await decodePhoto(file)
+  try {
+    const canvas = document.createElement('canvas')
+    canvas.width = bitmap.width
+    canvas.height = bitmap.height
+    const context = canvas.getContext('2d', { willReadFrequently: true })
+    context.drawImage(bitmap, 0, 0)
+    const frame = rgba8ToLinearFrame(context.getImageData(0, 0, canvas.width, canvas.height))
+    return { ...frame, provenance: { precision: 'rgba8-display', decoder: 'display-adapter' } }
+  } finally {
+    bitmap.close?.()
+  }
 }
 export async function decodePhoto(file) {
   if (file && isVideo(file)) return (await poster(file)).bitmap

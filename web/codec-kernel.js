@@ -130,6 +130,11 @@ export async function processCodec({ operation, format, file, pixels, quality, c
         result = await (await import('./vendor/codecs/jxl/decode.js')).default(bytes)
       else throw Error('Unsupported image format')
       return { bitmap: await createImageBitmap(result) }
+    } else if (operation === 'encode-tiff16') {
+      validateExportColorSpace(format, colorSpace)
+      if (format !== 'image/tiff' || !(pixels.data instanceof Uint16Array))
+        throw Error('Expected 16-bit TIFF output samples')
+      return { bytes: encodeColorTiff(pixels, makeColorProfile(colorSpace)).buffer }
     } else if (operation === 'prepare-color') {
       validateExportColorSpace(format, colorSpace)
       const converted = convertSrgbPixels(pixels, colorSpace)

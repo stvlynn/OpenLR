@@ -1,5 +1,6 @@
 import { LENS_DATA } from './lens-data.js'
 import { multiply, project } from './merge-core.js'
+import { assertLinearFrame, sampleLinearRgba } from './pixel-frame.js'
 
 export const OPTICS_CONTROLS = {
   manualDistortion: { label: 'Distortion', range: [-100, 100, 1], initial: 0 },
@@ -385,6 +386,30 @@ export function warpOptics(pixels, recipe, reference = pixels) {
       result[i + 3] = minimumAlpha * 255
     }
   return { width, height, data: result }
+}
+// Same spatial map as the byte renderer and tools; only sample storage/domain
+// changes. Separate channel locations retain conservative TCA edge coverage.
+export function warpOpticsFrame(frame, recipe, reference = frame) {
+  assertLinearFrame(frame)
+  const mapping = compileOptics(reference, recipe)
+  if (!mapping.active) return frame
+  const { width, height } = frame,
+    data = new Float32Array(frame.data.length),
+    sample = new Float64Array(4)
+  for (let y = 0; y < height; y++)
+    for (let x = 0; x < width; x++) {
+      const point = { x: (x + 0.5) / width, y: (y + 0.5) / height },
+        offset = (y * width + x) * 4
+      let alpha = 1
+      for (let channel = 0; channel < 3; channel++) {
+        const p = mapping.toOriginal(point, channel),
+          found = sampleLinearRgba(frame, p.x * width - 0.5, p.y * height - 0.5, sample)
+        data[offset + channel] = found ? sample[channel] : 0
+        alpha = Math.min(alpha, found ? sample[3] : 0)
+      }
+      data[offset + 3] = alpha
+    }
+  return { ...frame, data }
 }
 export function renderOpticsSource(image, recipe, reference = image, maxEdge = Infinity) {
   if (!compileOptics(reference, recipe).active) return image

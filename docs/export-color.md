@@ -32,6 +32,8 @@ The existing worker runner owns transfer and lifetime. Worker startup failure us
 
 ## Verification
 
+The internal [linear working-frame API](linear-working-frames.md) also converts genuine float results directly into 16-bit ICC TIFF samples, using this same container writer. It is separately verified by `tests/float-tiff.test.js` and `tests/float-raw.test.js`; the application export command continues to use the existing 8-bit recipe path until process-version migration is integrated.
+
 ```sh
 node --test tests/color-spaces.test.js tests/color-containers.test.js tests/color-workflow.test.js
 node scripts/native-smoke.mjs /path/to/OpenLR

@@ -139,11 +139,15 @@ function definitionOf(id) {
   return DEFINITIONS[id]
 }
 
+export function decodeSrgb(value) {
+  const magnitude = Math.abs(value)
+  return magnitude <= 0.04045 ? value / 12.92 : Math.sign(value) * ((magnitude + 0.055) / 1.055) ** 2.4
+}
+
 function decode(value, definition) {
   const magnitude = Math.abs(value),
     sign = Math.sign(value)
-  if (definition.curve === 'srgb')
-    return magnitude <= 0.04045 ? value / 12.92 : sign * ((magnitude + 0.055) / 1.055) ** 2.4
+  if (definition.curve === 'srgb') return decodeSrgb(value)
   if (definition.curve === 'prophoto') return magnitude <= 1 / 32 ? value / 16 : sign * magnitude ** 1.8
   return sign * magnitude ** definition.gamma
 }

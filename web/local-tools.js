@@ -2,6 +2,7 @@
 import { validateSoftMask, sampleSoftMask } from './soft-mask.js'
 import { RANGE_TYPES, validateRange, rangeWeight, combineCoverage } from './range-masks.js'
 import { depthRangeWeight, applyLensBlur } from './depth-effects.js'
+import { assertLinearFrame } from './pixel-frame.js'
 export const LOCAL_CONTROLS = {
   Exposure: [-5, 5, 0.05],
   Contrast: [-100, 100, 1],
@@ -257,15 +258,15 @@ function falloff(distance, feather) {
   const t = (1 - distance) / feather
   return t * t * (3 - 2 * t)
 }
-export function localWeight(tool, x, y, width, height, rgb) {
+export function localWeight(tool, x, y, width, height, rgb, colorSpace = 'srgb') {
   if (tool.enabled === false) return 0
   let weight
   if (tool.type === 'depth-range')
     weight = depthRangeWeight(sampleSoftMask(tool.raster, x, y), tool.min, tool.max, tool.softness)
-  else if (RANGE_TYPES.includes(tool.type)) weight = rangeWeight(tool, rgb)
+  else if (RANGE_TYPES.includes(tool.type)) weight = rangeWeight(tool, rgb, colorSpace)
   else if (tool.type === 'composite')
     weight = combineCoverage(
-      ...tool.components.map((component) => localWeight(component, x, y, width, height, rgb)),
+      ...tool.components.map((component) => localWeight(component, x, y, width, height, rgb, colorSpace)),
       tool.operation
     )
   else if (tool.type === 'semantic') weight = sampleSoftMask(tool.raster, x, y)
@@ -322,24 +323,29 @@ const linear = Float64Array.from({ length: 256 }, (_, i) => {
   return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4
 })
 const encode = (v) => 255 * (v <= 0.0031308 ? 12.92 * v : 1.055 * v ** (1 / 2.4) - 0.055)
-function adjust(data, index, settings, weight) {
+// Float masks adjust and blend unbounded linear sRGB. Legacy masks retain
+// their encoded-byte blend and per-mask clamp/quantization boundary.
+function adjust(data, index, settings, weight, isLinear) {
   if (!weight) return
   const gain = 2 ** (settings.Exposure || 0),
     contrast = 2 ** ((settings.Contrast || 0) / 100),
     sat = 1 + (settings.Saturation || 0) / 100
   const channels = [
-    linear[data[index]] * gain,
-    linear[data[index + 1]] * gain,
-    linear[data[index + 2]] * gain
+    (isLinear ? data[index] : linear[data[index]]) * gain,
+    (isLinear ? data[index + 1] : linear[data[index + 1]]) * gain,
+    (isLinear ? data[index + 2] : linear[data[index + 2]]) * gain
   ]
   const lum = channels[0] * 0.2126 + channels[1] * 0.7152 + channels[2] * 0.0722
   const tone = (lum - 0.18) * contrast + 0.18
   for (let c = 0; c < 3; c++)
     data[index + c] =
       data[index + c] * (1 - weight) +
-      clamp(encode(tone + (channels[c] - lum) * sat * contrast), 0, 255) * weight
+      (isLinear
+        ? tone + (channels[c] - lum) * sat * contrast
+        : clamp(encode(tone + (channels[c] - lum) * sat * contrast), 0, 255)) *
+        weight
 }
-function sample(data, width, height, x, y) {
+function sample(data, width, height, x, y, alphaScale) {
   // Coordinates are pixel centers; a source beyond the image is never edge-smeared.
   if (x < 0 || y < 0 || x > width - 1 || y > height - 1) return null
   const x0 = Math.floor(x),
@@ -356,16 +362,19 @@ function sample(data, width, height, x, y) {
     [x1, y1, fx * fy]
   ]) {
     const i = (py * width + px) * 4,
-      alpha = data[i + 3] / 255
+      alpha = data[i + 3] / alphaScale
     for (let c = 0; c < 3; c++) out[c] += data[i + c] * alpha * w
     out[3] += alpha * w
   }
   for (let c = 0; c < 3; c++) out[c] = out[3] ? out[c] / out[3] : 0
-  out[3] *= 255
+  out[3] *= alphaScale
   return out
 }
 export function applyLocalTools(pixels, local = {}) {
   const { data, width, height } = pixels
+  const isLinear = data instanceof Float32Array,
+    alphaScale = isLinear ? 1 : 255
+  if (isLinear) assertLinearFrame(pixels)
   // Read the immutable pre-stroke buffer and defer writes to a small destination patch.
   // This avoids clone feedback and avoids a full-frame copy for every repair.
   for (const tool of local.repairs ?? []) {
@@ -375,7 +384,7 @@ export function applyLocalTools(pixels, local = {}) {
       dy = (tool.source.y - tool.points[0].y) * height
     const { x0, y0, x1, y1 } = bounds(tool, width, height),
       patchWidth = x1 - x0,
-      patch = new Uint8ClampedArray(patchWidth * (y1 - y0) * 4)
+      patch = new (isLinear ? Float32Array : Uint8ClampedArray)(patchWidth * (y1 - y0) * 4)
     for (let y = y0; y < y1; y++)
       patch.set(base.subarray((y * width + x0) * 4, (y * width + x1) * 4), (y - y0) * patchWidth * 4)
     const mean = [0, 0, 0],
@@ -386,7 +395,7 @@ export function applyLocalTools(pixels, local = {}) {
         for (let x = x0; x < x1; x++) {
           const weight = localWeight(tool, (x + 0.5) / width, (y + 0.5) / height, width, height)
           if (!weight) continue
-          const from = sample(base, width, height, x + dx, y + dy),
+          const from = sample(base, width, height, x + dx, y + dy, alphaScale),
             i = (y * width + x) * 4
           if (!from || !from[3] || !base[i + 3]) continue
           total += weight
@@ -395,23 +404,27 @@ export function applyLocalTools(pixels, local = {}) {
             sourceMean[c] += from[c] * weight
           }
         }
+    // Float healing transfers the mean residual in linear light without
+    // clipping; both means read the same immutable pre-stroke samples.
     const correction = mean.map((v, c) => (total ? (v - sourceMean[c]) / total : 0))
     for (let y = y0; y < y1; y++)
       for (let x = x0; x < x1; x++) {
         const weight = localWeight(tool, (x + 0.5) / width, (y + 0.5) / height, width, height)
         if (!weight) continue
-        const from = sample(base, width, height, x + dx, y + dy)
+        const from = sample(base, width, height, x + dx, y + dy, alphaScale)
         if (!from) continue
         const i = (y * width + x) * 4,
           j = ((y - y0) * patchWidth + x - x0) * 4,
-          alpha = (base[i + 3] * (1 - weight) + from[3] * weight) / 255
+          alpha = (base[i + 3] * (1 - weight) + from[3] * weight) / alphaScale
         for (let c = 0; c < 3; c++)
           patch[j + c] = alpha
             ? (base[i + c] * base[i + 3] * (1 - weight) +
-                clamp(from[c] + correction[c], 0, 255) * from[3] * weight) /
-              (alpha * 255)
+                (isLinear ? from[c] + correction[c] : clamp(from[c] + correction[c], 0, 255)) *
+                  from[3] *
+                  weight) /
+              (alpha * alphaScale)
             : 0
-        patch[j + 3] = alpha * 255
+        patch[j + 3] = alpha * alphaScale
       }
     for (let y = y0; y < y1; y++)
       data.set(patch.subarray((y - y0) * patchWidth * 4, (y - y0 + 1) * patchWidth * 4), (y * width + x0) * 4)
@@ -435,8 +448,10 @@ export function applyLocalTools(pixels, local = {}) {
             (y + 0.5) / height,
             width,
             height,
-            reference?.subarray(i, i + 3)
-          )
+            reference?.subarray(i, i + 3),
+            isLinear ? 'srgb-linear' : 'srgb'
+          ),
+          isLinear
         )
       }
   }

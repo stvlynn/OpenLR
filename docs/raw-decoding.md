@@ -4,6 +4,8 @@
 
 ## Processing and preservation
 
+The internal `decodePhotoFrame` working-purpose API separately retains 16-bit wide LibRaw samples in a signed linear Float32 frame. It is implemented and tested through float rendering and TIFF16 output, but is not yet selected by application recipes. Its exact matrix, source clipping limits and pending migration are documented in [linear working frames](linear-working-frames.md). The ordinary application behavior below remains unchanged.
+
 The RAW base is full-size, oriented using the camera metadata, camera white balanced, demosaiced, and decoded as 16-bit linear sRGB by LibRaw, then explicitly encoded to an 8-bit standard sRGB bitmap by the shared color adapter. Both normal and linear-frame decoding explicitly set unit gamma; auto brightness is disabled and brightness is one. LibRaw's default BT.709 transfer is not used as though it were standard sRGB. The adapter adds no exposure, HSL, crop, sharpening, or other application edit. `render.js` owns application edits for previews and exports.
 
 The original immutable `File` remains in IndexedDB. A decoded bitmap is a display/export base, **not** the original sensor data and not a lossless high-bit-depth editing buffer. Original RAW sensor precision, camera metadata, and all compressed bytes remain in the stored source. Rendered exports have the current canvas pipeline's 8-bit limits. The extra precision is retained only for callers explicitly requesting the linear frame, such as DNG and HDR. Normal decoding allocates 16-bit processed source samples plus an 8-bit RGBA display buffer; it does not allocate the optional Float32 RGB frame. LibRaw rendering is not Adobe rendering, and color-managed monitor/HDR output is outside this adapter.

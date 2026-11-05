@@ -16,9 +16,9 @@ function profileBytes(profile) {
   return result
 }
 
-function frameBytes(frame, maximumDimension) {
+function frameBytes(frame, maximumDimension, allow16 = false) {
   const { width, height } = frame,
-    data = bytes(frame.data, 'RGBA pixels'),
+    data = allow16 && frame.data instanceof Uint16Array ? frame.data : bytes(frame.data, 'RGBA pixels'),
     length = width * height * 4
   if (
     !Number.isInteger(width) ||
@@ -30,7 +30,9 @@ function frameBytes(frame, maximumDimension) {
     !Number.isSafeInteger(length) ||
     data.length !== length
   )
-    throw Error('A complete 8-bit RGBA frame with representable dimensions is required')
+    throw Error(
+      `A complete ${allow16 ? '8-bit or 16-bit' : '8-bit'} RGBA frame with representable dimensions is required`
+    )
   return data
 }
 
@@ -173,15 +175,17 @@ export function embedJpegProfile(input, profile) {
 // This raster-only writer deliberately does not accept DNG's linear sensor contract.
 // TIFF ICC tag 34675 is UNDEFINED; alpha is unassociated (ExtraSamples = 2).
 export function encodeColorTiff(frame, profile) {
-  const data = frameBytes(frame, 0xffffffff),
+  const data = frameBytes(frame, 0xffffffff, true),
+    depth = data instanceof Uint16Array ? 16 : 8,
+    sampleBytes = depth / 8,
     icc = profileBytes(profile),
     rows = Math.min(256, frame.height),
     strips = Math.ceil(frame.height / rows),
     stripBytes = Array.from(
       { length: strips },
-      (_, i) => frame.width * Math.min(rows, frame.height - i * rows) * 4
+      (_, i) => frame.width * Math.min(rows, frame.height - i * rows) * 4 * sampleBytes
     ),
-    big = data.length + icc.length + strips * 16 + 4096 > 0xffffffff,
+    big = data.byteLength + icc.length + strips * 16 + 4096 > 0xffffffff,
     pointerType = big ? 16 : 4,
     inline = big ? 8 : 4,
     headerSize = big ? 16 : 8,
@@ -204,7 +208,7 @@ export function encodeColorTiff(frame, profile) {
   }
   add(256, 4, [frame.width])
   add(257, 4, [frame.height])
-  add(258, 3, [8, 8, 8, 8])
+  add(258, 3, [depth, depth, depth, depth])
   add(259, 3, [1])
   add(262, 3, [2])
   add(273, pointerType, Array(strips).fill(0))
@@ -222,7 +226,7 @@ export function encodeColorTiff(frame, profile) {
       offset += tag.payload.length
     }
   const pixelOffset = align(offset, big ? 8 : 2),
-    total = pixelOffset + data.length
+    total = pixelOffset + data.byteLength
   if (!Number.isSafeInteger(total)) throw Error('TIFF offsets exceed the JavaScript safe integer range')
   const result = new Uint8Array(total),
     view = new DataView(result.buffer),
@@ -258,6 +262,7 @@ export function encodeColorTiff(frame, profile) {
       result.set(tag.payload, tag.offset)
     } else result.set(tag.payload, valueAt)
   }
-  result.set(data, pixelOffset)
+  if (depth === 16) for (let i = 0; i < data.length; i++) view.setUint16(pixelOffset + i * 2, data[i], true)
+  else result.set(data, pixelOffset)
   return result
 }

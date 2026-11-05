@@ -1,3 +1,4 @@
+import { encodeSrgb } from './color-spaces.js'
 const clamp = (v) => Math.max(0, Math.min(1, v))
 const linear = (v) => (v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4)
 function ramp(distance, softness) {
@@ -28,15 +29,23 @@ export function validateRange(type, value) {
   if (min > max) throw Error('Range minimum must not exceed maximum')
   return { min, max, softness }
 }
-export function rangeWeight(tool, rgb) {
+// Legacy samples are sRGB bytes. Float samples are unbounded linear sRGB;
+// #RRGGBB comparison uses signed, unbounded encoded sRGB without quantization.
+// Luminance is always linear relative luminance, including values outside [0,1].
+export function rangeWeight(tool, rgb, colorSpace = 'srgb') {
   if (!rgb) return 0
+  const isLinear = colorSpace === 'srgb-linear'
   if (tool.type === 'color-range') {
     const reference = [1, 3, 5].map((offset) => parseInt(tool.color.slice(offset, offset + 2), 16) / 255)
-    const distance = Math.hypot(...reference.map((v, i) => v - rgb[i] / 255)) / Math.sqrt(3)
+    const distance =
+      Math.hypot(...reference.map((v, i) => v - (isLinear ? encodeSrgb(rgb[i]) : rgb[i] / 255))) /
+      Math.sqrt(3)
     return ramp(distance - tool.tolerance, tool.softness)
   }
   const luminance =
-    linear(rgb[0] / 255) * 0.2126 + linear(rgb[1] / 255) * 0.7152 + linear(rgb[2] / 255) * 0.0722
+    (isLinear ? rgb[0] : linear(rgb[0] / 255)) * 0.2126 +
+    (isLinear ? rgb[1] : linear(rgb[1] / 255)) * 0.7152 +
+    (isLinear ? rgb[2] : linear(rgb[2] / 255)) * 0.0722
   return ramp(Math.max(tool.min - luminance, luminance - tool.max), tool.softness)
 }
 export function combineCoverage(a, b, operation) {

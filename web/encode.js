@@ -1,6 +1,7 @@
 import { CODEC_TYPES } from './formats.js'
 import { runImageWorker } from './image-worker.js'
 import { validateExportColorSpace } from './export-color.js'
+import { assertLinearFrame, linearFrameToEncoded } from './pixel-frame.js'
 
 async function nativeEncode(canvas, format, quality) {
   const blob = await new Promise((resolve, reject) =>
@@ -21,6 +22,14 @@ async function codec(message) {
     [message.pixels.data.buffer],
     async (request) => (await import('./codec-kernel.js')).processCodec(request)
   )
+}
+
+export async function encodeFrameTiff(frame, colorSpace = 'srgb') {
+  validateExportColorSpace('image/tiff', colorSpace)
+  assertLinearFrame(frame)
+  const pixels = linearFrameToEncoded(frame, colorSpace, 16)
+  const { bytes } = await codec({ operation: 'encode-tiff16', format: 'image/tiff', pixels, colorSpace })
+  return new Blob([bytes], { type: 'image/tiff' })
 }
 
 export async function encodePhoto(canvas, format = 'image/jpeg', quality = 0.92, colorSpace = 'srgb') {
