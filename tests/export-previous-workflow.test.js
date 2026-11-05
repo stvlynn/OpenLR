@@ -74,9 +74,11 @@ async function download(page, action) {
 }
 
 async function waitSettings(page, media, options) {
+  // The pinned Playwright polls synchronous predicates; an async predicate's
+  // Promise is truthy before its false result resolves, ending polling early.
   await page.waitForFunction(
-    async ({ media, options }) => {
-      const saved = (await window.openlr.run('export-settings'))[media]
+    ({ media, options }) => {
+      const saved = JSON.parse(localStorage.getItem('export-settings') || 'null')?.[media]
       return (
         saved &&
         Object.keys(saved).length === Object.keys(options).length &&
@@ -189,7 +191,19 @@ test('real GUI rendering remembers only completed native-boundary saves and dist
   // Inject only after startup: real rendering and GUI events run normally. This
   // is an adapter simulation, not a native file-dialog acceptance claim.
   await page.evaluate(() => {
-    window.exportBoundary = { mode: '', calls: [], chunks: [] }
+    window.exportBoundary = { mode: '', calls: [], chunks: [], started: 0, completed: 0 }
+    const dialog = document.getElementById('export-dialog'),
+      originalClose = dialog.onclose
+    dialog.onclose = async function (event) {
+      const attempt = ++window.exportBoundary.started,
+        mode = window.exportBoundary.mode
+      try {
+        await originalClose.call(this, event)
+      } finally {
+        window.exportBoundary.completedMode = mode
+        window.exportBoundary.completed = attempt
+      }
+    }
     const originalSet = Storage.prototype.setItem
     Storage.prototype.setItem = function (key, value) {
       if (key === 'export-settings' && window.exportBoundary.mode === 'remember-failure')
@@ -230,41 +244,50 @@ test('real GUI rendering remembers only completed native-boundary saves and dist
     const before = await run(page, 'export-settings'),
       maxSize = 31 + index,
       expected = { format: 'image/png', colorSpace: 'display-p3', maxSize, watermark: mode }
-    await page.evaluate((mode) => {
-      Object.assign(window.exportBoundary, { mode, calls: [], chunks: [] })
+    const attempt = await page.evaluate((mode) => {
+      const boundary = window.exportBoundary
+      if (boundary.started !== boundary.completed) throw Error('Previous export handler is still running')
+      Object.assign(boundary, { mode, calls: [], chunks: [] })
+      return boundary.started + 1
     }, mode)
     await chooseOptions(page, { maxSize, watermark: mode })
     await page.locator('#export-dialog button[value=ok]').click()
-    if (mode === 'success') await waitSettings(page, 'photo', expected)
-    else if (mode === 'cancel') await page.waitForFunction(() => window.exportBoundary.calls.length === 1)
-    else
-      await page.waitForFunction(
-        (mode) =>
-          document
-            .getElementById('notice')
-            .textContent.includes(
-              mode === 'remember-failure'
-                ? 'Export saved, but settings could not be remembered: Remember storage denied'
-                : mode.split('-')[0][0].toUpperCase() + mode.split('-')[0].slice(1) + ' save failed'
-            ),
-        mode
-      )
+    // The real async handler includes save completion, acknowledgment and its
+    // error notice. Await all of it before inspecting or reconfiguring the mock.
+    await page.waitForFunction((attempt) => window.exportBoundary.completed === attempt, attempt)
     const boundary = await page.evaluate(() => window.exportBoundary),
       methods = boundary.calls.map((call) => call[0])
-    if (mode === 'cancel' || mode === 'begin-failure') assert.deepEqual(methods, ['Desktop.BeginExport'])
+    assert.equal(boundary.completedMode, mode)
+    const context = `${mode}: native calls for completed attempt ${attempt}`
+    if (mode === 'cancel' || mode === 'begin-failure')
+      assert.deepEqual(methods, ['Desktop.BeginExport'], context)
     else if (mode === 'write-failure')
-      assert.deepEqual(methods, ['Desktop.BeginExport', 'Desktop.WriteExport', 'Desktop.CancelExport'])
+      assert.deepEqual(
+        methods,
+        ['Desktop.BeginExport', 'Desktop.WriteExport', 'Desktop.CancelExport'],
+        context
+      )
     else if (mode === 'finish-failure')
-      assert.deepEqual(methods, [
-        'Desktop.BeginExport',
-        'Desktop.WriteExport',
-        'Desktop.FinishExport',
-        'Desktop.CancelExport'
-      ])
+      assert.deepEqual(
+        methods,
+        ['Desktop.BeginExport', 'Desktop.WriteExport', 'Desktop.FinishExport', 'Desktop.CancelExport'],
+        context
+      )
     else {
-      assert.deepEqual(methods, ['Desktop.BeginExport', 'Desktop.WriteExport', 'Desktop.FinishExport'])
+      assert.deepEqual(
+        methods,
+        ['Desktop.BeginExport', 'Desktop.WriteExport', 'Desktop.FinishExport'],
+        context
+      )
       const bytes = Buffer.concat(boundary.chunks.map((chunk) => Buffer.from(chunk, 'base64')))
       assertPng(bytes, maxSize, Math.round((maxSize * 60) / 80))
+    }
+    if (mode.includes('failure')) {
+      const message =
+        mode === 'remember-failure'
+          ? 'Export saved, but settings could not be remembered: Remember storage denied'
+          : mode.split('-')[0][0].toUpperCase() + mode.split('-')[0].slice(1) + ' save failed'
+      assert.equal(await page.locator('#notice').textContent(), message, mode)
     }
     assert.deepEqual(
       await run(page, 'export-settings'),
