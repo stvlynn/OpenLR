@@ -194,3 +194,5 @@ Windows／Node 24.9／Chrome 156 全量 `OPENLR_TEST_CMS=1 OPENLR_TEST_METADATA=
 Windows WebView2 和 WSL Ubuntu／WebKitGTK 均重新构建，并通过各自 `native-sharing-smoke.mjs`：仅本地独立服务器，实际发布编辑图、浏览器点赞／评论、GUI／CLI 回读、无权访问和撤销检查通过。Linux 首次单独调用时漏建服务可执行文件而等待超时；确认文件缺失且无遗留服务后执行 `go build -o build/openlr-share ./cmd/openlr-share`，复跑通过。此次没有重跑全量或七组原生套件，上一轮 310 项结果仍对应上一轮代码。当前 macOS与最终完整性限制不变。
 
 2026-11-05 干净交付复现：仅将已提交的 `afbdcb8` 以 Git archive 导出到新目录，不复制未跟踪依赖、模型或生成文件。`npm ci`、Go test/vet、MyGo Windows 安装包构建、独立目录中打包 CLI 发现／dry-run、许可证与来源清单逐字节比对均通过。默认浏览器套件 **311 项中 304 通过、7 跳过、零失败**；跳过的模型和独立校验工具资源清单见[交付审查](delivery-review.md)。使用该快照新构建程序及 helper 的 Windows 七组原生套件全部通过。外部 Go 工具链／缓存及已安装 Chrome 属于明确的宿主前提；没有声称离线空缓存构建、二进制确定性、当前 macOS或无跳过全覆盖。
+
+同一 `afbdcb8` 归档随后在新的 WSL Linux 目录复现：独立 `npm ci`、Go test／**race**／vet、MyGo Linux 打包，以及 Xvfb／D-Bus 下七组原生套件全部通过；独立 CLI 发现／dry-run 和包内许可证／来源清单比对通过。未复制旧 Linux 构建或 Windows 依赖。此次未运行 Linux 全量浏览器套件；ExifTool 可选原生 oracle 因未安装明确跳过，既有实际导出／回读仍执行。当前已核实的 [CI 42052317375](https://github.com/stvlynn/OpenLR/actions/runs/42052317375) 三端均零步骤，macOS 服务端注释仍为账户付款／额度限制，不能记作运行通过。

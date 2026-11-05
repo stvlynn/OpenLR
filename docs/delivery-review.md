@@ -27,6 +27,16 @@ The packaged AGPL text and `THIRD_PARTY_NOTICES.md` matched their canonical sour
 
 This closes the Windows clean tracked-snapshot reproduction gap through `afbdcb8`. It is not byte-for-byte binary reproducibility, a Linux clean-snapshot run, current macOS acceptance, code signing/notarization or proof of full product/interaction coverage. Later implementation changes require corresponding renewed verification; documentation-only recording does not alter the tested application.
 
+## Linux tracked-snapshot reproduction
+
+The same `afbdcb8348d0e26de1775d3c308ab3bc5c91ff17` archive was subsequently extracted into a new persistent WSL Linux directory, without copying Windows `node_modules`, an earlier Linux build or optional test resources. With the installed Linux Node 24.9.0 and Go 1.27.3 toolchain, and explicitly reused Go module/build caches, `npm ci`, `go test ./...`, **`go test -race ./...`**, `go vet ./...` and MyGo Linux/amd64 packaging all exited zero. The build produced the application, Debian package, tar archive, desktop integration files, notices and bundled CLI.
+
+`xvfb-run -a dbus-run-session -- node scripts/native-suite.mjs build/release/linux-amd64/openlr` then passed all seven groups against that newly built application on Ubuntu 24.04/WebKitGTK 2.52.6. The host's Chrome was used for the independent review visitor. ExifTool was absent and its optional native oracle was explicitly skipped; actual format/metadata export and reimport assertions still ran. No Linux full-browser-suite run is claimed by this increment. Xvfb and Mesa/EGL diagnostics do not establish physical GPU/display behavior.
+
+Linux packaged license and notice files matched canonical source bytes using `cmp`. The packaged CLI was copied alone to a new sibling directory outside the source tree, then successfully executed `viewport --x 50 --dry-run` and color-grading command discovery. No additional runtime JavaScript files were copied. The ignored Windows-side capture is `.workspace/delivery-afbdcb8-linux.log`.
+
+Together these runs provide Windows and Linux clean tracked-snapshot delivery evidence through `afbdcb8`, superseding the Linux exclusion in the preceding historical paragraph. They do not establish current macOS acceptance: the latest inspected [CI run 42052317375](https://github.com/stvlynn/OpenLR/actions/runs/42052317375), for documentation-only `6d8ecd4`, completed with zero steps on all three platforms; the macOS check annotation explicitly reported failed account payments or a spending-limit issue. No job execution is counted as having occurred. Full interaction coverage, physical-device boundaries and remaining large-image latency still belong to the completion audit.
+
 ## Reproduction evidence
 
 An archive of tracked commit **`6aa4628`** was expanded into an independent ignored directory, without `node_modules`, workspace caches, generated CLI output or other untracked assets. From that source tree, `npm ci` succeeded against the committed lockfile; the single-file CLI built and returned command schemas; `go test ./...`, the independent share-server build, and the MyGo Windows package build succeeded. The resulting package then passed the real native DNG/edit/CLI/observe/screenshot/person-model/TIFF/WebDAV smoke test.
