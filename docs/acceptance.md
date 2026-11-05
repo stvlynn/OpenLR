@@ -17,6 +17,14 @@
 
 ## 补充验证
 
+- **原生视频失败诊断**。同一 `retouch-order` Windows 包对生成的截断 WebM 保留原始 demuxer 错误，目录仍为空；随后有效 PNG 导入及原件导出成功。真实 stderr 仅一条允许字段报告，阶段 `media-load`、readyState 0、networkState 3、mediaErrorCode 4，无文件名／路径／令牌／异常消息。日志 `.workspace/retouch-order-video-diagnostic.log`；这是诊断通道验证，不是 macOS 可播放夹具失败的根因结论。
+
+- **有序移除与光学原生验收（2026-11-06）**。新移除保存独立补丁，后续 Clone/Heal 记录对应补丁位置；支持“克隆→移除→再克隆→再移除”，保留历史填充位置、已有修复可编辑性以及选区外 Linear 精度。40 次真实 Chrome 方案比较拒绝移动全部旧填充；固定顶层方案再细化为稳定引用，避免遮住后来画的新克隆。[决策 020](decisions/020-ordered-removal.md)及[实验](../research/removal-order.md)记录顺序、透明度、独立复制和兼容边界。当前实际 Chrome 回归覆盖软／不透明修复、两种处理版本、顺序、撤销／重做、XMP、版本、复制、缺失引用、浮点外部样本和重启。完整 Windows／Node 24.9／Chrome 156.0.8078.80 **358/358 通过、零失败、零跳过**，约 271.9 秒，保留被动视频诊断；Go test／vet 与格式检查通过。
+
+  新 MyGo Windows 安装包构建成功，WebView2 156.0.4314.58 **十二组原生套件全部通过**。克隆／移除序列的实际 PNG 目标依次为 `[245,29,22]`、`[96,96,96]`、`[245,29,22]`、`[97,97,97]`，撤销／重做与原件保持。新增光学流程验证自动曝光 +1.8 EV、灰度 54→117、合成 Canon G1 EXIF 的镜头匹配／推断、16 像素手动位移、重置恢复，以及拉直后参考线跨 64 列偏差 16→约 0.50 像素。导航使用连续照片色块而非全窗口单像素匹配，正反视图与全屏／偏好重启通过。视频 MIME 修正后的 Windows 视频、音轨和原件检查通过；这不证明已修复 macOS 的安全错误或此前偶发 poster 错误。日志 `.workspace/retouch-order-{build,full,native}.log`。本轮新代码的远程平台结果尚待对应提交运行。
+
+- **`7dc0d11` 三平台失败记录**。[Actions 42112118876](https://github.com/stvlynn/OpenLR/actions/runs/42112118876) 首次执行已结束。Linux 构建及十一组原生套件成功。macOS 15.7.9／Intel 完成构建、主流程、整理、蒙版和导航，视频导入返回 `The operation is insecure.`，尚未进入 seek/play/export，原日志不能定位媒体加载、poster 或缩略图读回中的具体阶段。Windows 浏览器 **346/354 通过、8 项可选资源跳过、0 失败**，安装包与主流程／整理／蒙版通过，但导航对比关闭后的全窗口原图颜色计数为 1，而断言要求 0；尚未执行该作业后续视频及适配器套件。未重跑失败作业。完整日志保留在 `.workspace/preview-consistency-ci-{macos,windows}.log`；后续诊断或检查方法调整不能把本次失败记为通过。
+
 - **预览一致性与原生导航／视频（2026-11-06）**。修复蒙版预览缺失 aspect、Original 色域覆盖漏过红眼校正、移除范围与渲染前蒙版参考不一致，以及双图对比时 Histogram 打开／重绘读取不同画布。共享源校正保持历史填充阶段；`histogram --source display` 返回实际预览的警告前分布，默认仍为已提交编辑。原因、方案边界及定向检查见[研究记录](../research/preview-consistency.md)。完整 Windows／Node 24.9／Chrome 156.0.8078.80 `OPENLR_TEST_CMS=1 OPENLR_TEST_METADATA=1 npm test` **354/354、零失败、零跳过**，约 265.4 秒，保留被动视频诊断。这不宣称已修复历史视频偶发导入错误。
 
   新 MyGo Windows 包及安装包构建成功，WebView2 156.0.4314.58 **十一组原生套件全部通过**。蒙版独立 PNG 读回在两种处理版本均为 `[0,255]` 覆盖，方形／翻转／旋转后 64×64，NS／Telea 仅改变选区，撤销和原件一致。导航截图胶片缩略图显示／隐藏像素为 5,192／0；双图原图 `[51,82,115]`、编辑 `[73,114,158]` 各有 15,000 像素，三种直方图峰值各 9,600；实际全屏 1783×1154 → 2940×1847 → 1783×1154。Windows 偏好、文件名显示、真实快捷键和独立 profile 重启通过。视频推进 .35 → .527069 秒，导出 VP9／Opus 64×96、容器 1.513 秒／解码音轨 1.5135 秒，两段音调及保存帧一致，27,479 字节原件不变。日志 `.workspace/preview-consistency-{build,native,full}.log`。

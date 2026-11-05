@@ -7,6 +7,42 @@ import { metadata } from './metadata.js'
 import { readXmp } from './xmp.js'
 import { renderPrepared as render, toBlob } from './render.js'
 
+const importErrorNames = new Set([
+  'SecurityError',
+  'InvalidStateError',
+  'NotSupportedError',
+  'NotAllowedError',
+  'AbortError',
+  'DataError',
+  'QuotaExceededError',
+  'UnknownError',
+  'TypeError',
+  'Error'
+])
+
+function reportVideoImport(diagnostic, error) {
+  try {
+    const report = globalThis.mygo?.call?.(
+      'Desktop.VideoImportDiagnostic',
+      JSON.stringify({
+        ...diagnostic,
+        errorName: importErrorNames.has(error.name) ? error.name : 'other',
+        secureContext: isSecureContext,
+        documentOrigin: location.origin === 'null' ? 'opaque' : 'tuple',
+        nativeScheme: location.protocol === 'mygo:',
+        videoDecoder: typeof VideoDecoder === 'function',
+        videoEncoder: typeof VideoEncoder === 'function',
+        audioDecoder: typeof AudioDecoder === 'function',
+        audioEncoder: typeof AudioEncoder === 'function'
+      })
+    )
+    // Send the report independently of the original import result.
+    report?.catch(() => {})
+  } catch {
+    // Diagnostics cannot replace the import error.
+  }
+}
+
 async function sameFile(left, right) {
   if (!left || left.size !== right.size) return false
   const chunk = 1024 * 1024
@@ -43,6 +79,11 @@ export async function importBatch(files, { photos, album, readOriginal, update, 
   const sidecars = new Map(files.filter((f) => /\.xmp$/i.test(f.name)).map((f) => [stem(f.name), f]))
   for (const file of files.filter((f) => !/\.xmp$/i.test(f.name))) {
     let image
+    const video = isVideo(file),
+      diagnostic =
+        video && globalThis.openlrDiagnostics
+          ? { stage: 'input', declaredVideoType: file.type.startsWith('video/') }
+          : null
     try {
       const sidecar = sidecars.get(stem(file.name)),
         settings = sidecar ? readXmp(await sidecar.text()) : {}
@@ -53,9 +94,10 @@ export async function importBatch(files, { photos, album, readOriginal, update, 
         if (Object.keys(settings).length) await update(duplicate, settings)
         existing.push(duplicate.id)
       } else {
-        if (isVideo(file) && processingVersion(settings.edit) === 2) throw Error(PROCESS_MESSAGES.video)
-        const media = isVideo(file) ? await poster(file) : null
+        if (video && processingVersion(settings.edit) === 2) throw Error(PROCESS_MESSAGES.video)
+        const media = video ? await poster(file, diagnostic) : null
         image = media?.bitmap ?? (await decodeEditSource(file, settings.edit))
+        if (diagnostic) diagnostic.stage = 'photo-record'
         const p = {
           id: crypto.randomUUID(),
           name: file.name,
@@ -73,10 +115,13 @@ export async function importBatch(files, { photos, album, readOriginal, update, 
           mediaType: file.type,
           ...(media ? { duration: media.duration } : {}),
           metadata: media ? {} : await metadata(file),
-          ...settings,
-          thumbnail: await toBlob(await render(image, settings.edit || {}, 240)),
-          ...photoPreviewVersions(file)
+          ...settings
         }
+        if (diagnostic) diagnostic.stage = 'thumbnail-render'
+        const thumbnail = await render(image, settings.edit || {}, 240)
+        if (diagnostic) diagnostic.stage = 'thumbnail-encode'
+        Object.assign(p, { thumbnail: await toBlob(thumbnail), ...photoPreviewVersions(file) })
+        if (diagnostic) diagnostic.stage = 'catalog-write'
         await addPhoto(p, file)
         photos.push(p)
         added.push(p.id)
@@ -84,6 +129,7 @@ export async function importBatch(files, { photos, album, readOriginal, update, 
       if (sidecar) sidecars.delete(stem(file.name))
     } catch (error) {
       failed.push({ name: file.name, error: error.message })
+      if (diagnostic) reportVideoImport(diagnostic, error)
     } finally {
       image?.close()
     }

@@ -239,7 +239,12 @@ const mimeTypes = {
   '.avif': 'image/avif',
   '.tif': 'image/tiff',
   '.tiff': 'image/tiff',
-  '.jxl': 'image/jxl'
+  '.jxl': 'image/jxl',
+  '.mov': 'video/quicktime',
+  '.mp4': 'video/mp4',
+  '.m4v': 'video/mp4',
+  '.webm': 'video/webm',
+  '.mkv': 'video/matroska'
 }
 async function importPayload(files) {
   const result = []

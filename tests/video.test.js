@@ -70,3 +70,116 @@ test('video trim, grading, playback and export preserve the audio track and sele
   assert.ok(result.color[2] > result.color[0] * 2 && result.color[2] > 210, JSON.stringify(result))
   assert.ok(Math.abs(result.playback.time - 0.4) < 0.025)
 })
+
+test('opt-in video import diagnostics distinguish bitmap and thumbnail failures without changing the result', async (t) => {
+  const server = await serveWorkspace()
+  t.after(server.close)
+  const browser = await chromium.launch({ channel: process.env.CHROME_CHANNEL || 'chrome' })
+  t.after(() => browser.close())
+  const page = await browser.newPage()
+  await page.goto(server.url)
+  const result = await page.evaluate(async () => {
+    const m = await import('./vendor/mediabunny/mediabunny.mjs')
+    const canvas = document.createElement('canvas')
+    canvas.width = 48
+    canvas.height = 32
+    const context = canvas.getContext('2d'),
+      target = new m.BufferTarget(),
+      output = new m.Output({ target, format: new m.WebMOutputFormat() }),
+      video = new m.CanvasSource(canvas, { codec: 'vp9', bitrate: 100000 })
+    output.addVideoTrack(video)
+    await output.start()
+    for (let i = 0; i < 3; i++) {
+      context.fillStyle = i ? '#3259c0' : '#c0322a'
+      context.fillRect(0, 0, canvas.width, canvas.height)
+      await video.add(i / 5, 0.2)
+    }
+    await output.finalize()
+    const file = new File([target.buffer], 'private-clip.webm', { type: 'video/webm' }),
+      diagnosticCalls = [],
+      bitmap = globalThis.createImageBitmap,
+      toBlob = HTMLCanvasElement.prototype.toBlob
+    let diagnosticBehavior
+    globalThis.mygo = {
+      call(method, value) {
+        if (method !== 'Desktop.VideoImportDiagnostic') return Promise.resolve()
+        diagnosticCalls.push(JSON.parse(value))
+        if (diagnosticBehavior === 'throw') throw Error('Diagnostic call threw')
+        if (diagnosticBehavior === 'reject') return Promise.reject(Error('Diagnostic call rejected'))
+        if (diagnosticBehavior === 'pending') return new Promise(() => {})
+        return Promise.resolve()
+      }
+    }
+    const imported = () => window.openlr.run('import', { files: [file] })
+    try {
+      globalThis.createImageBitmap = (source, ...options) => {
+        if (source instanceof HTMLVideoElement)
+          return Promise.reject(new DOMException('Private bitmap failure', 'SecurityError'))
+        return bitmap(source, ...options)
+      }
+      const optedOut = await imported(),
+        optedOutCalls = diagnosticCalls.length
+      globalThis.openlrDiagnostics = true
+      const bitmapFailure = await imported()
+      globalThis.createImageBitmap = bitmap
+      HTMLCanvasElement.prototype.toBlob = function () {
+        throw new DOMException('Private thumbnail failure', 'SecurityError')
+      }
+      const thumbnailFailure = await imported()
+      const reportFailures = []
+      for (diagnosticBehavior of ['throw', 'reject', 'pending']) {
+        let timeout
+        try {
+          reportFailures.push(
+            await Promise.race([
+              imported(),
+              new Promise((resolve) => (timeout = setTimeout(() => resolve('Import did not return'), 2000)))
+            ])
+          )
+        } finally {
+          clearTimeout(timeout)
+        }
+      }
+      return {
+        optedOut,
+        optedOutCalls,
+        bitmapFailure,
+        thumbnailFailure,
+        reportFailures,
+        diagnosticCalls,
+        photos: (await window.openlr.run('state')).photos
+      }
+    } finally {
+      delete globalThis.openlrDiagnostics
+      delete globalThis.mygo
+      globalThis.createImageBitmap = bitmap
+      HTMLCanvasElement.prototype.toBlob = toBlob
+    }
+  })
+  assert.equal(result.optedOutCalls, 0)
+  assert.deepEqual(result.optedOut, result.bitmapFailure)
+  assert.deepEqual(result.bitmapFailure.failed, [
+    { name: 'private-clip.webm', error: 'Private bitmap failure' }
+  ])
+  assert.deepEqual(result.thumbnailFailure.failed, [
+    { name: 'private-clip.webm', error: 'Private thumbnail failure' }
+  ])
+  assert.deepEqual(result.reportFailures, Array(3).fill(result.thumbnailFailure))
+  assert.deepEqual(result.photos, [])
+  assert.deepEqual(
+    result.diagnosticCalls.map(({ stage }) => stage),
+    ['poster-bitmap', ...Array(4).fill('thumbnail-encode')]
+  )
+  for (const diagnostic of result.diagnosticCalls) {
+    assert.equal(diagnostic.errorName, 'SecurityError')
+    assert.equal(diagnostic.declaredVideoType, true)
+    assert.equal(diagnostic.secureContext, true)
+    assert.equal(diagnostic.nativeScheme, false)
+    assert.equal(diagnostic.blobOrigin, 'same')
+    assert.ok(diagnostic.readyState >= 2)
+    assert.deepEqual([diagnostic.width, diagnostic.height, diagnostic.mediaErrorCode], [48, 32, null])
+    assert.equal(typeof diagnostic.videoDecoder, 'boolean')
+    assert.equal(typeof diagnostic.audioEncoder, 'boolean')
+  }
+  assert.doesNotMatch(JSON.stringify(result.diagnosticCalls), /private|https?:|blob:/i)
+})

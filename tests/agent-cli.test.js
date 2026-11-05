@@ -234,6 +234,24 @@ test('CLI uses the authenticated live transport, moves file bytes, and protects 
   assert.equal(imported.imported, 1)
   assert.equal(received[1].args.files[0].base64, image.toString('base64'))
   assert.equal(received[1].args.files[0].type, 'image/png')
+  const mediaTypes = {
+    'source.WEBM': 'video/webm',
+    'source.mov': 'video/quicktime',
+    'source.mp4': 'video/mp4',
+    'source.m4v': 'video/mp4',
+    'source.mkv': 'video/matroska',
+    'source.unknown': 'application/octet-stream'
+  }
+  const mediaFiles = Object.keys(mediaTypes).map((name) => path.join(directory, name))
+  for (const file of mediaFiles) await writeFile(file, path.basename(file))
+  const videoImport = await execute(parse(['import', ...mediaFiles, '--session', session]))
+  assert.equal(videoImport.imported, mediaFiles.length)
+  assert.deepEqual(
+    received
+      .at(-1)
+      .args.files.map(({ name, type, base64 }) => [name, type, Buffer.from(base64, 'base64').toString()]),
+    Object.entries(mediaTypes).map(([name, type]) => [name, type, name])
+  )
   const catalog = path.join(directory, 'synthetic.lrcat')
   await writeFile(catalog, Buffer.from('SQLite format 3\0synthetic transport fixture'))
   await execute(parse(['migration-scan', '--catalog', catalog, '--session', session]))

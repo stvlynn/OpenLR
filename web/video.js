@@ -27,9 +27,23 @@ function waitForMedia(video, event, action) {
     action()
   })
 }
-export async function openVideo(file) {
+function recordMediaState(diagnostic, video) {
+  if (!diagnostic) return
+  diagnostic.readyState = video.readyState
+  diagnostic.networkState = video.networkState
+  diagnostic.width = video.videoWidth
+  diagnostic.height = video.videoHeight
+  diagnostic.mediaErrorCode = video.error?.code ?? null
+}
+
+export async function openVideo(file, diagnostic) {
+  if (diagnostic) diagnostic.stage = 'media-load'
   const url = URL.createObjectURL(file),
     video = document.createElement('video')
+  if (diagnostic) {
+    const origin = new URL(url).origin
+    diagnostic.blobOrigin = origin === 'null' ? 'opaque' : origin === location.origin ? 'same' : 'different'
+  }
   video.preload = 'auto'
   video.playsInline = true
   video.muted = true
@@ -43,6 +57,7 @@ export async function openVideo(file) {
     await waitForMedia(video, 'loadeddata', () => {
       video.src = url
     })
+    if (diagnostic) diagnostic.stage = 'media-duration'
     video.width = video.videoWidth
     video.height = video.videoHeight
     let duration = video.duration
@@ -65,13 +80,16 @@ export async function openVideo(file) {
     }
     return { video, duration, seek, close }
   } catch (err) {
+    recordMediaState(diagnostic, video)
     close()
     throw err
   }
 }
-export async function poster(file) {
-  const media = await openVideo(file)
+export async function poster(file, diagnostic) {
+  const media = await openVideo(file, diagnostic)
   try {
+    if (diagnostic) diagnostic.stage = 'poster-bitmap'
+    recordMediaState(diagnostic, media.video)
     return { bitmap: await createImageBitmap(media.video), duration: media.duration }
   } finally {
     media.close()

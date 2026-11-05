@@ -26,33 +26,34 @@ function assertSolidHistogram(bins, [red, green, blue]) {
   return count
 }
 
-// Find the rendered fixture by its distinctive uniform color. Ignore edge pixels and
-// tolerate rounding when the WebView composites a canvas or a resized thumbnail.
-function colorBounds({ width, height, data }, rgb) {
+// Find contiguous rectangular patches in the fixture's uniform color. Pixels
+// in the surrounding UI can match the color without belonging to a photo.
+function colorPatchBounds({ width, height, data }, rgb, [patchWidth, patchHeight]) {
   const [red, green, blue] = rgb.map((value) => value / 255)
   const tolerance = 5 / 255
-  let count = 0,
-    left = width,
+  const columnHeights = new Uint32Array(width)
+  let left = width,
     right = -1,
     top = height,
     bottom = -1
   for (let y = 0; y < height; y++) {
+    let runWidth = 0
     for (let x = 0; x < width; x++) {
       const offset = (y * width + x) * 4
-      if (
-        Math.abs(data[offset] - red) > tolerance ||
-        Math.abs(data[offset + 1] - green) > tolerance ||
-        Math.abs(data[offset + 2] - blue) > tolerance
-      )
-        continue
-      count++
-      left = Math.min(left, x)
+      const matches =
+        Math.abs(data[offset] - red) <= tolerance &&
+        Math.abs(data[offset + 1] - green) <= tolerance &&
+        Math.abs(data[offset + 2] - blue) <= tolerance
+      columnHeights[x] = matches ? columnHeights[x] + 1 : 0
+      runWidth = columnHeights[x] >= patchHeight ? runWidth + 1 : 0
+      if (runWidth < patchWidth) continue
+      left = Math.min(left, x + 1 - runWidth)
       right = Math.max(right, x)
-      top = Math.min(top, y)
-      bottom = Math.max(bottom, y)
+      top = Math.min(top, y + 1 - patchHeight)
+      bottom = y
     }
   }
-  return { count, left, right, top, bottom }
+  return right < 0 ? null : { left, right, top, bottom }
 }
 
 async function inspectWebView(profile, inspect) {
@@ -114,6 +115,9 @@ await withNativeWorkspace(
     const edit = { Exposure: 1 }
     const width = 120,
       height = 80
+    // A quarter of each fixture dimension fits inside its filmstrip thumbnail.
+    const patchSize = [width / 4, height / 4]
+    const photoPatch = (image, rgb) => colorPatchBounds(image, rgb, patchSize)
     const fixtures = [
       { name: 'ridge.png', rgb: [51, 82, 115] },
       { name: 'summit.png', rgb: [179, 46, 111] }
@@ -162,13 +166,10 @@ await withNativeWorkspace(
     assert.equal(shown.result.film, true)
     assert.equal((await state()).film, true)
     assert.deepEqual(dimensions(hidden.image), dimensions(shown.image))
-    const hiddenThumb = colorBounds(hidden.image, fixtures[1].rgb)
-    const shownThumb = colorBounds(shown.image, fixtures[1].rgb)
-    assert.equal(hiddenThumb.count, 0)
-    assert.ok(
-      shownThumb.count > 100 && shownThumb.top > shown.image.height * 0.65,
-      JSON.stringify(shownThumb)
-    )
+    const hiddenThumb = photoPatch(hidden.image, fixtures[1].rgb)
+    const shownThumb = photoPatch(shown.image, fixtures[1].rgb)
+    assert.equal(hiddenThumb, null)
+    assert.ok(shownThumb && shownThumb.top > shown.image.height * 0.65, JSON.stringify(shownThumb))
 
     await call('film')
     assert.equal((await call('compare')).compare, true)
@@ -181,16 +182,15 @@ await withNativeWorkspace(
     assert.equal((await state()).pair, true)
     const pairCount = assertSolidHistogram(await displayBins(), editedRgb)
     assert.deepEqual(await call('histogram', '--source', 'edited'), committedBins)
-    const left = colorBounds(paired.image, originalRgb)
-    const right = colorBounds(paired.image, editedRgb)
-    assert.ok(
-      left.count > 500 && right.count > 500 && left.right < right.left,
-      JSON.stringify({ left, right })
-    )
+    const left = photoPatch(paired.image, originalRgb)
+    const right = photoPatch(paired.image, editedRgb)
+    assert.ok(left && right && left.right < right.left, JSON.stringify({ left, right }))
     const single = await capture('comparison-closed', 'compare-pair')
     assert.equal(single.result.pair, false)
-    assert.equal(colorBounds(single.image, originalRgb).count, 0)
-    assert.ok(colorBounds(single.image, editedRgb).count > 500)
+    const closedOriginal = photoPatch(single.image, originalRgb)
+    const singleEdit = photoPatch(single.image, editedRgb)
+    assert.equal(closedOriginal, null)
+    assert.ok(singleEdit, 'Expected the edited photo after closing Compare Pair')
     await call('film')
 
     const fullScreen =
@@ -291,9 +291,9 @@ await withNativeWorkspace(
     console.log(
       JSON.stringify({
         nativeNavigation: 'passed',
-        filmThumbnailPixels: { shown: shownThumb.count, hidden: hiddenThumb.count },
+        filmThumbnailBounds: { shown: shownThumb, hidden: hiddenThumb },
         compareRgb: { original: originalRgb, edited: editedRgb },
-        comparePixels: { original: left.count, edited: right.count },
+        compareBounds: { left, right, closedOriginal, singleEdit },
         histogramPeakCounts: {
           committed: committedCount,
           displayOriginal: originalCount,

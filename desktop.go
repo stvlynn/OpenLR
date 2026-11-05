@@ -38,6 +38,12 @@ func (d *Desktop) StartupError(message string) {
 	}
 }
 
+func (d *Desktop) VideoImportDiagnostic(report string) {
+	if os.Getenv("OPENLR_DIAGNOSTICS") == "1" {
+		fmt.Fprintln(os.Stderr, "OpenLR video import diagnostic:", report)
+	}
+}
+
 // CaptureWorkspace snapshots only the OpenLR webview that issued the call.
 func (d *Desktop) CaptureWorkspace(ctx context.Context) (string, error) {
 	window := mygo.CallerWindow(ctx)

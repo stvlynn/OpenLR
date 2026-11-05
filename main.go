@@ -48,6 +48,9 @@ func main() {
 		if os.Getenv("OPENLR_EPHEMERAL") == "1" {
 			page.Session = mygo.NewEphemeralSession()
 		}
+		if os.Getenv("OPENLR_DIAGNOSTICS") == "1" {
+			page.PreloadScript = "globalThis.openlrDiagnostics = true"
+		}
 		window = mygo.NewWindow(mygo.WindowOptions{
 			Page:            page,
 			Title:           "OpenLR",

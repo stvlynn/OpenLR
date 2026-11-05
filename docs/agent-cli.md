@@ -60,6 +60,8 @@ Both desktop commands and CLI-only commands such as `watch` appear in CLI search
 
 Use named options, or supply a JSON object with `--args` (`--body` is an alias). Import also accepts positional local paths or repeated `--file`. `--` marks the start of literal import paths. String arguments, including empty strings, can be provided through JSON when shell quoting is awkward.
 
+Video imports declare a media type from the case-insensitive suffix for WebM, MOV, MP4, M4V and MKV. The running desktop still determines whether its codecs can open the file.
+
 ```powershell
 node cli/openlr.mjs schema export
 node cli/openlr.mjs import --file 'C:\Photos\one.jpg' --file 'C:\Photos\two.png'
