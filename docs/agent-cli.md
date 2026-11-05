@@ -60,7 +60,7 @@ See [catalog organization](catalog-organization.md) for multi-selection, batch m
 
 [Catalog migration](catalog-migration.md) adds `migration-scan --catalog <local.lrcat>`, reviewed root mapping, `migration-inspect`, `migration-commit`, `migration-retry` and saved reports. `migration-apple-scan` accepts an authorized standard originals/XMP export folder. The scan does not read referenced originals; commit retains authorized disk references; explicit Sync uploads originals through the shared resolver and omits source-device paths from portable manifests. Genuine Adobe catalogs and PhotoKit are not claimed as tested.
 
-`edit --key Dehaze --value 35` adjusts the existing Effects control; negative values add haze and zero restores neutral behavior. The [dehaze contract](dehaze.md) describes source-resolution analysis and output limitations.
+`edit --key Dehaze --value 35` adjusts the existing Effects control; negative values add haze and zero restores neutral behavior. The command awaits background source analysis and required thumbnail persistence before replying; preview/export await their captured recipe. The [dehaze contract](dehaze.md) describes source-resolution analysis and output limitations.
 
 ## Shared-session transport
 

@@ -112,7 +112,7 @@ async function performExportSelection({
       // Let the UI and control lane run before the next synchronous codec/render phase.
       await new Promise((resolve) => setTimeout(resolve, 0))
       signal?.throwIfAborted()
-      const prepared = await prepare(current, item.options, { original })
+      const prepared = await prepare(current, item.options, { original, signal })
       signal?.throwIfAborted()
       job?.update({ phase: 'writing', totalBytes: prepared.blob.size })
       const saved = await folder.write(prepared.blob, prepared.filename, {

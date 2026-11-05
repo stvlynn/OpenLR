@@ -8,7 +8,7 @@ import { exportFilename } from './formats.js'
 import { validateExportColorSpace } from './export-color.js'
 import { metadata } from './metadata.js'
 import { workingFrame } from './working-frames.js'
-import { render, renderFrame } from './render.js'
+import { renderPrepared as render, renderFramePrepared as renderFrame } from './render.js'
 import { encodePhoto, encodeFrame } from './encode.js'
 import { applyOutputSharpening, applyWatermark, applyFrameWatermark } from './export-options.js'
 import { applyFrameOutputSharpening } from './output-sharpening.js'
@@ -17,7 +17,7 @@ import { applyFrameOutputSharpening } from './output-sharpening.js'
 export async function preparePhotoExport(
   p,
   args,
-  { original, source: activeSource, preview = false, comparison = false }
+  { original, source: activeSource, preview = false, comparison = false, signal }
 ) {
   let ownedImage, ownedVideo, originalData
   const readOriginal = original
@@ -37,6 +37,7 @@ export async function preparePhotoExport(
       return ownedImage
     })
   try {
+    signal?.throwIfAborted()
     const media = isVideo(p) ? 'video' : 'photo',
       options = !preview ? normalizeExportSettings(args, media) : null,
       finished = (result) => (options ? { ...result, exportSettings: { media, options } } : result)
@@ -46,7 +47,7 @@ export async function preparePhotoExport(
     if (format.startsWith('video/')) {
       if (!isVideo(p)) throw Error('Select a video')
       await source(p.id)
-      return finished(await exportVideo((await original(p.id)).file, p, { ...args, format }))
+      return finished(await exportVideo((await original(p.id)).file, p, { ...args, format, signal }))
     }
     if (format === 'original') return finished({ blob: (await original(p.id)).file, filename: p.name })
     if (format === 'image/x-adobe-dng') {
@@ -69,7 +70,7 @@ export async function preparePhotoExport(
     const image = await source(p.id)
     const recipe = preview && comparison ? neutralRecipe(p.edit) : p.edit
     if (processingVersion(recipe) === 2) {
-      const frame = renderFrame(workingFrame(image), recipe, max)
+      const frame = await renderFrame(workingFrame(image), recipe, max, { signal })
       if (!preview) {
         applyFrameOutputSharpening(frame, args.outputSharpening)
         applyFrameWatermark(frame, args.watermark)
@@ -79,7 +80,7 @@ export async function preparePhotoExport(
         filename: exportFilename(p.name, format)
       })
     }
-    const canvas = render(image, recipe, max)
+    const canvas = await render(image, recipe, max, { signal })
     if (!preview) {
       applyOutputSharpening(canvas, args.outputSharpening)
       applyWatermark(canvas, args.watermark)
@@ -88,6 +89,9 @@ export async function preparePhotoExport(
       blob: await encodePhoto(canvas, format, args.quality ?? 0.92, colorSpace, metadataOptions),
       filename: exportFilename(p.name, format)
     })
+  } catch (error) {
+    if (signal?.aborted && error.name === 'AbortError') throw signal.reason
+    throw error
   } finally {
     ownedVideo?.close()
     if (!ownedVideo) ownedImage?.close?.()

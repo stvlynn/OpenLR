@@ -47,7 +47,7 @@ import { geometry, validCrop } from './geometry.js'
 import { CropSurface } from './crop-surface.js'
 import { CROP_GUIDES, CROP_GUIDE_MESSAGES } from './crop-guides.js'
 import { drawHistogram, histogram, autoExposure } from './histogram.js'
-import { controls, render, renderFrame, toBlob } from './render.js'
+import { controls, renderPrepared as render, renderFramePrepared as renderFrame, toBlob } from './render.js'
 import { saveExport, beginExportFolder } from './desktop.js'
 import { preparePhotoExport } from './photo-export.js'
 import { exportSelection, BATCH_EXPORT_MESSAGES } from './batch-export.js'
@@ -166,15 +166,15 @@ function stopPlayback() {
   playingMedia?.video.pause()
   cancelAnimationFrame(frameTicket)
 }
-function refreshPlayback() {
+async function refreshPlayback() {
   if (!playingMedia || playingMedia.video.paused || !active() || mode !== 'detail') return
   const { video, duration } = playingMedia,
     photo = active()
   if (video.currentTime >= clipRange(photo.edit.trim, duration).end) stopPlayback()
   $('play-video').textContent = video.paused ? 'Play' : 'Pause'
   $('video-position').value = video.currentTime
-  paintStage(video, photo.edit)
-  if (!video.paused) frameTicket = requestAnimationFrame(refreshPlayback)
+  await previewStage(video, photo.edit)
+  if (playingMedia?.video === video && !video.paused) frameTicket = requestAnimationFrame(refreshPlayback)
 }
 const active = () => photos.find((p) => p.id === selected)
 const matches = (p) =>
@@ -222,6 +222,7 @@ async function source(id, recipe = photos.find((photo) => photo.id === id)?.edit
     }
     localToolsUI?.unmount()
     opticsUI?.unmount()
+    cancelPaint()
     bitmap?.close?.()
     bitmap = next
     bitmapId = id
@@ -238,6 +239,7 @@ function original(id) {
       : db.original(photo?.originalId ?? id)
 }
 function clearSources() {
+  cancelPaint()
   for (const observer of thumbnailObservers) observer.disconnect()
   thumbnailObservers.clear()
   localToolsUI?.unmount()
@@ -308,7 +310,7 @@ function refreshThumbnail(photo, img) {
             try {
               image = await decodeEditSource((await original(photo.id)).file, photo.edit)
               const cache = {
-                thumbnail: await toBlob(render(image, photo.edit, 240)),
+                thumbnail: await toBlob(await render(image, photo.edit, 240)),
                 width: image.width,
                 height: image.height,
                 ...versions
@@ -388,7 +390,28 @@ function syncTiles(container, items) {
     })
   }
 }
-function paintStage(image, edit) {
+let paintController = null,
+  paintRevision = 0
+function cancelPaint() {
+  paintRevision++
+  paintController?.abort()
+  paintController = null
+}
+async function previewStage(image, edit) {
+  try {
+    await paintStage(image, edit)
+  } catch (error) {
+    if (error.name !== 'AbortError') notice(error.message)
+  }
+}
+async function paintStage(image, edit) {
+  const previous = paintController,
+    controller = new AbortController()
+  paintController = controller
+  const revision = ++paintRevision
+  const photoId = selected,
+    owner = active()?.edit
+
   const recipe = cropping
     ? { ...edit, crop: null, aspect: '', turn: 0, flip: false }
     : compare
@@ -400,9 +423,38 @@ function paintStage(image, edit) {
     h = shape.turn % 2 ? shape.width : shape.height
   const fit = Math.min((stage.clientWidth - 24) / w, (stage.clientHeight - 24) / h) * devicePixelRatio
   const edge = zoom ? Infinity : Math.max(1, Math.round(Math.max(w, h) * fit))
-  const preview = render(image, recipe, edge)
+  // Join the next preparation before releasing the superseded preview so a
+  // slider does not repeatedly restart identical source analysis.
+  const pending = render(image, recipe, edge, { signal: controller.signal })
+  previous?.abort()
+  let preview
+  try {
+    preview = await pending
+  } catch (error) {
+    if (error.name === 'AbortError') return
+    throw error
+  }
+  if (
+    paintRevision !== revision ||
+    paintController !== controller ||
+    controller.signal.aborted ||
+    selected !== photoId ||
+    active()?.edit !== owner ||
+    mode !== 'detail'
+  )
+    return
+  const originalPreview = pair ? await render(image, neutralRecipe(edit), edge) : null
+  if (
+    paintRevision !== revision ||
+    paintController !== controller ||
+    controller.signal.aborted ||
+    selected !== photoId ||
+    active()?.edit !== owner ||
+    mode !== 'detail'
+  )
+    return
   stage.classList.toggle('pair', pair)
-  if (pair) stage.replaceChildren(render(image, neutralRecipe(edit), edge), preview)
+  if (pair) stage.replaceChildren(originalPreview, preview)
   else stage.replaceChildren(preview)
   if (cropping) cropSurface.mount(preview, image, edit, selected)
   else cropSurface.reset()
@@ -428,6 +480,8 @@ async function draw() {
   if (!selected) mode = 'grid'
   const p = active(),
     detail = mode === 'detail'
+  paintRevision++
+  if (!detail || bitmapId !== selected) cancelPaint()
   const curveSource = p?.local?.sidecarError ? null : p
   const points = p?.edit.pointColors ?? []
   if (pointPhoto !== (p?.id ?? '') || !points.some((point) => point.id === selectedPoint))
@@ -546,7 +600,7 @@ async function draw() {
     input.value = p.edit[input.dataset.control] || 0
     input.previousElementSibling.value = input.value
   }
-  if (detail) paintStage(await source(p.id), p.edit)
+  if (detail) await paintStage(await source(p.id), p.edit)
   else stopPlayback()
   const precision = inputPrecisionDescription(processingState(p)?.input)
   if (precision) $('info').textContent += '\n' + precision
@@ -651,7 +705,7 @@ async function preparePhoto(p, changes) {
   const next = { ...p, ...changes }
   if (changes.edit) {
     const image = await source(p.id, changes.edit)
-    next.thumbnail = await toBlob(render(image, changes.edit, 240))
+    next.thumbnail = await toBlob(await render(image, changes.edit, 240))
     next.width = image.width
     next.height = image.height
     Object.assign(next, photoPreviewVersions(p))
@@ -936,7 +990,7 @@ async function execute(command, args, context = {}) {
     }
     case 'save-frame': {
       if (!p || !isVideo(p)) throw Error('Select a video')
-      const canvas = render(await source(p.id), p.edit),
+      const canvas = await render(await source(p.id), p.edit),
         blob = await toBlob(canvas, 'image/png')
       const file = new File(
         [blob],
@@ -1808,16 +1862,18 @@ async function execute(command, args, context = {}) {
           break
         }
         case 'histogram':
-          return histogram(render(await source(p.id), p.edit, 400))
+          return histogram(await render(await source(p.id), p.edit, 400))
         case 'auto-tone': {
-          const exposure = autoExposure(histogram(render(await source(p.id), neutralRecipe(p.edit), 400)))
+          const exposure = autoExposure(
+            histogram(await render(await source(p.id), neutralRecipe(p.edit), 400))
+          )
           await replace(p, { edit: { ...p.edit, Exposure: exposure } })
           rememberEdit(p)
           redo.length = 0
           break
         }
         case 'sample-color': {
-          const canvas = render(await source(p.id), p.edit, 1280)
+          const canvas = await render(await source(p.id), p.edit, 1280)
           return { color: sampleColor(canvas, number(args.x, 0, 1), number(args.y, 0, 1)) }
         }
         case 'range-color': {
@@ -2093,7 +2149,7 @@ for (const [group, items] of Object.entries(controls)) {
         ) {
           compare = false
           try {
-            paintStage(bitmap, { ...recipe, [key]: value })
+            previewStage(bitmap, { ...recipe, [key]: value })
           } catch (error) {
             notice(error.message)
           }
@@ -2530,7 +2586,7 @@ function editPreview(derive) {
         bitmapId === photo.id &&
         bitmapVersion === processingVersion(photo.edit)
       )
-        paintStage(bitmap, photo.edit)
+        previewStage(bitmap, photo.edit)
       return
     }
     const photo = active()
@@ -2549,7 +2605,7 @@ function editPreview(derive) {
       )
         return
       compare = false
-      paintStage(bitmap, derive(preview.edit, source, value))
+      previewStage(bitmap, derive(preview.edit, source, value))
     })
   }
 }

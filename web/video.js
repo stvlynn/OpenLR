@@ -1,4 +1,4 @@
-import { render } from './render.js'
+import { renderPrepared as render } from './render.js'
 import { geometry } from './geometry.js'
 import { applyWatermark } from './export-options.js'
 export const isVideo = (asset) =>
@@ -116,11 +116,12 @@ export async function exportVideo(file, photo, args) {
         allowRotationMetadata: false,
         processedWidth: size.turn % 2 ? size.height : size.width,
         processedHeight: size.turn % 2 ? size.width : size.height,
-        process(sample) {
+        async process(sample) {
+          args.signal?.throwIfAborted()
           if (frame.width !== sample.displayWidth) frame.width = sample.displayWidth
           if (frame.height !== sample.displayHeight) frame.height = sample.displayHeight
           sample.draw(ctx, 0, 0)
-          const canvas = render(frame, photo.edit, args.maxSize ?? Infinity)
+          const canvas = await render(frame, photo.edit, args.maxSize ?? Infinity, { signal: args.signal })
           applyWatermark(canvas, args.watermark)
           return canvas
         }

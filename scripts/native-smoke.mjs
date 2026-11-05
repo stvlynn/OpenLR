@@ -1311,8 +1311,13 @@ try {
     path.join(root, 'dehaze-original.png')
   )
   assert.deepEqual(await readFile(hazeOriginal.path), hazeBytes)
+  assert.equal(
+    (await call('state')).codecDiagnostics.filter((item) => item.worker === 'dehaze-worker.js').length,
+    0,
+    'Dehaze analysis must execute in the native worker without startup fallback'
+  )
   console.log(
-    'Native Dehaze: both process TIFF pixels for removal and added haze, live edit capture, undo and unchanged original bytes passed.'
+    'Native Dehaze: background worker without fallback, both process TIFF pixels for removal and added haze, live edit capture, undo and unchanged original bytes passed.'
   )
   const colors = [
     [180, 60, 40],

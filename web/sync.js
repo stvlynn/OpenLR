@@ -2,7 +2,7 @@ import { validateColorGradingRecipe } from './color-grading.js'
 import { encodeBlob } from './transfer.js'
 import * as db from './catalog.js'
 import { decodeEditSource } from './edit-source.js'
-import { render, toBlob } from './render.js'
+import { renderPrepared as render, toBlob } from './render.js'
 import { processingVersion } from './process-version.js'
 import { validateToneCurveRecipe } from './tone-curves.js'
 const stores = ['photos', 'albums', 'presets']
@@ -244,7 +244,7 @@ export async function synchronize(
             ...p,
             ...(localReference ? { reference: localReference } : {}),
             ...(localRecords[p.id]?.migration ? { migration: localRecords[p.id].migration } : {}),
-            thumbnail: await toBlob(render(image, p.edit, 240))
+            thumbnail: await toBlob(await render(image, p.edit, 240))
           },
           original: storedOriginal
             ? null

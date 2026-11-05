@@ -33,3 +33,17 @@ The intentionally prior-violating clear fixture is a neutral linear .7-to-.9 hor
 The optimized implementation repeated the complete exported-image run. Compared with the pre-optimization 1536 × 858 contact sheets, the maximum decoded channel difference is 1/255, affecting six channels in Original and five in Linear; inspected appearance and the reported pixel probes remain unchanged. This contact-sheet comparison includes display resampling and is not an exhaustive per-pixel proof for all original-size outputs. Independent domain and fused-render oracle tests own numerical correctness.
 
 Ignored image evidence is `.workspace/dehaze-visual-v1.png`, `.workspace/dehaze-visual-v2.png`, `.workspace/dehaze-controls-1024.png`, `.workspace/dehaze-visual-metrics.json` and `.workspace/dehaze-visual-comparison.json`; `.workspace/dehaze-visual.mjs` drives the actual dispatcher and export path using resolved asynchronous state waits. None of these measurements establishes native WebView performance or macOS behavior. Native results belong in [acceptance](acceptance.md).
+
+
+## Integrated background analysis measurement
+
+After production caller integration, the same 6000×4000 generated fixture was measured separately in Chrome 156 on the same Windows/Ryzen machine before builds/native tests were started. `renderPrepared` rendered edge 1280 at strengths 40, 70 and 20. A 10ms interval measured heartbeat ticks and maximum gaps including preparation and final synchronous rendering. Source generation was excluded. Linear used the generated Float32 source bound to a display surface; Original used the encoded ImageBitmap as before. These are single runs, not a latency distribution.
+
+| Path | First render | Heartbeat ticks / maximum gap | Cached 70 / 20 | Maximum cached gap |
+| --- | ---: | --- | --- | --- |
+| Original | 9.079s | 569 / 1.795s | 1.780s / 1.659s | 1.780s / 1.659s |
+| Linear | 6.061s | 533 / .413s | .302s / .293s | .302s / .293s |
+
+The analyzer no longer blocks the main thread continuously: the heartbeat runs during worker computation. Cached reconstruction still runs synchronously and has zero heartbeat ticks within those particular short operations. Original remains visibly blocking for around 1.7–1.8 seconds, while Linear has roughly 300ms synchronous updates. Background analysis is implemented; responsive whole-pipeline interaction is not yet established. Source correction/conversion and final reconstruction/encoding remain the next optimization targets without reducing analysis resolution or changing the exact image rule.
+
+Observed active-renderer peak working sets were 1.195GB Original and 1.341GB Linear; GPU process peaks were 1.205GB and .506GB respectively. They include generated canvases, source arrays, browser surfaces and caches, and are not simultaneous totals. The Linear browser fixture retains both generated float samples and its display canvas, so these values cannot be compared directly to the earlier Node-only RSS as an allocation regression. Ignored scripts/JSON are `.workspace/dehaze-background-performance-v1.*` and `-v2.*`. These browser measurements do not establish native WebView latency.

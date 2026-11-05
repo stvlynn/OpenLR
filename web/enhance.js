@@ -1,7 +1,7 @@
-import { render, toBlob } from './render.js'
+import { renderPrepared as render, toBlob } from './render.js'
 import { runImageWorker } from './image-worker.js'
 export async function enhancePhoto(image, edit, { mode = 'denoise', strength = 1 } = {}) {
-  const canvas = render(image, edit),
+  const canvas = await render(image, edit),
     pixels = canvas
       .getContext('2d', { willReadFrequently: true })
       .getImageData(0, 0, canvas.width, canvas.height)
@@ -20,7 +20,7 @@ export async function enhancePhoto(image, edit, { mode = 'denoise', strength = 1
     blob,
     width: result.width,
     height: result.height,
-    thumbnail: await toBlob(render(output, {}, 240)),
+    thumbnail: await toBlob(await render(output, {}, 240)),
     provenance: result.provenance,
     metrics: result.metrics
   }

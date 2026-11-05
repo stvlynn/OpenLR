@@ -1,4 +1,4 @@
-import { render } from './render.js'
+import { renderPrepared as render } from './render.js'
 import { encodePhoto } from './encode.js'
 import { encodeBlob } from './transfer.js'
 let output
@@ -17,7 +17,7 @@ export async function publish(album, photos, readImage, { comments = true, likes
   for (const photo of photos) {
     if (/\.(mov|mp4|m4v|webm|mkv)$/i.test(photo.name)) throw Error('Video album sharing is not supported')
     const image = await readImage(photo.id),
-      canvas = render(image, photo.edit, 1920),
+      canvas = await render(image, photo.edit, 1920),
       blob = await encodePhoto(canvas, 'image/jpeg', 0.9)
     await call('Upload', album.id, photo.id, await encodeBlob(blob))
     published.push({ id: photo.id, name: photo.name })

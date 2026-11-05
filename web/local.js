@@ -1,6 +1,6 @@
 import { validateColorGradingRecipe } from './color-grading.js'
 import { decodeEditSource } from './edit-source.js'
-import { render, toBlob } from './render.js'
+import { renderPrepared as render, toBlob } from './render.js'
 import { whenVisible } from './thumbnail-visibility.js'
 import { processingVersion } from './process-version.js'
 import { validateToneCurveRecipe } from './tone-curves.js'
@@ -23,7 +23,8 @@ let folder = null,
   report,
   thumbnailQueue = Promise.resolve(),
   generation = 0
-const observers = new Set()
+const observers = new Set(),
+  thumbnailControllers = new Set()
 const call = (name, ...args) => {
   if (!globalThis.mygo?.call) throw Error(messages.desktop)
   return globalThis.mygo.call('Local.' + name, ...args)
@@ -51,6 +52,8 @@ export const isLocal = (photo) => Boolean(photo?.local)
 export function leave() {
   folder = null
   generation++
+  for (const controller of thumbnailControllers) controller.abort()
+  thumbnailControllers.clear()
   for (const observer of observers) observer.disconnect()
   observers.clear()
   drawNavigation()
@@ -64,6 +67,8 @@ export async function open(root = '', relative = '', recursive = folder?.recursi
   if (next) next.recursive = recursive
   if (!next) return null
   generation++
+  for (const controller of thumbnailControllers) controller.abort()
+  thumbnailControllers.clear()
   for (const observer of observers) observer.disconnect()
   observers.clear()
   folder = next
@@ -140,18 +145,25 @@ export function observeThumbnail(photo, img, onReady) {
       .then(async () => {
         if (revision !== generation || !img.isConnected) return
         let image
+        const edit = photo.edit,
+          controller = new AbortController()
+        thumbnailControllers.add(controller)
         try {
-          image = await decodeEditSource((await original(photo)).file, photo.edit)
+          image = await decodeEditSource((await original(photo)).file, edit)
           if (revision !== generation) return
+          const thumbnail = await toBlob(await render(image, edit, 240, { signal: controller.signal }))
+          if (revision !== generation || photo.edit !== edit || !img.isConnected) return
           photo.width = image.width
           photo.height = image.height
-          photo.thumbnail = await toBlob(render(image, photo.edit, 240))
+          photo.thumbnail = thumbnail
           onReady()
         } catch (error) {
+          if (error.name === 'AbortError' || revision !== generation) return
           img.alt = 'Cannot preview ' + photo.name
           img.title = error.message
           report?.(photo.name + ': ' + error.message)
         } finally {
+          thumbnailControllers.delete(controller)
           image?.close()
         }
       })

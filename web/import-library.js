@@ -5,7 +5,7 @@ import { processingVersion, PROCESS_MESSAGES } from './process-version.js'
 import { isVideo, poster } from './video.js'
 import { metadata } from './metadata.js'
 import { readXmp } from './xmp.js'
-import { render, toBlob } from './render.js'
+import { renderPrepared as render, toBlob } from './render.js'
 
 async function sameFile(left, right) {
   if (!left || left.size !== right.size) return false
@@ -74,7 +74,7 @@ export async function importBatch(files, { photos, album, readOriginal, update, 
           ...(media ? { duration: media.duration } : {}),
           metadata: media ? {} : await metadata(file),
           ...settings,
-          thumbnail: await toBlob(render(image, settings.edit || {}, 240)),
+          thumbnail: await toBlob(await render(image, settings.edit || {}, 240)),
           ...photoPreviewVersions(file)
         }
         await addPhoto(p, file)

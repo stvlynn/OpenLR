@@ -1,3 +1,4 @@
+import { analyzeDehazeOwned } from './dehaze-worker-client.js'
 import { analyzeDehaze, createDehazePixel } from './dehaze.js'
 import { geometry } from './geometry.js'
 import { filledSource, filledFrame } from './fill.js'
@@ -38,12 +39,22 @@ function sourceStages(image, edit, stages) {
 // Original decoded frames and ImageBitmaps are immutable. Keep only the latest
 // source-correction revision per source; crop, output size and strength reuse it.
 const dehazeSources = new WeakMap()
+const sourceKey = (edit) => JSON.stringify([edit.fills, edit.redEyes, edit.localTools, edit.optics])
+const cacheableSource = (image) =>
+  isLinearFrame(image) || (typeof ImageBitmap !== 'undefined' && image instanceof ImageBitmap)
+const canceledPreparation = () =>
+  Object.assign(new Error('Image processing canceled'), { name: 'AbortError', code: 'ABORTED' })
+function needsAnalysis(entry, edit) {
+  return (
+    !entry.analysis ||
+    (edit.Dehaze > 0 && entry.analysis.visible && !entry.analysis.black && !entry.analysis.transmission)
+  )
+}
 function dehazedSource(image, edit, prepare) {
-  const cacheable =
-    isLinearFrame(image) || (typeof ImageBitmap !== 'undefined' && image instanceof ImageBitmap)
-  const key = JSON.stringify([edit.fills, edit.redEyes, edit.localTools, edit.optics])
+  const cacheable = cacheableSource(image)
+  const key = sourceKey(edit)
   let entry = cacheable ? dehazeSources.get(image) : null
-  if (!entry || entry.key !== key) {
+  if (!entry || entry.key !== key || entry.pending || entry.controller?.signal.aborted) {
     entry = { key, source: prepare(), analysis: null }
     if (cacheable) dehazeSources.set(image, entry)
   }
@@ -72,10 +83,98 @@ function correctedBitmap(image, edit, edge) {
   })
 }
 
-export function renderFrame(image, edit = {}, maxSize = Infinity) {
+function correctedByteFrame(image, edit) {
+  const corrected = correctedBitmap(image, edit, Infinity)
+  const full = document.createElement('canvas')
+  full.width = corrected.width
+  full.height = corrected.height
+  const context = full.getContext('2d', { willReadFrequently: true })
+  context.drawImage(corrected, 0, 0)
+  return rgba8ToLinearFrame(context.getImageData(0, 0, full.width, full.height))
+}
+async function consumePreparation(entry, signal) {
+  if (signal?.aborted) throw canceledPreparation()
+  const consumer = {}
+  entry.consumers.add(consumer)
+  let abort
+  const canceled = new Promise((_, reject) => {
+    abort = () => reject(canceledPreparation())
+    signal?.addEventListener('abort', abort, { once: true })
+  })
+  try {
+    await Promise.race([entry.pending, canceled])
+  } finally {
+    signal?.removeEventListener('abort', abort)
+    entry.consumers.delete(consumer)
+    // A new strength request can join before a superseded preview relinquishes
+    // the last claim. Explicit thumbnail/export consumers keep the job alive.
+    queueMicrotask(() => {
+      if (entry.pending && !entry.consumers.size) entry.controller.abort()
+    })
+  }
+}
+export async function prepareDehaze(image, edit = {}, { signal } = {}) {
+  if (signal?.aborted) throw canceledPreparation()
+  if (!edit.Dehaze) return null
+  const original = processingVersion(edit) === 2 && !isLinearFrame(image) ? workingFrame(image) : image
+  if (!original) throw Error(PROCESS_MESSAGES.missingSource)
+  const key = sourceKey(edit),
+    cacheable = cacheableSource(original)
+  let entry = cacheable ? dehazeSources.get(original) : null
+  if (!entry || entry.key !== key || entry.controller?.signal.aborted) {
+    entry = {
+      key,
+      source: isLinearFrame(original) ? correctedFrame(original, edit) : correctedByteFrame(original, edit),
+      analysis: null,
+      consumers: new Set()
+    }
+    if (cacheable) dehazeSources.set(original, entry)
+  }
+  entry.consumers ??= new Set()
+  while (entry.pending || needsAnalysis(entry, edit)) {
+    if (!entry.pending) {
+      entry.controller = new AbortController()
+      // A ready negative-only source may still be read by another consumer.
+      // Upgrade from an owned copy; never detach a published cache snapshot.
+      const owned = entry.analysis ? { ...entry.source, data: entry.source.data.slice() } : entry.source
+      entry.pending = analyzeDehazeOwned(owned, {
+        transmission: edit.Dehaze > 0,
+        signal: entry.controller.signal
+      })
+        .then(({ frame, analysis }) => {
+          entry.source = frame
+          entry.analysis = analysis
+        })
+        .catch((error) => {
+          if (cacheable && dehazeSources.get(original) === entry) dehazeSources.delete(original)
+          throw error
+        })
+        .finally(() => {
+          entry.pending = null
+        })
+    }
+    await consumePreparation(entry, signal)
+    if (signal?.aborted) throw canceledPreparation()
+  }
+  return { source: entry.source, analysis: entry.analysis }
+}
+export async function renderPrepared(image, edit = {}, maxSize = Infinity, options = {}) {
+  const prepared = await prepareDehaze(image, edit, options)
+  if (options.signal?.aborted) throw canceledPreparation()
+  return render(image, edit, maxSize, prepared)
+}
+export async function renderFramePrepared(image, edit = {}, maxSize = Infinity, options = {}) {
+  const prepared = await prepareDehaze(image, edit, options)
+  if (options.signal?.aborted) throw canceledPreparation()
+  return renderFrame(image, edit, maxSize, prepared)
+}
+
+export function renderFrame(image, edit = {}, maxSize = Infinity, ready = null) {
   assertLinearFrame(image)
   // A render owns its mutable pixels. Cached originals never become edit state.
-  const prepared = edit.Dehaze ? dehazedSource(image, edit, () => correctedFrame(image, edit)) : null
+  const prepared = edit.Dehaze
+    ? (ready ?? dehazedSource(image, edit, () => correctedFrame(image, edit)))
+    : null
   const frame = prepared
     ? transformFrame(prepared.source, edit, maxSize, image, createDehazePixel(edit.Dehaze, prepared.analysis))
     : transformFrame(correctedFrame(image, edit), edit, maxSize, image)
@@ -104,11 +203,11 @@ export function frameCanvas(frame, readPixel = null) {
   return canvas
 }
 
-export function render(image, edit = {}, maxSize = Infinity) {
+export function render(image, edit = {}, maxSize = Infinity, ready = null) {
   if (processingVersion(edit) === 2) {
     const frame = workingFrame(image)
     if (!frame) throw new Error(PROCESS_MESSAGES.missingSource)
-    return frameCanvas(renderFrame(frame, edit, maxSize))
+    return frameCanvas(renderFrame(frame, edit, maxSize, ready))
   }
   const canvas = document.createElement('canvas')
   const geom = geometry(image, edit, maxSize)
@@ -116,15 +215,7 @@ export function render(image, edit = {}, maxSize = Infinity) {
   const sourceEdge = Math.max((width * image.width) / w, (height * image.height) / h)
   let localSource
   if (edit.Dehaze) {
-    const prepared = dehazedSource(image, edit, () => {
-      const corrected = correctedBitmap(image, edit, Infinity)
-      const full = document.createElement('canvas')
-      full.width = corrected.width
-      full.height = corrected.height
-      const context = full.getContext('2d', { willReadFrequently: true })
-      context.drawImage(corrected, 0, 0)
-      return rgba8ToLinearFrame(context.getImageData(0, 0, full.width, full.height))
-    })
+    const prepared = ready ?? dehazedSource(image, edit, () => correctedByteFrame(image, edit))
     localSource = frameCanvas(prepared.source, createDehazePixel(edit.Dehaze, prepared.analysis))
   } else localSource = correctedBitmap(image, edit, sourceEdge)
   const sourceScaleX = localSource.width / image.width,
