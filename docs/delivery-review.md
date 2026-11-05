@@ -1,8 +1,22 @@
 # Independent delivery review
 
-Reviewed 2026-11-05 on Windows with Node 24.9.0, Go 1.27.3 and WebView2. The current tracked-snapshot review below supersedes the older reproduction revision, while preserving its historical findings. This is delivery evidence, not an overall completeness claim.
+Reviewed through 2026-11-06 on Windows and WSL Linux. This is delivery evidence, not an overall completeness claim.
 
-## Current tracked-snapshot reproduction
+## Latest tracked snapshot and public delivery
+
+Commit **`2753c7a2beddfac1b420f384ba0d32656cd6575b`** was exported with `git archive` into new Windows and Linux directories. Both started without `node_modules` or generated CLI resources; no untracked source, optional models, Python packages or prior application builds were copied. External Node 24.9.0/Go 1.27.3 and existing Go caches were explicitly reused.
+
+Both platforms completed fresh `npm ci` (61 packages, zero reported vulnerabilities), Go tests/vet, MyGo packaging and all seven native suites. Linux additionally passed `go test -race ./...` and ran GTK/WebKit under Xvfb/D-Bus. Windows produced the NSIS installer. New source/frame workers are included in this archive and native worker/fallback checks passed. Both native runs explicitly skipped the unavailable independent ExifTool oracle; actual exports/reimports and metadata policy assertions still ran.
+
+Windows default browser verification completed **315 tests: 308 passed, 7 skipped, zero failed**, about 229.1 seconds. The seven skips were sky, depth, denoise/super-resolution, Pillow container extraction, Pillow/Little CMS profile comparison, ExifTool, and independent libpng/LCMS/Python validation. The separately provisioned main-workspace 315/315 result remains distinct. No Linux full-browser-suite run is claimed here.
+
+Both packaged CLIs were copied alone outside their source trees and successfully executed `local-cancel --photoId fixture --dry-run` and dehaze discovery. Parser-backed Windows inspection found one source input and six final external dependencies, all Node builtins. The inspection initially used CJS output mode and then misclassified esbuild's virtual `<runtime>` input marker; ESM output dependencies confirmed that marker is not a runtime import. These were harness corrections, not package changes. Packaged AGPL and third-party notices matched canonical bytes; source notices and distribution assets were present.
+
+Ignored evidence is `.workspace/delivery-2753c7a-*`, the source archive/directory and isolated CLI directory. This renews Windows/Linux tracked-snapshot evidence through `2753c7a`; physical camera, genuine complete external catalogs, OS chooser interaction and final product completeness remain separate boundaries.
+
+On 2026-11-06 the user explicitly changed delivery from private to public. Historical sensitive-file paths and common credential/private-key patterns were checked with no matches, then GitHub confirmed `PUBLIC`/`isPrivate:false`. [OpenLR](https://github.com/stvlynn/OpenLR) retains AGPL-3.0-only and its provenance/notices. This bounded review does not guarantee detection of every possible secret pattern. Earlier private-delivery requirements and checks below are historical. The preceding private CI run `42064995779` had zero steps and a macOS account-payment/spending-limit annotation; public visibility alone does not establish passing CI.
+
+## Earlier tracked-snapshot reproduction
 
 Commit **`afbdcb8348d0e26de1775d3c308ab3bc5c91ff17`** was exported using `git archive --format=tar`, then extracted into a newly created ignored directory. Before installation, neither `node_modules` nor generated `resources/cli/openlr.mjs` existed there. No untracked application files, downloaded optional model weights, ExifTool checkout, Python CMS packages or prior build output were copied into that snapshot.
 
