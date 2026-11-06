@@ -3,9 +3,16 @@ on:
   workflow_dispatch:
     inputs:
       debugger:
-        description: Attach LLDB immediately before exports
+        description: Attach LLDB to the owned host
         type: boolean
         default: true
+      scope:
+        description: Attach before import or before exports
+        type: choice
+        options:
+          - export
+          - workflow
+        default: export
 permissions:
   contents: read
 jobs:
@@ -33,7 +40,7 @@ jobs:
         timeout-minutes: 15
         env:
           OPENLR_DIAGNOSTICS: '1'
-          OPENLR_TRACE_MODE: ${{ inputs.debugger && '--lldb' || '' }}
+          OPENLR_TRACE_MODE: ${{ inputs.debugger && (inputs.scope == 'workflow' && '--lldb-workflow' || '--lldb') || '' }}
         run: node scripts/native-video-export-trials.mjs build/release/darwin-universal/OpenLR.app/Contents/MacOS/OpenLR build/video-export-trials $OPENLR_TRACE_MODE
       - uses: actions/upload-artifact@v4
         if: always()
