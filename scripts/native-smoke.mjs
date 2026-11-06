@@ -17,7 +17,7 @@ import { makeColorProfile, encodeSrgb } from '../web/color-spaces.js'
 import { readPng } from '../web/png.js'
 import { defaultOptions as avifOptions } from '../web/vendor/codecs/avif/meta.js'
 import { readExifTool } from '../tests/exiftool.mjs'
-import { inspectNativeStartup, reportNativeStartupFailure } from './native-startup-diagnostics.mjs'
+import { inspectNativeRuntime, reportNativeStartupFailure } from './native-startup-diagnostics.mjs'
 import { startDavFixture } from './native-dav-fixture.mjs'
 
 const executable = process.argv[2]
@@ -25,7 +25,8 @@ if (!executable) throw Error('Pass the path to a built OpenLR executable')
 const root = await mkdtemp(path.join(tmpdir(), 'openlr-native-'))
 const session = path.join(root, 'agent.json')
 const startedAt = performance.now()
-let launchError, primaryError
+const lifecycle = { startedAt, startedWall: Date.now() }
+let launchError, primaryError, sharpeningCase
 const host = spawn(path.resolve(executable), [], {
   env: {
     ...process.env,
@@ -42,7 +43,12 @@ host.once('error', (error) => {
   launchError = error
 })
 const exited = new Promise((resolve) => host.once('close', (code, signal) => resolve({ code, signal })))
-const hostExit = new Promise((resolve) => host.once('exit', resolve))
+lifecycle.exitEvent = new Promise((resolve) =>
+  host.once('exit', (code, signal) => {
+    lifecycle.exit = { code, signal, at: performance.now(), wall: Date.now() }
+    resolve()
+  })
+)
 const call = (...args) => execute(parse([...args, '--session', session]))
 function hasImageSignature(bytes, format) {
   if (format === 'image/png')
@@ -535,9 +541,7 @@ async function verifyWorkspaceDisclosures() {
   )
 }
 
-let sessionAt,
-  requestAt,
-  ready = false
+let sessionAt, requestAt
 try {
   const end = Date.now() + 45000
   for (;;) {
@@ -553,7 +557,7 @@ try {
   sessionAt = performance.now()
   requestAt = performance.now()
   await call('state', '--summary', 'true', '--timeout', '30')
-  ready = true
+  lifecycle.readyAt = performance.now()
   await verifyPhotosPanel()
   const file = path.join(root, 'sensor.dng'),
     data = Buffer.from(makeDng())
@@ -1933,6 +1937,7 @@ try {
     ]) {
       const decoded = []
       for (const level of ['none', 'standard']) {
+        sharpeningCase = { version, format, level }
         await call('select', '--id', sharpenId)
         const output = await call(
             'export',
@@ -1984,6 +1989,7 @@ try {
     assert.deepEqual(await readFile(after.path), await readFile(before.path))
     assert.deepEqual((await call('state')).photos.find((photo) => photo.id === sharpenId).edit, recipe)
   }
+  sharpeningCase = undefined
   const sharpenOriginal = await call(
     'export',
     '--format',
@@ -2258,11 +2264,11 @@ try {
   )
 } catch (error) {
   primaryError = error
-  if (!ready) {
+  if (lifecycle.readyAt === undefined) {
     await reportNativeStartupFailure({
       session,
       host,
-      exited: hostExit,
+      exited: lifecycle.exitEvent,
       startedAt,
       sessionAt,
       requestAt,
@@ -2270,8 +2276,10 @@ try {
     })
   } else {
     try {
-      const diagnostic = await inspectNativeStartup({ session, host, startedAt })
-      console.error('Native workflow failure diagnostics: ' + JSON.stringify(diagnostic))
+      const diagnostic = await inspectNativeRuntime({ session, host, lifecycle })
+      console.error(
+        'Native workflow failure diagnostics: ' + JSON.stringify({ ...diagnostic, sharpeningCase })
+      )
     } catch {
       console.error('Native workflow failure diagnostics unavailable')
     }
