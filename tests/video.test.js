@@ -142,6 +142,86 @@ test('macOS releases the previous Detail video before loading another and can re
   assert.ok(red < 100 && green < 100 && blue > 130 && alpha === 255, JSON.stringify(result.pixel))
 })
 
+test('a terminal native seek error releases the failed player and the same video can retry', async (t) => {
+  const server = await serveWorkspace()
+  t.after(server.close)
+  const browser = await chromium.launch({ channel: process.env.CHROME_CHANNEL || 'chrome' })
+  t.after(() => browser.close())
+  const page = await browser.newPage()
+  await page.goto(server.url)
+  const bytes = Array.from(await makeVideoFixture(page))
+  const result = await page.evaluate(async (bytes) => {
+    const { run } = await import('./app.js')
+    const file = new File([Uint8Array.from(bytes)], 'retry.webm', { type: 'video/webm' })
+    const imported = await run('import', { files: [file] })
+    if (imported.failed.length) throw Error(imported.failed[0].error)
+    const [id] = imported.added
+    await run('video-seek', { time: 0.25 })
+    const badTime = await run('video-seek', { time: 99 }).catch(({ message }) => message)
+    const afterBadTime = (await run('state')).playback?.time
+    const prototype = HTMLMediaElement.prototype
+    const currentTime = Object.getOwnPropertyDescriptor(prototype, 'currentTime')
+    let failedPlayer
+    Object.defineProperty(prototype, 'currentTime', {
+      ...currentTime,
+      set(value) {
+        currentTime.set.call(this, value)
+        failedPlayer = this
+        Object.defineProperty(this, 'error', {
+          value: { code: 3, message: 'Controlled native decode failure' }
+        })
+        queueMicrotask(() => this.dispatchEvent(new Event('error')))
+        Object.defineProperty(prototype, 'currentTime', currentTime)
+      }
+    })
+    try {
+      let failureNotified = false
+      const onFailureChange = () => (failureNotified = true)
+      window.addEventListener('openlr-change', onFailureChange, { once: true })
+      const error = await run('video-seek', { time: 2.35 }).catch(({ message }) => message)
+      window.removeEventListener('openlr-change', onFailureChange)
+      const failed = await run('state')
+      const released = failedPlayer && !failedPlayer.hasAttribute('src')
+      const retry = await run('video-seek', { time: 2.35, photoId: id }).catch(({ message }) => ({ message }))
+      let pixel
+      if (retry.playback) {
+        const { blob } = await run('preview')
+        const bitmap = await createImageBitmap(blob)
+        const context = new OffscreenCanvas(1, 1).getContext('2d')
+        context.drawImage(bitmap, 0, 0, 1, 1)
+        bitmap.close()
+        pixel = Array.from(context.getImageData(0, 0, 1, 1).data)
+      }
+      const { blob } = await run('export', { format: 'original' })
+      return {
+        badTime,
+        afterBadTime,
+        error,
+        released,
+        failureNotified,
+        failedSelection: failed.selected === id,
+        failedPlayback: failed.playback,
+        retry: retry.message ?? retry.playback?.time,
+        pixel,
+        original: Array.from(new Uint8Array(await blob.arrayBuffer()))
+      }
+    } finally {
+      Object.defineProperty(prototype, 'currentTime', currentTime)
+    }
+  }, bytes)
+  assert.equal(result.badTime, 'Time is outside the video')
+  assert.equal(result.afterBadTime, 0.25)
+  assert.equal(result.error, 'Controlled native decode failure')
+  assert.equal(result.failureNotified, true)
+  assert.equal(result.failedSelection, true)
+  assert.equal(result.failedPlayback, null)
+  assert.equal(result.released, true)
+  assert.equal(result.retry, 2.35)
+  const [red, green, blue, alpha] = result.pixel
+  assert.ok(red < 100 && green < 100 && blue > 130 && alpha === 255, JSON.stringify(result.pixel))
+  assert.deepEqual(result.original, bytes)
+})
+
 test('opt-in native seek tracing observes the real event before its awaited callback resolves', async (t) => {
   const server = await serveWorkspace()
   t.after(server.close)

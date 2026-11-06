@@ -219,6 +219,18 @@ function clearBitmap() {
   bitmap = null
   bitmapId = ''
 }
+function discardVideoSource() {
+  closePlayback()
+  cancelPaint()
+  clearBitmap()
+}
+function discardFailedVideoSource(media) {
+  if (playingMedia !== media || !media.video.error) return false
+  discardVideoSource()
+  $('play-video').textContent = 'Play'
+  notifyWorkspaceChange()
+  return true
+}
 async function refreshPlayback() {
   const media = playingMedia,
     photo = active()
@@ -244,8 +256,10 @@ async function refreshPlayback() {
     }
   } catch (error) {
     if (!ownsPlayback()) return
-    stopPlayback()
-    $('play-video').textContent = 'Play'
+    if (!discardFailedVideoSource(media)) {
+      stopPlayback()
+      $('play-video').textContent = 'Play'
+    }
     notice(error.message)
   }
   if (ownsPlayback() && !video.paused) frameTicket = requestAnimationFrame(refreshPlayback)
@@ -285,9 +299,7 @@ async function source(id, recipe = photos.find((photo) => photo.id === id)?.edit
       if (video) {
         if (playingMedia && globalThis.openlrNativePlatform === 'darwin') {
           // Release the previous WebKit decoder before loading another video.
-          closePlayback()
-          cancelPaint()
-          clearBitmap()
+          discardVideoSource()
           markVideoSeek(seekTrace, 'source-previous-closed')
         }
         media = await openVideo(data.file, undefined, seekTrace)
@@ -2225,33 +2237,38 @@ async function execute(command, args, context = {}) {
           mode = 'detail'
           if (bitmapId !== p.id) await source(p.id, p.edit, context.seekTrace)
           const media = playingMedia
-          if (command === 'video-play' || (command === 'video-toggle' && media.video.paused)) {
-            const range = clipRange(p.edit.trim, media.duration)
-            if (media.video.currentTime < range.start || media.video.currentTime >= range.end)
-              await media.seek(range.start)
-            cancelPlaybackFrames()
-            media.video.muted = false
-            await media.play()
-            playbackFrames = await media.playbackFrames()
-            frameTicket = requestAnimationFrame(refreshPlayback)
-          } else if (command === 'video-pause' || command === 'video-toggle') {
-            cancelPlaybackFrames()
-            const generation = playbackGeneration
-            const image = await media.pauseFrame(
-              () => playingMedia === media && playbackGeneration === generation && selected === p.id,
-              context.seekTrace
-            )
-            pausedFrame = { media, image }
-          } else if (command === 'video-seek') {
-            stopPlayback()
-            await media.seek(args.time, false, context.seekTrace)
-          } else {
-            const range = clipRange(args, media.duration)
-            stopPlayback()
-            await media.seek(range.start, false, context.seekTrace)
-            await replace(p, { edit: { ...p.edit, trim: range } })
-            rememberEdit(p)
-            redo.length = 0
+          try {
+            if (command === 'video-play' || (command === 'video-toggle' && media.video.paused)) {
+              const range = clipRange(p.edit.trim, media.duration)
+              if (media.video.currentTime < range.start || media.video.currentTime >= range.end)
+                await media.seek(range.start)
+              cancelPlaybackFrames()
+              media.video.muted = false
+              await media.play()
+              playbackFrames = await media.playbackFrames()
+              frameTicket = requestAnimationFrame(refreshPlayback)
+            } else if (command === 'video-pause' || command === 'video-toggle') {
+              cancelPlaybackFrames()
+              const generation = playbackGeneration
+              const image = await media.pauseFrame(
+                () => playingMedia === media && playbackGeneration === generation && selected === p.id,
+                context.seekTrace
+              )
+              pausedFrame = { media, image }
+            } else if (command === 'video-seek') {
+              stopPlayback()
+              await media.seek(args.time, false, context.seekTrace)
+            } else {
+              const range = clipRange(args, media.duration)
+              stopPlayback()
+              await media.seek(range.start, false, context.seekTrace)
+              await replace(p, { edit: { ...p.edit, trim: range } })
+              rememberEdit(p)
+              redo.length = 0
+            }
+          } catch (error) {
+            discardFailedVideoSource(media)
+            throw error
           }
           break
         }
