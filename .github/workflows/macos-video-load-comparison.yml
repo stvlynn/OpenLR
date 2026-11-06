@@ -1,27 +1,23 @@
-name: macOS Launch Services file-open check
+name: Apple Silicon still-image crash comparison
 on:
   workflow_dispatch:
     inputs:
       comparison:
-        description: Native integration to verify
+        description: Native behavior to observe
         type: choice
-        options: [file-open]
-        default: file-open
+        options: [still-trace]
+        default: still-trace
 permissions:
   contents: read
 jobs:
-  file-open:
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [macos-15, macos-15-intel]
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 15
+  still-trace:
+    runs-on: macos-15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
       - uses: actions/checkout@v5
         with:
-          ref: ca71e855d088b1829734acb2e1e485ab9210bdb6
+          ref: 8a76636467041ea8720d20756dd754fc01f67e7c
           path: production
       - uses: actions/setup-node@v5
         with:
@@ -29,15 +25,16 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version-file: production/go.mod
-      - name: Build the unmodified application
+      - name: Build the unmodified production package
         working-directory: production
         run: |
           npm ci
           node scripts/desktop.mjs build -o build/release -platform darwin/universal
-      - name: Copy the DMG app and deliver files through Launch Services
+      - name: Run both observation conditions in a fixed schedule
         working-directory: production
-        shell: bash
-        run: |
-          cp ../scripts/native-file-open-smoke.mjs scripts/native-file-open-smoke.mjs
-          cp ../scripts/native-dmg-smoke.sh scripts/native-dmg-smoke.sh
-          bash scripts/native-dmg-smoke.sh build/release/darwin-universal/openlr-*.dmg
+        run: node ../scripts/native-still-crash-comparison.mjs build/release/darwin-universal/OpenLR.app/Contents/MacOS/OpenLR "$GITHUB_WORKSPACE/build/still-trace"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: still-trace-macos-15
+          path: build/still-trace
