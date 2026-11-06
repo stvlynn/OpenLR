@@ -95,6 +95,7 @@ async function verify(label, app) {
         const baseline = readPng(
           await readFile((await call('screenshot', '--output', path.join(root, 'empty.png'), '--force')).path)
         )
+        const started = performance.now()
         const imported = await call('import', file)
         const record = {
           name,
@@ -102,7 +103,8 @@ async function verify(label, app) {
           matrix,
           duration,
           firstFrameOracle: first,
-          accepted: imported.added.length === 1
+          accepted: imported.added.length === 1,
+          importMs: Math.round(performance.now() - started)
         }
         records.push(record)
         if (!record.accepted) {
@@ -163,7 +165,7 @@ const results = {
   platform: process.platform,
   arch: process.arch,
   control: await verify('native', control),
-  candidate: await verify('canvas', candidate)
+  candidate: await verify('presented', candidate)
 }
 await writeFile(path.join(destination, 'report.json'), JSON.stringify(results, null, 2))
 console.log(JSON.stringify(results))

@@ -21,7 +21,7 @@ jobs:
     env:
       VIDEO_COMPARISON: ${{ inputs.comparison || 'load' }}
       VIDEO_CONTROL: ${{ inputs.comparison == 'poster' && 'native-poster' || inputs.comparison == 'decoder' && 'default-decoder' || inputs.comparison == 'pause' && 'frame-first' || 'automatic' }}
-      VIDEO_CANDIDATE: ${{ inputs.comparison == 'poster' && 'canvas-poster' || inputs.comparison == 'decoder' && 'software-decoder' || inputs.comparison == 'pause' && 'anchor-first' || 'explicit' }}
+      VIDEO_CANDIDATE: ${{ inputs.comparison == 'poster' && 'presented-poster' || inputs.comparison == 'decoder' && 'software-decoder' || inputs.comparison == 'pause' && 'anchor-first' || 'explicit' }}
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -59,16 +59,32 @@ jobs:
               )
               marker, replacement = frame + anchor, anchor + frame
           elif comparison == 'poster':
-              marker = b"    return { bitmap: await createImageBitmap(frame), duration: media.duration }\n"
-              replacement = b"""    let image = frame
-              if (frame === media.video) {
-                image = document.createElement('canvas')
-                image.width = media.video.videoWidth
-                image.height = media.video.videoHeight
-                image.getContext('2d').drawImage(frame, 0, 0)
+              edits.extend((source, before, after) for before, after in [
+                  (b'openVideo(file, diagnostic, seekTrace) {', b'openVideo(file, diagnostic, seekTrace, preparePoster = false) {'),
+                  (b'  const close = () => {\n', b'''  let frameCallback
+            let presented
+            if (preparePoster && typeof video.requestVideoFrameCallback === 'function') {
+              presented = new Promise((resolve) => {
+                frameCallback = video.requestVideoFrameCallback((_now, { mediaTime }) => resolve(mediaTime))
+              })
+            }
+            const close = () => {
+              if (frameCallback !== undefined) video.cancelVideoFrameCallback(frameCallback)
+          '''),
+                  (b'    markVideoSeek(seekTrace, \'playback-loaded\', video)\n', b'''    if (presented) {
+                let timer
+                const limit = new Promise((resolve) => { timer = setTimeout(() => resolve(null), 2000) })
+                const mediaTime = await Promise.race([presented, limit])
+                clearTimeout(timer)
+                video.cancelVideoFrameCallback(frameCallback)
+                frameCallback = undefined
+                markVideoImport(diagnostic, mediaTime === null ? 'poster-frame-timeout' : 'poster-frame-presented', video)
               }
-              return { bitmap: await createImageBitmap(image), duration: media.duration }
-          """
+              markVideoSeek(seekTrace, 'playback-loaded', video)
+          '''),
+              ])
+              marker = b'const media = await openVideo(file, diagnostic)\n'
+              replacement = b'const media = await openVideo(file, diagnostic, undefined, true)\n'
           else:
               marker = b'\n          video.src = url\n'
               replacement = marker + b'          video.load()\n'
@@ -79,7 +95,7 @@ jobs:
                   raise RuntimeError(f'Expected one comparison source block in {file}')
           try:
               for file, before, after in edits:
-                  file.write_bytes(originals[file].replace(before, after))
+                  file.write_bytes(file.read_bytes().replace(before, after))
               output = 'build/video-' + os.environ['VIDEO_CANDIDATE']
               subprocess.run(['node', 'scripts/desktop.mjs', 'build', '-o', output, '-platform', 'darwin/universal'], check=True)
           finally:
@@ -100,11 +116,13 @@ jobs:
           mkdir -p build/video-poster-trials
           cp build/prior-poster-formats/*.{webm,mp4,mov,mkv} build/video-poster-trials/
       - name: Compare actual import, thumbnail and first seek across formats
-        run: >-
-          node scripts/native-video-poster-formats.mjs
-          "build/video-$VIDEO_CONTROL/darwin-universal/OpenLR.app/Contents/MacOS/OpenLR"
-          "build/video-$VIDEO_CANDIDATE/darwin-universal/OpenLR.app/Contents/MacOS/OpenLR"
-          "build/video-$VIDEO_COMPARISON-trials"
+        if: inputs.comparison == 'poster'
+        shell: bash
+        run: |
+          node scripts/native-video-poster-formats.mjs \
+            "build/video-$VIDEO_CONTROL/darwin-universal/OpenLR.app/Contents/MacOS/OpenLR" \
+            "build/video-$VIDEO_CANDIDATE/darwin-universal/OpenLR.app/Contents/MacOS/OpenLR" \
+            "build/video-$VIDEO_COMPARISON-trials" 2>&1 | tee build/video-poster-trials/workflow.log
       - uses: actions/upload-artifact@v4
         if: always()
         with:
