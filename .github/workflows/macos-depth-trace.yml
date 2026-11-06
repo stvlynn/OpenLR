@@ -1,0 +1,25 @@
+name: macOS ARM depth crash trace
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  depth-trace:
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - run: npm ci
+      - name: Build the native distribution
+        run: node scripts/desktop.mjs build -o build/release -platform darwin/universal
+      - name: Trace the owned host during depth estimation and the first recipe read
+        timeout-minutes: 5
+        env:
+          OPENLR_DIAGNOSTICS: '1'
+        run: node scripts/native-depth-smoke.mjs build/release/darwin-universal/OpenLR.app/Contents/MacOS/OpenLR --lldb

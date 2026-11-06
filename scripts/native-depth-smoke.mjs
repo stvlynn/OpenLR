@@ -4,6 +4,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { execute, parse } from '../cli/openlr.mjs'
 import { readPng } from '../web/png.js'
+import { withDepthCrashTrace } from './native-depth-crash-trace.mjs'
 import { withNativeWorkspace } from './native-workspace.mjs'
 
 const portrait = fileURLToPath(new URL('../tests/fixtures/ai/astronaut.png', import.meta.url))
@@ -35,7 +36,11 @@ function rgbDifference(first, second, a, b = a) {
   )
 }
 
-await withNativeWorkspace(process.argv[2], async ({ root, call, initial, session }) => {
+const [executable, mode] = process.argv.slice(2)
+if (mode !== undefined && (mode !== '--lldb' || process.platform !== 'darwin'))
+  throw Error('The optional --lldb depth trace requires macOS')
+
+await withNativeWorkspace(executable, async ({ root, call, initial, session, pid }) => {
   assert.deepEqual(initial.photos, [])
   const provisioning = 'pinned runtime fetch in a fresh native session'
   const original = await readFile(portrait),
@@ -63,11 +68,16 @@ await withNativeWorkspace(process.argv[2], async ({ root, call, initial, session
   console.log('Native depth provisioning: ' + provisioning)
   // A first-use download and inference can outlast the ordinary CLI request.
   // Surface failures without retrying a command that may have committed.
-  const estimate = await execute(
-    parse(['depth-estimate', '--photoId', photoId, '--session', session, '--timeout', '150'])
-  )
-  const depth = (await recipe()).localTools.depth,
-    { raster, provenance } = depth
+  const estimateAndRead = async () => {
+    const estimate = await execute(
+      parse(['depth-estimate', '--photoId', photoId, '--session', session, '--timeout', '150'])
+    )
+    return { estimate, depth: (await recipe()).localTools.depth }
+  }
+  const { estimate, depth } = mode
+    ? await withDepthCrashTrace({ root, pid }, estimateAndRead)
+    : await estimateAndRead()
+  const { raster, provenance } = depth
   assert.deepEqual(estimate.depth, provenance)
   assert.equal(provenance.model, 'depth-anything-v2-small-quantized.onnx')
   assert.equal(provenance.revision, model.revision)
