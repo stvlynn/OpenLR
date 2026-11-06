@@ -4,6 +4,8 @@
 
 ## 复制与版本的源照片校验 — 2026-11-06
 
+`e162e9d` 的 [Actions 42224648105](https://github.com/stvlynn/OpenLR/actions/runs/42224648105) 四平台均成功：Windows、Linux、Intel macOS、ARM macOS。Windows 浏览器 466 通过、8 项可选跳过、零失败；两种 macOS 的独立默认存储重启流程均通过，包含设置、相册、命名版本及三份原件。此次成功不证明此前间歇性偏好丢失的原因；独立持久化对照仍见下方证据记录。
+
 普通复制按钮和复制快捷键现绑定操作时的照片；保存版本绑定打开对话框时的照片。排队切换目标后拒绝操作，保留旧剪贴板且不在新照片上创建版本；同一照片在对话框打开期间的编辑可正常保存。Windows／Chrome 157.0.8103.38 完整配置回归 **474/474，零失败、零跳过**，279.5 秒；19 项队列专项及新 Windows 包实际 CLI 组织、重启、预设像素、三份原件检查通过。安装器已生成，未执行安装。见[交互审计](../research/command-interaction-inventory.md)。
 
 此前 da1c4bf 的 [Actions 42221923590](https://github.com/stvlynn/OpenLR/actions/runs/42221923590) 已结束：Windows、Linux 和 Intel macOS 成功。Windows 浏览器 **464 通过、8 可选跳过、零失败**，原生全套和三项短音频通过。ARM macOS 普通原生全套及短音频通过，但默认存储重启后 filenames 恢复为 true，而保存结果为 false；作业失败，后续目录重启断言未执行。当前复制／版本修复不包含持久化修复。见[偏好持久化证据与候选方案](../research/preferences-persistence.md)。

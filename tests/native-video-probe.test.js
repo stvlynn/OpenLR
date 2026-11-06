@@ -4,7 +4,8 @@ import { EventEmitter } from 'node:events'
 import { syncBuiltinESMExports } from 'node:module'
 import test from 'node:test'
 import { promisify } from 'node:util'
-import { reportClock, reportReadiness, runProbeHost } from '../scripts/native-video-origin-probe.mjs'
+import { reportClock, reportReadiness } from '../scripts/native-video-origin-probe.mjs'
+import { runProbeHost } from '../scripts/native-probe-host.mjs'
 import { makePng } from './fixtures/png.mjs'
 
 test('video readiness retains a metadata-only failure and validates frame and playback evidence', () => {
@@ -140,12 +141,12 @@ test('video probe host distinguishes clean exit and nonzero exit', async () => {
   await runProbeHost(process.execPath, ['-e', 'process.exit(0)'])
   await assert.rejects(
     runProbeHost(process.execPath, ['-e', 'process.exit(7)']),
-    /Video origin probe host failed \(7\)/
+    /Native probe host failed \(7\)/
   )
 })
 
 test('video probe host preserves both output streams and fails at the deadline', async () => {
-  const moduleUrl = new URL('../scripts/native-video-origin-probe.mjs', import.meta.url)
+  const moduleUrl = new URL('../scripts/native-probe-host.mjs', import.meta.url)
   const gracefulHost = `
     process.on('SIGTERM', () => process.exit(0))
     console.log('probe stdout: host started')
@@ -158,7 +159,7 @@ test('video probe host preserves both output streams and fails at the deadline',
     import { runProbeHost } from ${JSON.stringify(moduleUrl.href)}
     await assert.rejects(
       runProbeHost(process.execPath, ['-e', ${JSON.stringify(gracefulHost)}], { timeout: 2000 }),
-      /Video origin probe timed out after 2000ms/
+      /Native probe timed out after 2000ms/
     )
   `
   const { stdout, stderr } = await promisify(execFile)(
@@ -187,7 +188,7 @@ test('video probe distinguishes unconfirmed child exit from a closed host', asyn
   })
 
   await assert.rejects(runProbeHost(process.execPath, [], { timeout: 1 }), {
-    message: 'Video origin probe host exit was not confirmed',
+    message: 'Native probe host exit was not confirmed',
     cause: denied
   })
   assert.equal(host.unref.mock.callCount(), 1)
