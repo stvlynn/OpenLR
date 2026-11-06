@@ -22,5 +22,5 @@ ditto "$volume/OpenLR.app" "$bundle"
 hdiutil detach "$volume"
 attached=false
 
-node scripts/native-installed-cli-smoke.mjs "$bundle/Contents/MacOS/OpenLR" "$bundle/Contents/Resources/cli/openlr.mjs"
+node scripts/native-cli-cold-smoke.mjs "$bundle/Contents/MacOS/OpenLR" "$bundle/Contents/Resources/cli/openlr.mjs"
 echo "Disk image detached and copied app verified on $(uname -m)."
