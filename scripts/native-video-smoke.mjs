@@ -9,9 +9,12 @@ import {
   videoFixtureSize as sourceSize,
   videoFixtureFrequencies as frequencies
 } from '../tests/fixtures/video.mjs'
+import { withHostCrashTrace } from './native-crash-trace.mjs'
 import { withNativeWorkspace } from './native-workspace.mjs'
 
-const executable = process.argv[2]
+const [executable, mode] = process.argv.slice(2)
+if (mode !== undefined && (mode !== '--lldb' || process.platform !== 'darwin'))
+  throw Error('The optional --lldb video export trace requires macOS')
 if (!executable) throw Error('Pass the path to a built OpenLR executable')
 const turnedSize = [64, 96],
   trim = { start: 1.2, end: 2.7 }
@@ -163,7 +166,7 @@ try {
   const bytes = await makeVideoFixture(page)
   await withNativeWorkspace(
     executable,
-    async ({ root, call, initial }) => {
+    async ({ root, call, initial, pid }) => {
       const clip = path.join(root, 'clip.webm')
       await writeFile(clip, bytes)
 
@@ -290,66 +293,76 @@ try {
         })
       )
 
-      const output = await call(
-        'export',
-        '--format',
-        'video/webm',
-        '--output',
-        path.join(root, 'trimmed.webm')
-      )
-      const decoded = await decodeClip(page, output)
-      const after = await call('state')
-      for (const key of ['mode', 'selected', 'selection', 'photos', 'playback'])
-        assert.deepEqual(after[key], before[key], key)
-      assert.deepEqual(decoded.size, turnedSize)
-      assert.equal(decoded.videoCodec, 'vp9')
-      assert.equal(decoded.audioCodec, 'opus')
-      near(decoded.duration, trim.end - trim.start, 0.055, 'Trimmed container duration')
-      near(decoded.audioDuration, trim.end - trim.start, 0.055, 'Decoded PCM duration')
-      checkColor(decoded.pixels[0], 1, 'Trimmed first segment')
-      checkColor(decoded.pixels[1], 2, 'Trimmed second segment')
-      checkSignal(decoded)
-
-      let nativeAudio
-      if (process.platform === 'darwin') {
-        const mp4 = await call('export', '--format', 'video/mp4', '--output', path.join(root, 'trimmed.mp4'))
-        const decodedMp4 = await decodeClip(page, mp4)
-        assert.equal(decodedMp4.videoCodec, 'avc')
-        assert.equal(decodedMp4.audioCodec, 'aac')
-        checkSignal(decodedMp4)
-        assert.deepEqual(decodedMp4.size, turnedSize)
-        checkColor(decodedMp4.pixels[0], 1, 'MP4 first segment')
-        checkColor(decodedMp4.pixels[1], 2, 'MP4 second segment')
-        nativeAudio = {}
-        for (const [format, result] of [
-          ['webm', output],
-          ['mp4', mp4]
-        ]) {
-          const audio = await playableAudio(page, result.path)
-          assert.equal(audio.channels, 1, format)
-          assert.equal(
-            audio.frames,
-            Math.round(trim.end * audio.sampleRate) - Math.round(trim.start * audio.sampleRate),
-            format
-          )
-          nativeAudio[format] = audio
-        }
-        const finalState = await call('state')
+      const verifyExports = async () => {
+        const output = await call(
+          'export',
+          '--format',
+          'video/webm',
+          '--output',
+          path.join(root, 'trimmed.webm')
+        )
+        const decoded = await decodeClip(page, output)
+        const after = await call('state')
         for (const key of ['mode', 'selected', 'selection', 'photos', 'playback'])
-          assert.deepEqual(finalState[key], before[key], key)
-      }
+          assert.deepEqual(after[key], before[key], key)
+        assert.deepEqual(decoded.size, turnedSize)
+        assert.equal(decoded.videoCodec, 'vp9')
+        assert.equal(decoded.audioCodec, 'opus')
+        near(decoded.duration, trim.end - trim.start, 0.055, 'Trimmed container duration')
+        near(decoded.audioDuration, trim.end - trim.start, 0.055, 'Decoded PCM duration')
+        checkColor(decoded.pixels[0], 1, 'Trimmed first segment')
+        checkColor(decoded.pixels[1], 2, 'Trimmed second segment')
+        checkSignal(decoded)
 
-      console.log(
-        JSON.stringify({
-          nativeVideo: 'passed',
-          playback: { started: started.time, advanced: advanced.time, paused: paused.time },
-          previewPixels: [red.pixel, green.pixel, blue.pixel],
-          savedFrame: still,
-          exported: decoded,
-          ...(nativeAudio && { nativeAudio }),
-          preservedOriginalBytes: bytes.length
-        })
-      )
+        let nativeAudio
+        if (process.platform === 'darwin') {
+          const mp4 = await call(
+            'export',
+            '--format',
+            'video/mp4',
+            '--output',
+            path.join(root, 'trimmed.mp4')
+          )
+          const decodedMp4 = await decodeClip(page, mp4)
+          assert.equal(decodedMp4.videoCodec, 'avc')
+          assert.equal(decodedMp4.audioCodec, 'aac')
+          checkSignal(decodedMp4)
+          assert.deepEqual(decodedMp4.size, turnedSize)
+          checkColor(decodedMp4.pixels[0], 1, 'MP4 first segment')
+          checkColor(decodedMp4.pixels[1], 2, 'MP4 second segment')
+          nativeAudio = {}
+          for (const [format, result] of [
+            ['webm', output],
+            ['mp4', mp4]
+          ]) {
+            const audio = await playableAudio(page, result.path)
+            assert.equal(audio.channels, 1, format)
+            assert.equal(
+              audio.frames,
+              Math.round(trim.end * audio.sampleRate) - Math.round(trim.start * audio.sampleRate),
+              format
+            )
+            nativeAudio[format] = audio
+          }
+          const finalState = await call('state')
+          for (const key of ['mode', 'selected', 'selection', 'photos', 'playback'])
+            assert.deepEqual(finalState[key], before[key], key)
+        }
+
+        console.log(
+          JSON.stringify({
+            nativeVideo: 'passed',
+            playback: { started: started.time, advanced: advanced.time, paused: paused.time },
+            previewPixels: [red.pixel, green.pixel, blue.pixel],
+            savedFrame: still,
+            exported: decoded,
+            ...(nativeAudio && { nativeAudio }),
+            preservedOriginalBytes: bytes.length
+          })
+        )
+      }
+      if (mode) await withHostCrashTrace({ root, pid }, verifyExports)
+      else await verifyExports()
     },
     { onCleanup: () => console.log(JSON.stringify({ nativeVideoCleanup: 'confirmed' })) }
   )

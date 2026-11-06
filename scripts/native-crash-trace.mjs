@@ -5,8 +5,8 @@ import { createInterface } from 'node:readline'
 import { setTimeout as delay } from 'node:timers/promises'
 import { fileURLToPath } from 'node:url'
 
-const prefix = 'OpenLR depth LLDB '
-const script = fileURLToPath(new URL('./fixtures/depth_trace.py', import.meta.url))
+const prefix = 'OpenLR host LLDB '
+const script = fileURLToPath(new URL('./fixtures/host_trace.py', import.meta.url))
 const stopPhases = new Set([
   'attach-failed',
   'resume-failed',
@@ -47,15 +47,15 @@ function traceRecord(line, pid) {
   } catch {}
 }
 
-// The caller supplies the PID of the host it just started. Only this depth
-// request and its first recipe read run with the debugger attached.
-export async function withDepthCrashTrace(
+// The caller supplies its owned host PID and the operation to observe.
+// Attach and resume before submitting that operation; detach before returning.
+export async function withHostCrashTrace(
   { root, pid },
   run,
   { launch = launchDebugger, log = console.log, attachMs = 25_000, closeMs = 5_000 } = {}
 ) {
-  if (!Number.isSafeInteger(pid) || pid <= 0) throw Error('Depth trace requires an owned host PID')
-  const finished = path.join(root, 'depth-trace-finished')
+  if (!Number.isSafeInteger(pid) || pid <= 0) throw Error('Host trace requires an owned host PID')
+  const finished = path.join(root, 'host-trace-finished')
   const startedAt = performance.now()
   const report = (record) =>
     log(prefix + JSON.stringify({ ...record, elapsedMs: Math.round(performance.now() - startedAt) }))
@@ -82,12 +82,10 @@ export async function withDepthCrashTrace(
     ])
     if (attachment === 'deadline') {
       report({ pid, phase: 'attach-deadline' })
-      throw Error('LLDB did not report a running depth host within the diagnostic attach budget')
+      throw Error('LLDB did not report a running host within the diagnostic attach budget')
     }
     if (attachment !== 'running')
-      throw Error(
-        'LLDB could not attach and resume the depth host' + (launchError ? ` (${launchError})` : '')
-      )
+      throw Error('LLDB could not attach and resume the host' + (launchError ? ` (${launchError})` : ''))
     return await run()
   } catch (error) {
     failed = true
@@ -99,14 +97,14 @@ export async function withDepthCrashTrace(
       if (!exit) {
         child.kill('SIGKILL')
         if (!(await Promise.race([closed, delay(closeMs, null, { ref: false })])))
-          throw Error('Depth debugger did not exit')
-        throw Error('Depth debugger did not detach in time')
+          throw Error('Host debugger did not exit')
+        throw Error('Host debugger did not detach in time')
       }
       if (!failed && (terminal !== 'detached' || exit.code !== 0))
-        throw Error('Depth debugger ended without a clean detach')
+        throw Error('Host debugger ended without a clean detach')
     } catch (error) {
       if (!failed) throw error
-      log('OpenLR depth LLDB cleanup failed')
+      log('OpenLR host LLDB cleanup failed')
     }
   }
 }

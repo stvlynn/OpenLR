@@ -1,4 +1,4 @@
-"""An LLDB command for the owned OpenLR host in the depth diagnostic."""
+"""An LLDB command for the owned OpenLR host in a native diagnostic."""
 
 import json
 from pathlib import Path
@@ -11,7 +11,7 @@ import lldb
 
 
 def emit(pid, phase, **fields):
-    print("OpenLR depth LLDB " + json.dumps(dict(pid=pid, phase=phase, **fields)), flush=True)
+    print("OpenLR host LLDB " + json.dumps(dict(pid=pid, phase=phase, **fields)), flush=True)
 
 
 def identifier(value, pattern):
@@ -62,7 +62,7 @@ def trace_host(debugger, command, _context, _result, _internal):
     pid_text, finished, runtime = shlex.split(command)
     pid = int(pid_text)
     debugger.SetAsync(False)
-    listener = lldb.SBListener("openlr-depth-trace")
+    listener = lldb.SBListener("openlr-host-trace")
     error = lldb.SBError()
     target = debugger.CreateTarget("")
     emit(pid, "attach-started")
@@ -127,4 +127,4 @@ def trace_host(debugger, command, _context, _result, _internal):
 
 
 def __lldb_init_module(debugger, _):
-    debugger.HandleCommand("command script add -f depth_trace.trace_host openlr-trace-host")
+    debugger.HandleCommand("command script add -f host_trace.trace_host openlr-trace-host")

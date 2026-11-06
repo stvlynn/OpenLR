@@ -4,7 +4,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { execute, parse } from '../cli/openlr.mjs'
 import { readPng } from '../web/png.js'
-import { withDepthCrashTrace } from './native-depth-crash-trace.mjs'
+import { withHostCrashTrace } from './native-crash-trace.mjs'
 import { withNativeWorkspace } from './native-workspace.mjs'
 
 const portrait = fileURLToPath(new URL('../tests/fixtures/ai/astronaut.png', import.meta.url))
@@ -75,7 +75,7 @@ await withNativeWorkspace(executable, async ({ root, call, initial, session, pid
     return { estimate, depth: (await recipe()).localTools.depth }
   }
   const { estimate, depth } = mode
-    ? await withDepthCrashTrace({ root, pid }, estimateAndRead)
+    ? await withHostCrashTrace({ root, pid }, estimateAndRead)
     : await estimateAndRead()
   const { raster, provenance } = depth
   assert.deepEqual(estimate.depth, provenance)

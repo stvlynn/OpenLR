@@ -1,0 +1,38 @@
+name: macOS ARM video export crash trace
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  video-trace:
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - run: npm ci
+      - name: Provision the pinned fixture and verification browser
+        run: |
+          mkdir -p build/video-oracle
+          curl --fail --location "https://storage.googleapis.com/chrome-for-testing-public/157.0.8103.38/mac-arm64/chrome-mac-arm64.zip" -o build/video-oracle/chrome.zip
+          ditto -xk build/video-oracle/chrome.zip build/video-oracle
+          echo "OPENLR_VIDEO_PROBE_CHROME=$PWD/build/video-oracle/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing" >> "$GITHUB_ENV"
+      - name: Build the ordinary native distribution
+        run: node scripts/desktop.mjs build -o build/release -platform darwin/universal
+      - name: Trace the owned host during video export
+        timeout-minutes: 5
+        env:
+          OPENLR_DIAGNOSTICS: '1'
+        run: |
+          set -o pipefail
+          node scripts/native-video-smoke.mjs build/release/darwin-universal/OpenLR.app/Contents/MacOS/OpenLR --lldb 2>&1 | tee build/video-trace.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: video-export-trace
+          path: build/video-trace.log
