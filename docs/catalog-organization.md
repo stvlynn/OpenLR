@@ -52,7 +52,7 @@ Save version retains the photo that was active when its dialog opened. A later s
 
 ## Filtering and ordering
 
-The current scope, text search, minimum star rating, flag, and edited status combine to determine visible photos. Search matches filenames, keywords, camera make/model and lens metadata. Edited status checks whether the recipe has a non-default stored value, ignoring `processVersion` metadata. Sort by added time, numeric-aware filename, or star rating, with ascending or descending direction. These view settings and selection are session state; photo metadata, recipes, named versions, albums, and memberships are persisted.
+The current scope, text search, minimum star rating, flag, and edited status combine to determine visible photos. Search matches filenames, keywords, camera make/model and lens metadata. The current search and smart album rules share case-insensitive Unicode matching. Composed and decomposed accents match each other, and accents distinguish words such as `café` and `cafe`. Original exports retain the stored filename and bytes. Edited status checks whether the recipe has a non-default stored value, ignoring `processVersion` metadata. Sort by added time, numeric-aware filename, or star rating, with ascending or descending direction. These view settings and selection are session state; photo metadata, recipes, named versions, albums, and memberships are persisted.
 
 Named versions and full copied recipes preserve an explicit process version or its absence. Saved adjustment presets retain an explicit version when present; existing and built-in presets without one remain legacy recipes and are not rewritten merely by loading them. OpenLR XMP recipes preserve the version, depth raster and provenance, and lens-blur settings; importing validates the version, normalized raster, and blur settings with the same domain validators used by editing. An absent version means legacy processing; unsupported versions are rejected.
 
@@ -78,7 +78,7 @@ Full `state` reports `openStacks` for expanded stacks that still have catalog re
 
 `node --test tests/process-version-transport.test.js` checks neutral filtering, independent copied/saved recipes, real browser XMP round trips with depth settings, and IndexedDB preset reloads while preserving legacy records.
 
-`node --test tests/smart-albums.test.js` checks shared rating/flag/edit-status matching and actual browser GUI creation/reload of smart albums, including neutral version 1/version 2 recipes, edited version 2 recipes, live membership changes, and counts through the CLI's shared dispatch path. This browser check does not establish native CLI transport behavior.
+`node --test tests/smart-albums.test.js` checks shared rating, flag, edit status and Unicode text matching. The browser workflows verify GUI search, smart album creation and reload, live membership changes, shared dispatcher results, and original export of the decomposed filename and bytes.
 
 `node --test tests/history-workflow.test.js` checks actual Grid keyboard routing, interleaved photo/library undo and redo, active-photo isolation, explicit history commands, Detail scope, failed-command handling, batch per-photo behavior and unchanged original bytes. `scripts/native-smoke.mjs` repeats the shared contextual commands and smart-album membership in the real desktop application.
 

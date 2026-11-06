@@ -76,7 +76,14 @@ import { exportSelection, BATCH_EXPORT_MESSAGES } from './batch-export.js'
 import { ExportProgress, EXPORT_PROGRESS_MESSAGES } from './export-progress.js'
 import { getImageWorkerDiagnostics } from './image-worker.js'
 import { EXPORT_FORMATS } from './formats.js'
-import { Organization, namedVersion, findVersion, PURGE_MESSAGES, assertSelection } from './organization.js'
+import {
+  Organization,
+  namedVersion,
+  findVersion,
+  PURGE_MESSAGES,
+  assertSelection,
+  matchesCatalogText
+} from './organization.js'
 import { validateSmartRule, sameSmartRule, SMART_ALBUM_MESSAGES } from './smart-album-rule.js'
 import { mountOrganization } from './organization-ui.js'
 import { COPY_MESSAGES } from './copy-options.js'
@@ -271,10 +278,7 @@ const matches = (p) =>
     (scope === 'picked'
       ? p.flag === 'pick'
       : p.albums.includes(scope) || smartMatch(p, albums.find((a) => a.id === scope)?.rule))) &&
-  [p.name, p.keywords, p.metadata?.Make, p.metadata?.Model, p.metadata?.LensModel]
-    .join(' ')
-    .toLowerCase()
-    .includes(search.toLowerCase()) &&
+  matchesCatalogText(p, search) &&
   organization.matches(p)
 function visible() {
   const result = photos.filter(matches)

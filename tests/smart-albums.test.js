@@ -33,6 +33,51 @@ test('saved smart filters use the same neutral-recipe semantics as the current c
   assert.equal(smartMatch({ name: 'a.png', rating: 0, flag: '', edit: {} }), false)
 })
 
+test('catalog search and saved rules match equivalent Unicode without changing filenames', async (t) => {
+  const server = await serveWorkspace()
+  t.after(server.close)
+  const browser = await chromium.launch({ channel: process.env.CHROME_CHANNEL || 'chrome', headless: true })
+  t.after(() => browser.close())
+  const page = await browser.newPage()
+  await page.goto(server.url)
+  const { added, bytes } = await page.evaluate(async () => {
+    const canvas = document.createElement('canvas')
+    canvas.width = canvas.height = 8
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve))
+    const { added } = await window.openlr.run('import', {
+      files: ['Café A.png', 'Cafe\u0301 B.png', 'Cafe C.png'].map(
+        (name) => new File([blob], name, { type: 'image/png' })
+      )
+    })
+    return { added, bytes: Array.from(new Uint8Array(await blob.arrayBuffer())) }
+  })
+  const dispatch = async (command, args = {}) => {
+    const reply = await page.evaluate(([c, a]) => window.openlr.dispatch(c, a), [command, args])
+    assert.equal(reply.ok, true, JSON.stringify(reply.error))
+    return reply.result
+  }
+  const visible = async () => new Set((await dispatch('photos')).photos.map(({ id }) => id))
+  assert.equal(added.length, 3)
+  const accented = new Set(added.slice(0, 2))
+  await dispatch('search', { text: 'CAFÉ' })
+  assert.deepEqual(await visible(), accented)
+  await page.locator('#search').fill('CAFE\u0301')
+  assert.deepEqual(await visible(), accented)
+  const album = await dispatch('album', { name: 'Accented names', smart: true })
+  assert.equal(album.rule.text, 'CAFE\u0301')
+  await dispatch('search', { text: 'Cafe' })
+  assert.deepEqual(await visible(), new Set([added[2]]))
+  await dispatch('search', { text: '' })
+  await dispatch('scope', { id: album.id })
+  assert.deepEqual(await visible(), accented)
+  await dispatch('select', { id: added[1] })
+  const original = await page.evaluate(async () => {
+    const { filename, blob } = await window.openlr.run('export', { format: 'original' })
+    return { filename, bytes: Array.from(new Uint8Array(await blob.arrayBuffer())) }
+  })
+  assert.deepEqual(original, { filename: 'Cafe\u0301 B.png', bytes })
+})
+
 test('GUI saved smart albums preserve edited and unedited membership through reload and live recipe changes', async (t) => {
   const server = await serveWorkspace()
   t.after(server.close)

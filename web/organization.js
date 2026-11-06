@@ -20,6 +20,19 @@ export function assertSelection(targets, expectedIds, message = SELECTION_MESSAG
 export const CATALOG_FLAG_VALUES = ['any', 'pick', 'reject', 'unflagged']
 export const CATALOG_EDIT_VALUES = ['any', 'yes', 'no']
 
+const searchText = (text) => text.normalize().toLowerCase().normalize()
+export function matchesCatalogText(photo, query) {
+  if (!query) return true
+  const fields = [
+    photo.name,
+    photo.keywords,
+    photo.metadata?.Make,
+    photo.metadata?.Model,
+    photo.metadata?.LensModel
+  ]
+  return searchText(fields.join(' ')).includes(searchText(query))
+}
+
 export function validateCatalogFilters(filters) {
   if (
     !filters ||

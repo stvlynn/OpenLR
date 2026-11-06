@@ -1,4 +1,4 @@
-import { matchesCatalogFilters } from './organization.js'
+import { matchesCatalogFilters, matchesCatalogText } from './organization.js'
 import { PHOTO_MENU_PHOTO_COMMANDS } from './agent-protocol.js'
 
 export const STACK_MESSAGES = { changedView: 'The photos in this view changed; open Auto stack again' }
@@ -56,17 +56,7 @@ export async function findStacks(photos, by, threshold) {
   return groups.filter((group) => group.length > 1)
 }
 export function smartMatch(photo, rule) {
-  if (!rule) return false
-  const text = [
-    photo.name,
-    photo.keywords,
-    photo.metadata?.Make,
-    photo.metadata?.Model,
-    photo.metadata?.LensModel
-  ]
-    .join(' ')
-    .toLowerCase()
-  return matchesCatalogFilters(photo, rule) && (!rule.text || text.includes(rule.text.toLowerCase()))
+  return Boolean(rule) && matchesCatalogFilters(photo, rule) && matchesCatalogText(photo, rule.text)
 }
 export function stackMenu(run) {
   let current, stackTargets

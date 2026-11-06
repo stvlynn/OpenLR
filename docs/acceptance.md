@@ -8,7 +8,9 @@ Photos 迁移的 Windows 正式包对照使用公开的 Catalina 导出 XMP 与�
 
 `205cd45` 在本机 Windows Chrome 157.0.8103.38 启用独立色彩和元数据校验，完整浏览器回归 **494/494**，零失败、零跳过，305.9 秒。Windows 和两种 macOS 的托管作业通过。Ubuntu 首次在 APT 下载阶段超时，同一提交的重跑通过 Debian 安装、包内 CLI 接入、实际原生套件与清除。四平台矩阵最终通过。[四平台作业](https://github.com/stvlynn/OpenLR/actions/runs/42298650204) · [Ubuntu 重跑](https://github.com/stvlynn/OpenLR/actions/runs/42298650204/job/128184599226)
 
-`ca71e85` 的模型下载回归在真实 Chrome 运行。对照的 Sky、Depth 和增强工作器在传输尚有字节到达时均误报超时。接入字节进展后，三个工作器等到传输断开，再返回各自的模型错误。模型推理、缓存与工作器定向用例共 **10/10** 通过。[研究记录](../research/ai-masks.md#first-use-model-transfer-and-worker-inactivity) · [新提交的四平台作业](https://github.com/stvlynn/OpenLR/actions/runs/42303573730)
+`ca71e85` 的 Windows Chrome 完整回归 **495/495**，零失败、零跳过，348.1 秒。模型推理、缓存与工作器定向用例 **10/10**。本机 Ubuntu 重建 Debian 包验证了 Sky、Depth 和增强的实际首次下载与推理。在同一份包的隔离环境补齐声明的 VP9 解析器后，视频导出和剩余原生流程通过。托管 Apple Silicon 的常规套件在静态图像锐化复读时遇到宿主 `SIGTRAP`，当时还没有进入独立视频或模型专项。[模型研究](../research/ai-masks.md#first-use-model-transfer-and-worker-inactivity) · [四平台作业](https://github.com/stvlynn/OpenLR/actions/runs/42303573730)
+
+两种 macOS 均从 `ca71e85` DMG 复制应用并卸载镜像，再通过 Launch Services 把两张 PNG 交给正在运行的应用。详情画面、渲染输出、原件逐字节比对和重复打开均通过。Apple Silicon 首轮实际导入了重音文件，但测试把两种等价的 Unicode 表示判成不同名称。更正断言后，双架构专项通过。[Launch Services 复验](https://github.com/stvlynn/OpenLR/actions/runs/42304907132)
 
 `6715e0e` 在本机 Windows Chrome 启用独立色彩和元数据校验，完整浏览器回归 **492/492，零失败、零跳过**，308.8 秒。包括旧视频缩略图重建、原件和编辑参数保留，以及 RAW 缓存和视频操作。Windows 和两种 macOS 的首次托管作业通过，Windows 浏览器 484 项通过、8 项可选资源跳过。Ubuntu 首次作业在 APT 下载阶段超时，同一提交的 Ubuntu 重跑通过了实际 Debian 安装、随包 CLI、原生套件和清除检查。四平台矩阵最终通过。[完整矩阵](https://github.com/stvlynn/OpenLR/actions/runs/42290137975) · [Ubuntu 重跑](https://github.com/stvlynn/OpenLR/actions/runs/42290137975/job/128156327770)
 
