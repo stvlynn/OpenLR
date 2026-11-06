@@ -6,7 +6,9 @@
 
 Photos 迁移的 Windows 正式包对照使用公开的 Catalina 导出 XMP 与两张生成 PNG。修复前，一张缺少图库日期，另一张保留了与侧车不同的内嵌日期。修复后，两张都保留侧车的带时区日期，并通过实际 CLI 预览和原件逐字节检查。迁移、CLI 与同步定向回归 **19/19**，普通原生迁移套件通过。[迁移来源及验证边界](../research/catalog-migration.md#apple-export-boundary)
 
-`205cd45` 在本机 Windows Chrome 157.0.8103.38 启用独立色彩和元数据校验，完整浏览器回归 **494/494**，零失败、零跳过，305.9 秒。[迁移来源及验证边界](../research/catalog-migration.md#apple-export-boundary) · [四平台作业](https://github.com/stvlynn/OpenLR/actions/runs/42298650204)
+`205cd45` 在本机 Windows Chrome 157.0.8103.38 启用独立色彩和元数据校验，完整浏览器回归 **494/494**，零失败、零跳过，305.9 秒。Windows 和两种 macOS 的托管作业通过。Ubuntu 首次在 APT 下载阶段超时，同一提交的重跑通过 Debian 安装、包内 CLI 接入、实际原生套件与清除。四平台矩阵最终通过。[四平台作业](https://github.com/stvlynn/OpenLR/actions/runs/42298650204) · [Ubuntu 重跑](https://github.com/stvlynn/OpenLR/actions/runs/42298650204/job/128184599226)
+
+`ca71e85` 的模型下载回归在真实 Chrome 运行。对照的 Sky、Depth 和增强工作器在传输尚有字节到达时均误报超时。接入字节进展后，三个工作器等到传输断开，再返回各自的模型错误。模型推理、缓存与工作器定向用例共 **10/10** 通过。[研究记录](../research/ai-masks.md#first-use-model-transfer-and-worker-inactivity) · [新提交的四平台作业](https://github.com/stvlynn/OpenLR/actions/runs/42303573730)
 
 `6715e0e` 在本机 Windows Chrome 启用独立色彩和元数据校验，完整浏览器回归 **492/492，零失败、零跳过**，308.8 秒。包括旧视频缩略图重建、原件和编辑参数保留，以及 RAW 缓存和视频操作。Windows 和两种 macOS 的首次托管作业通过，Windows 浏览器 484 项通过、8 项可选资源跳过。Ubuntu 首次作业在 APT 下载阶段超时，同一提交的 Ubuntu 重跑通过了实际 Debian 安装、随包 CLI、原生套件和清除检查。四平台矩阵最终通过。[完整矩阵](https://github.com/stvlynn/OpenLR/actions/runs/42290137975) · [Ubuntu 重跑](https://github.com/stvlynn/OpenLR/actions/runs/42290137975/job/128156327770)
 
