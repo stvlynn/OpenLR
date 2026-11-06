@@ -4,6 +4,10 @@
 
 ## 自动堆栈视图保护 — 2026-11-06
 
+干净 `2d0f448` 归档已重新安装依赖并构建 Windows 包。源码目录外的独立单文件 CLI 完成 205 次导航命令、四路 watch 和 106 次目录命令，覆盖五种 viewport、实时图像／数据、最新保护参数、设置与目录重启及原件。十项分发资源逐字节一致。当前提交的四平台 Actions 仍在执行；归档详情见[独立交付验证](delivery-review.md#windows-tracked-snapshot-2d0f448)。
+
+[Actions 42233934235](https://github.com/stvlynn/OpenLR/actions/runs/42233934235) 的 Linux 和 Intel macOS 已成功；ARM 在严格视频流程的首次导入停于元数据就绪，GUI 控制与事件循环仍响应。其独立默认存储重启和三项短音频仍通过。Windows 尚在执行，不能据此宣称四平台全通过。此次失败及后续应用环境对照要求见[视频记录](../research/native-video.md#paired-native-readiness-probe)。
+
 复现了在 A 组打开自动堆栈对话框、切换到 B 组后错误处理 B 的问题。两种分组方式现绑定打开时可参与分组的照片集合，排序、选择及已有堆栈展开仍可正常变化。Windows／Chrome 157.0.8103.38 完整回归 **480/480，零失败、零跳过**，295.3 秒；22 项队列专项、10 项 CLI 检查和重建 Windows 包的组织／重启／原件流程通过。前次 `cc340ef` 的 Linux 和两种 macOS 作业成功；Windows 在偏好失败恢复测试的 `.check()` 动作断言处停止。已改用真实点击并保留最终恢复与存储断言，另行专项通过。新的跨平台验收尚待提交运行。见[自动堆栈证据](../research/command-interaction-inventory.md#auto-stack-view-ownership--2026-11-06)和[偏好测试证据](../research/preferences-persistence.md)。
 
 ## Photo 菜单目标保护 — 2026-11-06
