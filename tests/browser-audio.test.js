@@ -2,6 +2,70 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { chromium } from 'playwright-core'
 import { serveWorkspace } from './browser-server.mjs'
+import { planAudioExport } from '../web/audio-export.js'
+import { encodeNativeAudio } from '../web/native-audio.js'
+
+test('precise audio falls back to AudioToolbox when WebCodecs cannot calibrate its encoder', async (t) => {
+  for (const [name, value] of Object.entries({
+    mygo: {
+      platform: 'darwin',
+      call() {
+        assert.fail('Codec planning must not open native streams')
+      }
+    },
+    AudioEncoder: class {
+      static async isConfigSupported(config) {
+        return { config, supported: true }
+      }
+    },
+    AudioDecoder: class {
+      static async isConfigSupported(config) {
+        return { config, supported: config.codec === 'opus' }
+      }
+    }
+  })) {
+    const original = Object.getOwnPropertyDescriptor(globalThis, name)
+    Object.defineProperty(globalThis, name, { configurable: true, value })
+    t.after(() => {
+      if (original) Object.defineProperty(globalThis, name, original)
+      else delete globalThis[name]
+    })
+  }
+  const { Mp4OutputFormat, NON_PCM_AUDIO_CODECS, QUALITY_HIGH } =
+    await import('../web/vendor/mediabunny/mediabunny.mjs')
+  const ordinaryProbes = []
+  const media = {
+    Mp4OutputFormat,
+    NON_PCM_AUDIO_CODECS,
+    QUALITY_HIGH,
+    async canEncodeAudio(codec, { sampleRate, numberOfChannels }) {
+      ordinaryProbes.push([codec, sampleRate, numberOfChannels])
+      return codec === 'aac'
+    }
+  }
+  const track = (number, codec) => ({
+    number,
+    isAudioTrack: () => true,
+    getSampleRate: async () => 48_000,
+    getNumberOfChannels: async () => 2,
+    canDecode: async () => true,
+    getCodec: async () => codec
+  })
+  const opus = track(1, 'opus')
+  const flac = track(2, 'flac')
+  const format = new Mp4OutputFormat()
+  const standalone = await planAudioExport(media, { getTracks: async () => [flac] }, format, true, {})
+  assert.equal(standalone, null)
+  const precise = await planAudioExport(media, { getTracks: async () => [opus, flac] }, format, true, {})
+  assert.ok(precise, 'A supported audio track must retain its precise timeline')
+  assert.equal(precise.audio.get(opus).encode, encodeNativeAudio)
+  assert.equal(precise.audio.get(opus).codec, 'aac')
+  assert.equal(precise.audio.get(flac).codec, 'aac')
+  assert.deepEqual(ordinaryProbes, [
+    ['aac', 48_000, 2],
+    ['aac', 48_000, 2]
+  ])
+})
 
 test('WebCodecs audio adapter preserves both trim edges and closes a canceled stream', async (t) => {
   const server = await serveWorkspace()

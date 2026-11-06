@@ -74,10 +74,10 @@ export async function planAudioExport(media, input, format, mp4, { signal, encod
     const shape = { sampleRate, channels }
     const target = { ...shape, codec: targetCodec }
     const preciseSource = await supportsPreciseSource(track, sourceCodec, shape)
+    const preciseTarget = preciseSource && canPreserveFormat(target)
     const browserEncoder =
       !encode &&
-      preciseSource &&
-      canPreserveFormat(target) &&
+      preciseTarget &&
       (sourceCodec === 'opus' || decodable || nativeEncoder || decodeAac) &&
       (await canEncodeBrowserAudio(target))
     if (encode || browserEncoder) {
@@ -88,8 +88,11 @@ export async function planAudioExport(media, input, format, mp4, { signal, encod
       })
       continue
     }
+    // A browser encoder reported by the ordinary conversion may lack the
+    // capabilities needed to preserve this track's precise sample clock.
+    const preferNative = preciseTarget && Boolean(nativeEncoder)
     const exactCodec =
-      nativeEncoder || preciseSource
+      !preferNative && (nativeEncoder || preciseSource)
         ? await exactBrowserCodec(media, nonPcm, { ...shape, decodable })
         : undefined
     if (!exactCodec && nativeEncoder) {

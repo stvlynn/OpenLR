@@ -21,8 +21,20 @@ function run(tool, ...args) {
 function inspect(file) {
   return JSON.parse(run('ffprobe', '-v', 'error', '-show_streams', '-show_packets', '-of', 'json', file))
 }
-function decode(file, index, channels) {
-  const bytes = run('ffmpeg', '-v', 'error', '-i', file, '-map', `0:a:${index}`, '-f', 'f32le', 'pipe:1')
+function decode(file, index, channels, { codedMp4 = false } = {}) {
+  const bytes = run(
+    'ffmpeg',
+    '-v',
+    'error',
+    ...(codedMp4 ? ['-ignore_editlist', '1'] : []),
+    '-i',
+    file,
+    '-map',
+    `0:a:${index}`,
+    '-f',
+    'f32le',
+    'pipe:1'
+  )
   assert.equal(bytes.length % (channels * 4), 0)
   const samples = Array.from({ length: channels }, () => new Float32Array(bytes.length / (channels * 4)))
   for (let i = 0; i < samples[0].length; i++) {
@@ -125,11 +137,23 @@ function readMp4AudioEdits(bytes) {
     const [handler] = box(bytes, media, 'hdlr')
     if (bytes.toString('ascii', handler + 8, handler + 12) !== 'soun') continue
     const [header] = box(bytes, media, 'mdhd')
-    const mediaTimescale = bytes.readUInt32BE(header + (bytes[header] === 1 ? 20 : 12))
+    const wideMediaHeader = bytes[header] === 1
+    const mediaTimescale = bytes.readUInt32BE(header + (wideMediaHeader ? 20 : 12))
+    const mediaDuration = wideMediaHeader
+      ? Number(bytes.readBigUInt64BE(header + 24))
+      : bytes.readUInt32BE(header + 16)
+    const sampleTable = box(bytes, box(bytes, media, 'minf'), 'stbl')
+    const [timing, timingEnd] = box(bytes, sampleTable, 'stts')
+    const timingCount = bytes.readUInt32BE(timing + 4)
+    assert.equal(timing + 8 + timingCount * 8, timingEnd)
+    const sampleTiming = Array.from({ length: timingCount }, (_, index) => {
+      const position = timing + 8 + index * 8
+      return { count: bytes.readUInt32BE(position), duration: bytes.readUInt32BE(position + 4) }
+    })
     const edits = box(bytes, payload, 'edts', false)
     const listBox = edits && box(bytes, edits, 'elst', false)
     if (!listBox) {
-      tracks.push({ mediaTimescale, list: [] })
+      tracks.push({ mediaTimescale, mediaDuration, sampleTiming, list: [] })
       continue
     }
     const [edit, end] = listBox
@@ -147,13 +171,13 @@ function readMp4AudioEdits(bytes) {
       const mediaRate = bytes.readInt32BE(position + step - 4) / 0x10000
       return { durationTicks, mediaTime, mediaRate }
     })
-    tracks.push({ mediaTimescale, version, list })
+    tracks.push({ mediaTimescale, mediaDuration, sampleTiming, version, list })
   }
   return { movieTimescale, tracks }
 }
 function mp4AudioEdits(bytes, rate) {
   const { movieTimescale, tracks } = readMp4AudioEdits(bytes)
-  return tracks.map(({ mediaTimescale, list }) => {
+  return tracks.map(({ mediaTimescale, mediaDuration, sampleTiming, list }) => {
     assert.equal(mediaTimescale, rate)
     assert.ok(list.length > 0, 'Expected MP4 audio edit list')
     const [first, next] = list.map(({ durationTicks, mediaTime, mediaRate }) => {
@@ -163,9 +187,15 @@ function mp4AudioEdits(bytes, rate) {
       return { frames, mediaTime }
     })
     assert.equal(list.length, first.mediaTime < 0 ? 2 : 1)
+    if (next) assert.equal(first.mediaTime, -1, 'Delayed track must begin with an empty edit')
     const audible = next ?? first
     assert.ok(audible.mediaTime > 0, 'AAC edit must account for encoder priming')
-    return { delay: next ? first.frames : 0, frames: audible.frames, prime: audible.mediaTime }
+    assert.ok(
+      sampleTiming.length && sampleTiming.every(({ count, duration }) => count > 0 && duration === 1024)
+    )
+    const codedFrames = sampleTiming.reduce((total, { count, duration }) => total + count * duration, 0)
+    assert.equal(mediaDuration, codedFrames, 'Media duration must describe the coded samples')
+    return { delay: next ? first.frames : 0, frames: audible.frames, prime: audible.mediaTime, codedFrames }
   })
 }
 
@@ -242,14 +272,22 @@ function checkAudio(file, bytes, codec, rate, expected, reference) {
       [stream.codec_name, Number(stream.sample_rate), stream.channels],
       [codec, rate, channels]
     )
-    const samples = decode(file, index, channels)
+    const samples = decode(file, index, channels, { codedMp4: Boolean(edits) })
+    let playable = samples
     if (edits) {
       const edit = edits[index]
       assert.deepEqual([edit.delay, edit.frames], [delay, frames])
-      assert.ok(
-        samples[0].length >= frames && samples[0].length < frames + 1024,
-        `AAC track ${index + 1} decoded ${samples[0].length} raw frames, expected ${frames} through ${frames + 1023}`
+      assert.equal(
+        samples[0].length,
+        edit.codedFrames,
+        'Independent AAC decoder must return every coded frame'
       )
+      const end = edit.prime + edit.frames
+      const tail = edit.codedFrames - end
+      assert.ok(tail >= 0 && tail < 1024, 'AAC edit tail must fit within the last coded packet')
+      // Apply the raw edit ourselves. FFmpeg's MOV demuxer can mix the
+      // delayed movie timeline with the coded-media duration when discarding.
+      playable = samples.map((channel) => channel.subarray(edit.prime, end))
     } else {
       const first = packets.find(({ stream_index }) => stream_index === stream.index)
       const skip = first.side_data_list?.find(
@@ -263,7 +301,7 @@ function checkAudio(file, bytes, codec, rate, expected, reference) {
       delay,
       frames,
       rawDecodedFrames: samples[0].length,
-      edges: compareEdges(samples, reference[index], sourceOffset, frames, codec)
+      edges: compareEdges(playable, reference[index], sourceOffset, frames, codec)
     }
   })
 }
@@ -351,7 +389,10 @@ const tools = Object.fromEntries(
 const server = await serveWorkspace()
 let browser
 try {
-  browser = await chromium.launch({ channel: process.env.CHROME_CHANNEL || 'chrome' })
+  const oracleChrome = process.env.OPENLR_AUDIO_ORACLE_CHROME
+  browser = await chromium.launch(
+    oracleChrome ? { executablePath: oracleChrome } : { channel: process.env.CHROME_CHANNEL || 'chrome' }
+  )
   tools.chrome = browser.version()
   const page = await browser.newPage()
   await page.route(server.url + '/', (route) =>
