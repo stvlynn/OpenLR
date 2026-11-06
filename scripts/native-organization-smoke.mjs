@@ -4,10 +4,14 @@ import path from 'node:path'
 import { makePng } from '../tests/fixtures/png.mjs'
 import { withNativeWorkspace } from './native-workspace.mjs'
 
-const persistent = ['win32', 'linux'].includes(process.platform)
+const [executable, mode] = process.argv.slice(2)
+if (mode !== undefined && mode !== '--macos-default-store') throw Error('Unknown catalog smoke mode: ' + mode)
+const macosDefaultStore = mode === '--macos-default-store'
+if (macosDefaultStore && process.platform !== 'darwin') throw Error('The macOS default store requires macOS')
+const persistent = macosDefaultStore || ['win32', 'linux'].includes(process.platform)
 await withNativeWorkspace(
-  process.argv[2],
-  async ({ root, call, initial, restart }) => {
+  executable,
+  async ({ root, call, initial, restart, session, pid }) => {
     const select = (id) => call('select', '--id', id)
     const selectMany = (...ids) => call('select-many', '--ids', JSON.stringify(ids))
     const sortBy = (order) => call('sort', '--order', order, '--direction', 'asc')
@@ -34,6 +38,9 @@ await withNativeWorkspace(
     await call('scope', '--id', 'all')
     const builtIns = await call('presets')
     assert.ok(builtIns.length > 0)
+    const defaultPreferences = { autoAdvance: false, filenames: true, extensions: true, shortcuts: true }
+    const savedPreferences = { ...defaultPreferences, filenames: false }
+    if (macosDefaultStore) assert.deepEqual(await call('preferences'), defaultPreferences)
 
     const width = 24,
       height = 16
@@ -168,7 +175,14 @@ await withNativeWorkspace(
     const timedId = checkStack(await call('stack-toggle'), first, second)
 
     if (persistent) {
+      if (macosDefaultStore)
+        assert.deepEqual(await call('preferences', '--filenames', 'false'), savedPreferences)
       const reopened = await restart()
+      if (macosDefaultStore) {
+        const { pid: reopenedPID } = JSON.parse(await readFile(session, 'utf8'))
+        assert.ok(Number.isSafeInteger(reopenedPID) && reopenedPID > 0 && reopenedPID !== pid)
+        assert.deepEqual(await call('preferences'), savedPreferences)
+      }
       assert.deepEqual(reopened.openStacks, [])
       assert.equal(row(reopened, first).stackId, timedId)
       assert.ok(!reopened.photos.some(({ id }) => id === second))
@@ -231,6 +245,7 @@ await withNativeWorkspace(
       JSON.stringify({
         nativeOrganization: 'passed',
         persistentReload: persistent,
+        macosDefaultStore,
         filteredPage: { total: page.total, offset: page.offset, name: page.photos[0].name },
         renamedPhoto: row(saved, second).name,
         retainedAlbum: retainedAlbum.name,

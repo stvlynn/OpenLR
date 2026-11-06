@@ -2,6 +2,21 @@
 
 Reviewed through 2026-11-06 on Windows and WSL Linux. This is delivery evidence, not an overall completeness claim.
 
+## Windows tracked snapshot `8f9f113`
+
+A fresh Git ZIP archive recorded the full commit `8f9f113d325f9341e05d71ee105bc76156dafd6b` in its comment. The extracted directory began without `node_modules`, generated CLI/bindings or build output. Node 24.9.0 installed 62 packages with `npm ci` and npm reported zero vulnerabilities in that run. The MyGo 0.7.4 build used the external Go 1.27.3 toolchain and shared module and build caches. It produced the unpacked Windows/amd64 application, packaged CLI and NSIS installer.
+
+The packaged `openlr.mjs` ran by itself from a fresh OS temporary directory outside the project, with no ancestor `node_modules` and with `NODE_PATH` and `NODE_OPTIONS` unset. Before the host launched, it discovered the required `select-relative` direction with values `previous` and `next`, and the optional `video-toggle` photo guard. Dry runs returned their expected request arguments against a nonexistent session path. The first harness invocation supplied an unsupported session argument to `schema`. Using the documented schema syntax passed. An esbuild ESM parse of the copied file identified one source input and six external imports, all Node builtins. [CLI contract](agent-cli.md)
+
+| Live check through the copied CLI | Observed result |
+| --- | --- |
+| Session, import and relative selection | The unpacked app started with a fresh ephemeral profile and an empty catalog. It imported two generated PNGs. Relative selection moved to the second photo, stayed at that end without wrapping, then returned to the first photo. The guarded `video-toggle` rejected the selected still image. |
+| Processing, edit and state | The first photo used Linear processing and saved Exposure 1. Full and summary state agreed on the selected photo. The second photo's edit remained empty. Undo restored the first photo's Linear-only recipe. |
+| Independent image decoding | Windows GDI+ decoded the 40×40 baseline, preview and export. Center RGBA moved from `[64,96,128,255]` to `[90,133,176,255]`. The edited preview and export were identical 507-byte PNGs. The actual workspace capture decoded to 1783×1154. |
+| Original preservation and cleanup | The 118-byte original export matched the first source exactly and both fixture files retained their bytes. The isolated host stopped, its profile was removed and the temporary copied CLI was removed. |
+
+The package's AGPL text, five component licenses, third-party notices, source notice and CLI matched their archive source or generated resources byte for byte. The packaged source notice links to the public repository. The archive retains the six listed Opus/runtime notice files and the packaged inventory identifies libopus-wasm 0.4.1. This run exercised the unpacked Windows app and standalone CLI. Installer execution, the complete native suite and other platforms have separate evidence. Ignored logs and harness use `.workspace/delivery-8f9f113-*`.
+
 ## Windows standalone package verification
 
 On Windows build 26200 with WebView2 and Node 24.9.0, the tracked archive of **`ca1299bd2fe5c7beeb43065fda013d991bf5888c`** completed `npm ci` (61 packages, zero reported vulnerabilities) and MyGo 0.7.4 packaging. The ZIP comment identified that revision, and the archive contained no `node_modules`, generated CLI, or release output. The resulting distribution contained `OpenLR.exe`, the NSIS installer, and the single-file CLI. The live check ran the unpacked executable with `OPENLR_EPHEMERAL=1` and a fresh agent session.
@@ -109,4 +124,4 @@ The current native package passed DNG editing/original preservation, Local sidec
 
 `go test ./...` and `go vet ./...` passed after the Go fixes. The catalog/CLI/Local/organization/sync browser set passed, including the 140 MiB + 17-byte stress fixture. Linux CI now includes `go test -race ./...`; that newly added race step was not run locally because this Windows environment has no C compiler. The existing matrix covers Windows, Ubuntu/WebKitGTK and macOS Intel; a successful compile is not substituted for an actual runtime result.
 
-The real directory-picker interaction remains unverified because Computer Use app approval timed out. Physical camera capture remains unverified: WIA discovery found no still camera and gphoto2 was unavailable. All review/camera/editor tests used generated or explicitly licensed fixtures, with no public deployment or private-photo upload.
+An earlier directory-picker attempt ended at a Computer Use app approval timeout. See the local folder record for current chooser evidence. The physical camera check lacked a WIA still camera and an installed gphoto2 backend. Review, camera and editor verification used generated or explicitly licensed fixtures and isolated services. [Local folder verification](local-folders.md) · [Camera verification](tethered-capture.md)

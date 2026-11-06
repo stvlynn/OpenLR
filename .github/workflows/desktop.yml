@@ -52,9 +52,20 @@ jobs:
         run: xvfb-run -a dbus-run-session -- node scripts/native-suite.mjs build/release/linux-amd64/openlr
       - if: ${{ !cancelled() && runner.os == 'macOS' && steps.distribution.outcome == 'success' }}
         run: node scripts/native-suite.mjs build/release/darwin-universal/OpenLR.app/Contents/MacOS/OpenLR
+      - name: Verify macOS default-store restart in the disposable runner
+        if: ${{ !cancelled() && runner.os == 'macOS' && steps.distribution.outcome == 'success' }}
+        run: node scripts/native-organization-smoke.mjs build/release/darwin-universal/OpenLR.app/Contents/MacOS/OpenLR --macos-default-store
       - name: Install independent audio verification tools
         if: ${{ !cancelled() && runner.os == 'macOS' && steps.distribution.outcome == 'success' }}
         run: command -v ffmpeg && command -v ffprobe || brew install ffmpeg
+      - name: Provision the pinned independent audio browser
+        if: ${{ !cancelled() && runner.os == 'macOS' && steps.distribution.outcome == 'success' }}
+        run: |
+          chrome_platform=${{ runner.arch == 'ARM64' && 'mac-arm64' || 'mac-x64' }}
+          mkdir -p build/audio-oracle
+          curl --fail --location "https://storage.googleapis.com/chrome-for-testing-public/157.0.8103.38/$chrome_platform/chrome-$chrome_platform.zip" -o build/audio-oracle/chrome.zip
+          ditto -xk build/audio-oracle/chrome.zip build/audio-oracle
+          echo "OPENLR_AUDIO_ORACLE_CHROME=$PWD/build/audio-oracle/chrome-$chrome_platform/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing" >> "$GITHUB_ENV"
       - name: Verify short multitrack audio exports
         if: ${{ !cancelled() && runner.os == 'macOS' && steps.distribution.outcome == 'success' }}
         run: node scripts/native-audio-export-smoke.mjs build/release/darwin-universal/OpenLR.app/Contents/MacOS/OpenLR

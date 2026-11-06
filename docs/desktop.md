@@ -41,6 +41,16 @@ On 2026-11-05, the Windows/amd64 package launched on WebView2 156.0.4314.58, and
 
 Official packages include the single-file Node CLI under cli/openlr.mjs in the native resource directory. Run it with Node 24. The build command bundles the shared schema and CLI implementation from this checkout.
 
+## macOS default store restart
+
+Ordinary macOS launches use the system's persistent WKWebView default store. The main native suite uses ephemeral stores on macOS to give each workflow a separate catalog. Run this additional check once in a fresh disposable macOS user account, such as each GitHub-hosted macOS job. The harness still isolates its socket, agent descriptor and adapter files. WKWebView catalog data and MyGo window state remain in the disposable account until it is removed. Use a fresh account for each run.
+
+```sh
+node scripts/native-organization-smoke.mjs build/release/darwin-universal/OpenLR.app/Contents/MacOS/OpenLR --macos-default-store
+```
+
+The check requires an empty catalog and default preferences. It imports three generated PNGs, saves catalog changes and a non-default preference, then restarts the packaged app and checks the new process, persisted photo IDs, stack, album, edits, named version, preset and preference. It verifies the preset's effect on rendered pixels and reads the saved original bytes from the reopened catalog. See [acceptance](acceptance.md) for executed results. [Apple WebKit data stores](https://developer.apple.com/documentation/webkit/wkwebsitedatastore) · [GitHub-hosted runner isolation](https://docs.github.com/en/actions/concepts/runners/github-hosted-runners)
+
 ## Local Linux acceptance
 
 Use a Linux checkout with Linux-installed `node_modules`, Go 1.27.3+ and Node 24. When running under WSL, keep the checkout and Go caches in a persistent Linux directory; do not reuse Windows native npm binaries or assume `/tmp` survives separate WSL invocations. The complete suite also needs Chrome for the shared-album visitor and to generate the video fixture and decode its exported media independently of the application's WebKitGTK runtime.
