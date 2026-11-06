@@ -2,6 +2,12 @@
 
 Reviewed through 2026-11-06 on Windows and WSL Linux. This is delivery evidence, not an overall completeness claim.
 
+## Linux tracked snapshot `e365a88`
+
+A clean Git archive was extracted into a new WSL Ubuntu 24.04 workspace. Node 24.9.0 installed 62 locked packages with zero reported vulnerabilities. Go 1.27.3 and MyGo 0.7.4 built the Linux/amd64 package in 11 seconds. The generated Debian package declares GTK 3, WebKitGTK 4.1 and the GStreamer base, good and bad plugin sets. Live verification used the application extracted from the generated Linux tarball. The Debian package was inspected without installing it.
+
+The actual GTK folder chooser passed cancellation and selection. The bundled single-file CLI was copied to a temporary directory and launched as separate processes for `local-open`, catalog and authorization readback, preview and original export. The 32×24 PNG preview matched `[64,96,128,255]` and the original matched all 93 source bytes. The actual GTK Save dialog preserved the 32-pixel setting on cancel and wrote the expected 16×12 PNG while remembering 16 on confirmation. Both ran with private Xvfb and D-Bus and the desktop portal disabled. All owned app sessions closed and cleaned up. The build and runtime logs are under `.workspace/linux-dialog-e365a88*` and `.workspace/native-*-linux-e365a88*`. [Verified source revision](https://github.com/stvlynn/OpenLR/tree/e365a88b4fe69211354118d2e68d9517a97729e3)
+
 ## Windows tracked snapshot `556e8d7`
 
 The fresh Git ZIP contained 868 entries. Node 24.9.0 installed 62 locked packages with zero reported vulnerabilities. MyGo 0.7.4 and Go 1.27.3 built the Windows/amd64 package and NSIS installer in 64 seconds. The package was tested through the unpacked executable. The copied CLI ran alone in an OS temporary directory with no ancestor `node_modules` and clean Node environment overrides. Ten distribution files matched their sources and six vendored Opus notices were present.
