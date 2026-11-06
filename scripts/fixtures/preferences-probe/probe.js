@@ -1,4 +1,19 @@
-import { preferences, setPreferences } from './preferences.js'
+// Frozen e162e9d localStorage behavior, retained as the comparison baseline.
+const defaults = { autoAdvance: false, filenames: true, extensions: true, shortcuts: true }
+const preferences = { ...defaults }
+try {
+  const saved = JSON.parse(localStorage.getItem('openlr.preferences'))
+  for (const name of Object.keys(defaults))
+    if (typeof saved?.[name] === 'boolean') preferences[name] = saved[name]
+} catch {}
+function setPreferences(values) {
+  for (const [name, value] of Object.entries(values))
+    if (!Object.hasOwn(defaults, name) || typeof value !== 'boolean')
+      throw Error('Invalid preference ' + name)
+  Object.assign(preferences, values)
+  localStorage.setItem('openlr.preferences', JSON.stringify(preferences))
+  return { ...preferences }
+}
 
 async function database() {
   return new Promise((resolve, reject) => {

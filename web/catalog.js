@@ -1,7 +1,16 @@
 const connection = new Promise((resolve, reject) => {
-  const request = indexedDB.open('openlr', 5)
+  const request = indexedDB.open('openlr', 6)
   request.onupgradeneeded = () => {
-    for (const name of ['photos', 'originals', 'albums', 'presets', 'sync', 'media', 'mediaRecords']) {
+    for (const name of [
+      'photos',
+      'originals',
+      'albums',
+      'presets',
+      'sync',
+      'media',
+      'mediaRecords',
+      'settings'
+    ]) {
       if (!request.result.objectStoreNames.contains(name))
         request.result.createObjectStore(name, { keyPath: 'id' })
     }
@@ -15,13 +24,13 @@ const connection = new Promise((resolve, reject) => {
   request.onerror = () => reject(request.error)
 })
 
-export async function transaction(stores, mode, work, mediaPlan) {
+export async function transaction(stores, mode, work, mediaPlan, options) {
   const db = await connection
   return new Promise((resolve, reject) => {
     const names = Array.isArray(stores) ? [...stores] : [stores]
     const mediaWrite = mode === 'readwrite' && names.some((name) => name === 'photos' || name === 'originals')
     if (mediaWrite) for (const name of ['media', 'mediaRecords']) if (!names.includes(name)) names.push(name)
-    const tx = db.transaction(names, mode)
+    const tx = db.transaction(names, mode, options)
     let result, cause
     tx.oncomplete = () => resolve(result?.result)
     tx.onerror = (e) => {
@@ -202,6 +211,12 @@ function readRecords(name, id, many) {
   })
 }
 export const all = (name) => readRecords(name, undefined, true)
+export const readSetting = (id) =>
+  transaction('settings', 'readonly', (tx) => tx.objectStore('settings').get(id))
+export const saveSetting = (id, values) =>
+  transaction('settings', 'readwrite', (tx) => tx.objectStore('settings').put({ id, values }), undefined, {
+    durability: 'strict'
+  })
 export const original = (id) => readRecords('originals', id, false)
 export const save = (name, record) =>
   withMedia([record], ([row], commit) => commit(name, 'readwrite', (tx) => tx.objectStore(name).put(row)))

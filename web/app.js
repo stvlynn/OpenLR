@@ -25,7 +25,14 @@ import { PHOTO_ACCEPT, photoPreviewVersions } from './decode.js'
 import { whenVisible } from './thumbnail-visibility.js'
 import { Presets } from './presets.js'
 import { LibraryHistory } from './library-history.js'
-import { preferences, setPreferences, mountPreferences, displayName, colorLabels } from './preferences.js'
+import {
+  preferences,
+  loadPreferences,
+  setPreferences,
+  mountPreferences,
+  displayName,
+  colorLabels
+} from './preferences.js'
 import { displayedPhotos, findStacks, smartMatch, stackMenu } from './stacks.js'
 import { readXmp, XMP_MESSAGES } from './xmp.js'
 import { mountSync, synchronize } from './sync.js'
@@ -1209,7 +1216,7 @@ async function execute(command, args, context = {}) {
     }
     case 'preferences':
       if (!Object.keys(args).length) return { ...preferences }
-      result = setPreferences(args)
+      result = await setPreferences(args)
       break
     case 'select-inverse':
       selected = organization.chooseMany(
@@ -2468,12 +2475,14 @@ async function execute(command, args, context = {}) {
   return result ?? snapshot()
 }
 globalThis.openlrStartupMilestone?.('catalog-read-started')
-const ready = Promise.all([db.all('photos'), db.all('albums'), presets.load()]).then(async (values) => {
-  globalThis.openlrStartupMilestone?.('catalog-read-finished')
-  ;[photos, albums] = values
-  await draw()
-  globalThis.openlrStartupMilestone?.('workspace-ready')
-})
+const ready = Promise.all([db.all('photos'), db.all('albums'), presets.load(), loadPreferences()]).then(
+  async (values) => {
+    globalThis.openlrStartupMilestone?.('catalog-read-finished')
+    ;[photos, albums] = values
+    await draw()
+    globalThis.openlrStartupMilestone?.('workspace-ready')
+  }
+)
 export function run(command, args = {}, observe, context) {
   if (command === 'preview' && args?.source !== undefined)
     return queue

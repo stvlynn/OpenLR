@@ -40,7 +40,7 @@ await withNativeWorkspace(
     assert.ok(builtIns.length > 0)
     const defaultPreferences = { autoAdvance: false, filenames: true, extensions: true, shortcuts: true }
     const savedPreferences = { ...defaultPreferences, filenames: false }
-    if (macosDefaultStore) assert.deepEqual(await call('preferences'), defaultPreferences)
+    assert.deepEqual(await call('preferences'), defaultPreferences)
 
     const width = 24,
       height = 16
@@ -217,14 +217,11 @@ await withNativeWorkspace(
     const timedId = checkStack(await call('stack-toggle'), first, second)
 
     if (persistent) {
-      if (macosDefaultStore)
-        assert.deepEqual(await call('preferences', '--filenames', 'false'), savedPreferences)
+      assert.deepEqual(await call('preferences', '--filenames', 'false'), savedPreferences)
       const reopened = await restart()
-      if (macosDefaultStore) {
-        const { pid: reopenedPID } = JSON.parse(await readFile(session, 'utf8'))
-        assert.ok(Number.isSafeInteger(reopenedPID) && reopenedPID > 0 && reopenedPID !== pid)
-        assert.deepEqual(await call('preferences'), savedPreferences)
-      }
+      const { pid: reopenedPID } = JSON.parse(await readFile(session, 'utf8'))
+      assert.ok(Number.isSafeInteger(reopenedPID) && reopenedPID > 0 && reopenedPID !== pid)
+      assert.deepEqual(await call('preferences'), savedPreferences)
       assert.deepEqual(reopened.openStacks, [])
       assert.equal(row(reopened, first).stackId, timedId)
       assert.ok(!reopened.photos.some(({ id }) => id === second))

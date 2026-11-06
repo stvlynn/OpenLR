@@ -2,6 +2,10 @@
 
 对照目标为本机 Adobe Lightroom 9.4 云桌面版。REA 证据来自可执行文件及其资源；登录后的 Windows 运行观察已核对裁剪、蒙版入口及导出设置，见 [运行记录](../research/lightroom.md#登录后的-windows-运行观察)。当前仍未建立全部功能逐屏、逐像素的 Adobe 对照。静态入口、独立实现及实际通过的测试分别记录。
 
+## 偏好设置持久化 — 2026-11-06
+
+独立 macOS 对照在 ARM 上复现一次 localStorage 已确认写入却在正常退出后读回旧值；严格 IndexedDB 在 ARM、Intel 各四次写入均正确保留。依据该结果，设置改用现有目录数据库的严格事务，迁移旧记录，写入失败保留旧状态。设置窗口等待读取完成，保存失败恢复复选框。完整 Windows／Chrome 157.0.8103.38 回归 **477/477，零失败、零跳过**，283.9 秒；随后窗口加载与错误恢复细化另行通过专项。最终重建的 Windows 包通过实际 CLI 写入后立即重启、目录、预设像素及三份原件检查。安装器生成，未执行安装。集成后的 Linux 与 macOS 尚待 Actions；对照实验不替代集成验收。见[实验与验证](../research/preferences-persistence.md)。
+
 ## 复制与版本的源照片校验 — 2026-11-06
 
 `e162e9d` 的 [Actions 42224648105](https://github.com/stvlynn/OpenLR/actions/runs/42224648105) 四平台均成功：Windows、Linux、Intel macOS、ARM macOS。Windows 浏览器 466 通过、8 项可选跳过、零失败；两种 macOS 的独立默认存储重启流程均通过，包含设置、相册、命名版本及三份原件。此次成功不证明此前间歇性偏好丢失的原因；独立持久化对照仍见下方证据记录。
