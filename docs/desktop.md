@@ -17,6 +17,8 @@ WebM export on Linux uses WebKitGTK's GStreamer plugins for Opus, VP9 and its pa
 
 ## Native boundary
 
+The CI matrix includes both `macos-15-intel` and `macos-15`. GitHub documents these as Intel and Apple Silicon runners respectively. Each builds the universal package and runs the same native CLI/image workflows on its host architecture; artifact names include the runner label to keep the two results distinct. Adding a job is not evidence that it passed: exact runtime results remain in [acceptance](acceptance.md). [GitHub runner architectures](https://docs.github.com/en/actions/reference/runners/github-hosted-runners)
+
 Native adapters for [Local folders](local-folders.md), [external editor roundtrips](external-editors.md), [tethered capture](tethered-capture.md) and [shared album publication](shared-albums.md) all route through the same GUI command dispatcher and agent transport. Their separate documentation records filesystem/network boundaries and their actual validation scope.
 
 `saveExport(blob, filename)` in `web/desktop.js` returns `true` after completion, `false` when a native save dialog is canceled, and throws on failure. It uses `Desktop.BeginExport`, `WriteExport`, `FinishExport` and `CancelExport` in MyGo. Browser preview uses an ordinary Blob download. The transfer uses bounded-memory chunks and has no fixed total size cap. Temporary files protect an existing destination until transfer completion; the file replacement operation follows the host filesystem's semantics.
@@ -25,7 +27,7 @@ The host's local agent endpoint is recorded in `os.UserConfigDir()/OpenLR/agent.
 
 ## Verification scope
 
-`npm run test:native -- /path/to/OpenLR` runs twelve sequential workflows against the built application: core editing, catalog organization, mask coverage/removal, optics/auto tone, navigation, video, local folders, migration, external editing, camera simulation, shared review, and integration. Organization, mask, optics, navigation and video share a private-process lifecycle with isolated adapter files and a short temporary MyGo socket path. Windows organization/navigation additionally reopen their private WebView2 profile. Navigation enables loopback debugging only for its disposable Windows child to inspect the actual fullscreen viewport, filename labels and trusted keyboard input. Other platforms do not inherit those Windows-only persistence/window assertions. The video workflow uses Chrome as its fixture encoder and independent output decoder; [its evidence](../research/native-video.md) distinguishes decoded audio from physical playback.
+`npm run test:native -- /path/to/OpenLR` runs sixteen sequential workflows against the built application: core editing, catalog organization, mask coverage/removal, composite masks/repairs, depth/blur, enhancement, culling/red-eye, optics/auto tone, navigation, video, local folders, migration, external editing, camera simulation, shared review, and integration. Windows adds two workflows for two-profile WebDAV synchronization and executable file-open delivery, for eighteen in total. Model workflows fetch pinned weights in fresh native sessions and require access to their documented hosts. The shared private-process lifecycle isolates adapter files and uses a short temporary MyGo socket path. Windows organization/navigation/culling additionally reopen their private WebView2 profile, and sync alternates two such profiles. Navigation enables loopback debugging only for its disposable Windows child to inspect the actual fullscreen viewport, filename labels and trusted keyboard input. Other platforms do not inherit those Windows-only persistence/window assertions. The video workflow uses Chrome as its fixture encoder and independent output decoder; [its evidence](../research/native-video.md) distinguishes decoded audio from physical playback.
 
 If the native main smoke fails during startup, it reports bounded, read-only broker/control diagnostics before cleanup and rethrows the original failure. Session publication is distinct from renderer and catalog readiness. The probes do not retry the failed command or extend its deadline; see [startup evidence and interpretation](../research/native-startup.md). Their transport checks run with `node --test tests/native-startup-diagnostics.test.js` and are not GUI acceptance.
 
@@ -54,3 +56,15 @@ xvfb-run -a dbus-run-session -- node scripts/native-suite.mjs build/release/linu
 ```
 
 Install Chrome from its official Linux distribution before the version check if absent. Set `OPENLR_TEST_METADATA=1` when the independent [ExifTool oracle](export-metadata.md) has been provisioned, so missing validation tools fail visibly. Xvfb runs the real GTK/WebKit application and IPC bridge; it does not establish physical display, GPU, native chooser, signing or macOS behavior. Application test sessions use isolated temporary catalogs.
+
+## Windows file-open verification
+
+MyGo forwards paths for the packaged application's configured file associations to the running workspace. For a standalone check, pass a packaged Windows executable to the file-open smoke. The smoke launches the executable with photo arguments and uses the live CLI to read the resulting workspace and files.
+
+```powershell
+node scripts/native-file-open-smoke.mjs build/startup-trace/windows-amd64/OpenLR.exe
+```
+
+The Windows WebView2 run against `f6af855` opened a generated 32×24 PNG from an absolute path containing spaces. A second process forwarded a 30×22 PNG with a relative Unicode filename from a different working directory and exited successfully. The original process kept its agent session and showed the new photo in Detail. A repeated open from Grid reused the existing photo ID. Both IDs survived a restart of the private profile. Decoded previews and rendered PNGs matched the fixtures at every pixel, and original exports matched both source files byte for byte.
+
+This verifies argument delivery to the packaged executable and its existing Windows instance. Windows Explorer association registration, system choosers, and file-open behavior on other platforms remain separate checks. See [file-open smoke](../scripts/native-file-open-smoke.mjs).

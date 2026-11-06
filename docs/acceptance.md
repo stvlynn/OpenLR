@@ -17,6 +17,10 @@
 
 ## 补充验证
 
+- **原生文件打开与更强的图像集成检查**。`f6af855` Windows 包通过实际首次文件参数、第二实例转交、重复打开与私有 profile 重启，所有生成图片的预览／导出像素和原件一致；这不等于 Explorer 关联注册或系统选择器验收。更新后的集成脚本独立解码 panorama PNG，四个场景区平均通道误差为 0／0.15／2.35／3.83，透明边缘正确；RGBE 恢复约 9.33 stops，最大采样误差 2.53%，显示编辑不改变 radiance 导出。Person／Subject／Background 实际覆盖 PNG 通过手工区域和补集检查，局部曝光只改变人物区域。六份合并源的编辑、评级、版本及原件保持，NASA 图原件保持。日志 `.workspace/native-integration-pixels-windows-final.log`；独立 RGBE／合并测试与生命周期测试共 11/11 通过。此轮仅加强验证，没有修改合并或模型算法。
+
+- **`f6af855` 远程终态与 macOS 帧源消融**。[Actions 42149541084](https://github.com/stvlynn/OpenLR/actions/runs/42149541084) 的 Windows、Linux 构建及对应十七／十六组原生流程成功。Windows 浏览器 360/368、8 项可选资源跳过、零失败，第一次普通命令约 8.3 秒完成；这是成功路径时间线，不证明先前超时已修复。macOS Intel 的四个独立探针均返回报告：直接 video、poster bitmap、anonymous video 在两种画布读回上均报 SecurityError；MediaBunny CanvasSink 的 96×64 两帧可实际读回并编码，样本为 `[190,60,44]` 与 `[39,67,202]`。此结果支持使用独立解码帧，而不支持仅修改 CORS 属性。严格套件通过新增局部、深度、增强及此前视频前的流程，随后仍在视频缩略图编码失败。AudioDecoder／AudioEncoder 仍缺失，视频导出尚未执行。日志 `.workspace/startup-trace-ci-{windows,macos}.log`，原始作业保留 Linux 结果。
+
 - **启动阶段诊断与当前回归**。`OPENLR_DIAGNOSTICS=1` 现记录固定名称和首次观察时间，覆盖窗口／页面、目录读取、普通与控制命令的宿主和 renderer 边界；原命令超时和失败语义保持。重建的 `startup-trace` Windows 安装包先通过实际两条命令通路，再通过 **十七组原生套件**，包含双设备持久同步。Windows／Node 24.9／Chrome 156 的完整配置回归 **365/365、零失败、零跳过**，约 297.0 秒；之后新增的视频探针进程回归独立 **3/3**。Go test／vet 通过。日志 `.workspace/startup-trace-{build,windows,full,native}.log`。这些是本地成功路径证据，不解释之前的 Windows 远程启动超时；[启动记录](../research/native-startup.md)保留观察边界和受控失败检查。
 
 - **双设备原生同步**。两个隔离的持久 Windows WebView2 profile 通过实际 CLI／Go DAV 适配器交替同步，B 下载 A 的原件并复现 `[85,102,132]` 编辑像素、相册和预设。独立字段合并后为 `[101,119,154]`；同字段冲突保持负曝光 `[60,73,95]` 和远端清单，直到明确选择。独立 HTTP 写入先取得 201，使进行中的原生条件写入得到 412；失败与重启后本地编辑仍在，显式再次同步才合并并收敛到 `[119,140,180]`。93 字节生成原件上传一次，各端原件逐字节一致。`native-sync-smoke` 在 `db34e33` Windows 包上通过，使用当前已验证的 start/stop 测试生命周期；不是实际云服务或其他平台持久性验收。

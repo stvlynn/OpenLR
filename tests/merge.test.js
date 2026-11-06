@@ -3,34 +3,22 @@ import assert from 'node:assert/strict'
 import cvModule from '@techstark/opencv-js'
 import { mergeHDR, mergePanorama, project, exposureOffsets } from '../web/merge-core.js'
 import { frame, scene } from './fixtures/merge-scene.js'
+import { decodeRadiance } from './fixtures/radiance.mjs'
 const cv = await cvModule
 
-function decodeHDR(bytes) {
-  const text = new TextDecoder().decode(bytes.subarray(0, 200)),
-    match = text.match(/-Y (\d+) \+X (\d+)\n/)
-  assert.ok(match)
-  const height = Number(match[1]),
-    width = Number(match[2]),
-    pixels = new Float32Array(width * height * 3)
-  let offset = text.indexOf(match[0]) + match[0].length
-  for (let y = 0; y < height; y++) {
-    assert.deepEqual([...bytes.subarray(offset, offset + 2)], [2, 2])
-    offset += 4
-    const rgba = new Uint8Array(width * 4)
-    for (let c = 0; c < 4; c++)
-      for (let x = 0; x < width;) {
-        const n = bytes[offset++]
-        assert.ok(n > 0 && n <= 128)
-        for (let i = 0; i < n; i++) rgba[(x + i) * 4 + c] = bytes[offset++]
-        x += n
-      }
-    for (let x = 0; x < width; x++) {
-      const factor = 2 ** (rgba[x * 4 + 3] - 128) / 256
-      for (let c = 0; c < 3; c++) pixels[(y * width + x) * 3 + c] = rgba[x * 4 + c] * factor
-    }
-  }
-  return { width, height, pixels }
-}
+test('independent RGBE reader checks scanline lengths and payload bounds', () => {
+  const header = Buffer.from('#?RADIANCE\nFORMAT=32-bit_rle_rgbe\n\n-Y 1 +X 8\n')
+  const row = Buffer.from([2, 2, 0, 8, 136, 64, 136, 128, 136, 192, 136, 129])
+  const bytes = Buffer.concat([header, row])
+  const decoded = decodeRadiance(bytes)
+  assert.deepEqual([decoded.width, decoded.height], [8, 1])
+  assert.deepEqual([...decoded.pixels], Array.from({ length: 8 }, () => [0.5, 1, 1.5]).flat())
+  assert.throws(() => decodeRadiance(bytes.subarray(0, -1)), /exceeds its encoded data/)
+  const invalidRun = Buffer.from(bytes)
+  invalidRun[header.length + 4] = 137
+  assert.throws(() => decodeRadiance(invalidRun), /packet length/)
+  assert.throws(() => decodeRadiance(Buffer.concat([bytes, Buffer.of(0)])), /after the last/)
+})
 
 test('HDR aligns displaced real exposure brackets and preserves recoverable radiance above display white', () => {
   const frames = [
@@ -47,7 +35,7 @@ test('HDR aligns displaced real exposure brackets and preserves recoverable radi
     assert.ok(Math.hypot(x - expected[0], y - expected[1]) < 2, JSON.stringify(alignment))
     assert.ok(alignment.inliers >= 12)
   }
-  const hdr = decodeHDR(result.radiance)
+  const hdr = decodeRadiance(result.radiance)
   assert.equal(hdr.width, result.width)
   const x = Math.floor(result.width * 0.82),
     y = Math.floor(result.height * 0.48),

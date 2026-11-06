@@ -10,15 +10,29 @@ import path from 'node:path'
 import timers from 'node:timers/promises'
 import { withNativeWorkspace } from '../scripts/native-workspace.mjs'
 
-function controlledHost(t, closes) {
+function controlledHost(t, closes, { secondaryCloses = true } = {}) {
   const errors = []
   const profileData = 'private test profile'
   const token = 'workspace-test-token'
   let tempRoot,
     stopCalls = 0,
-    spawnCalls = 0
-  t.mock.method(childProcess, 'spawn', (executable, args, { env }) => {
+    spawnCalls = 0,
+    secondaryStopCalls = 0
+  t.mock.method(childProcess, 'spawn', (executable, args, { env, cwd }) => {
     assert.equal(executable, process.execPath)
+    if (path.basename(env.OPENLR_AGENT_FILE) === 'secondary-agent.json') {
+      assert.equal(env.XDG_RUNTIME_DIR, tempRoot)
+      assert.equal(env.WEBVIEW2_USER_DATA_FOLDER, path.join(tempRoot, 'secondary-webview2'))
+      assert.equal(cwd, tempRoot)
+      assert.deepEqual(args, ['relative.png'])
+      const secondary = Object.assign(new EventEmitter(), { pid: 2345 })
+      secondary.kill = () => {
+        secondaryStopCalls++
+        if (secondaryCloses) secondary.emit('close', 0, null)
+        return true
+      }
+      return secondary
+    }
     assert.deepEqual(args, [])
     tempRoot = env.XDG_RUNTIME_DIR
     assert.equal(path.dirname(env.OPENLR_AGENT_FILE), tempRoot)
@@ -67,18 +81,26 @@ function controlledHost(t, closes) {
     assert.ok(path.basename(cleanup).startsWith('olr-w-'))
     await rm(cleanup, { recursive: true, force: true })
   })
-  const run = (workflow) =>
+  const run = (workflow, options) =>
     withNativeWorkspace(
       process.execPath,
-      async ({ root, initial, profile, session, start, stop, restart }) => {
+      async ({ root, initial, profile, session, pid, start, stop, restart, launchSecondary }) => {
         assert.deepEqual(initial, { photos: [] })
         const marker = path.join(profile, 'catalog')
         await mkdir(profile)
         await writeFile(marker, profileData)
-        return workflow({ root, marker, session, start, stop, restart })
-      }
+        return workflow({ root, marker, session, pid, start, stop, restart, launchSecondary })
+      },
+      options
     )
-  return { run, errors, profileData, stopCalls: () => stopCalls, spawnCalls: () => spawnCalls }
+  return {
+    run,
+    errors,
+    profileData,
+    stopCalls: () => stopCalls,
+    spawnCalls: () => spawnCalls,
+    secondaryStopCalls: () => secondaryStopCalls
+  }
 }
 
 test('native workspace removes its disposable profile after confirmed host close', async (t) => {
@@ -152,4 +174,51 @@ test('native workspace retains the profile and preserves a primary workflow fail
   )
   assert.equal(await readFile(workspace.marker, 'utf8'), profileData)
   assert.match(JSON.stringify(errors), /Native workspace cleanup failed/)
+})
+
+test('native workspace retains its root and prevents another start when auxiliary closure is unconfirmed', async (t) => {
+  const { run, errors, profileData, spawnCalls, secondaryStopCalls } = controlledHost(t, true, {
+    secondaryCloses: false
+  })
+  let workspace
+  await assert.rejects(
+    run(async (value) => {
+      workspace = value
+      const { root, pid, stop, start, launchSecondary } = value
+      const secondary = launchSecondary(['relative.png'], root)
+      assert.notEqual(secondary.pid, pid)
+      assert.throws(() => launchSecondary(['relative.png'], root), /exactly one/)
+      await stop()
+      await assert.rejects(start(), /exit is unconfirmed/)
+    }),
+    (error) =>
+      error instanceof AggregateError &&
+      error.message === 'Native workspace cleanup failed' &&
+      error.errors[0]?.message === 'Host did not exit'
+  )
+  assert.equal(spawnCalls(), 1)
+  assert.equal(secondaryStopCalls(), 1)
+  assert.equal(await readFile(workspace.marker, 'utf8'), profileData)
+  assert.deepEqual(errors, [
+    ['Native workspace retained in the system temporary directory', path.basename(workspace.root)]
+  ])
+})
+
+test('native workspace cleans its prepared files when pre-start setup fails', async (t) => {
+  const { run, errors, spawnCalls } = controlledHost(t, true)
+  const failure = new Error('Pre-start setup failed')
+  let preparedRoot
+  await assert.rejects(
+    run(() => assert.fail('No workflow may run after a setup failure'), {
+      async prepare({ root }) {
+        preparedRoot = root
+        await writeFile(path.join(root, 'fixture.png'), 'generated fixture')
+        throw failure
+      }
+    }),
+    (error) => error === failure
+  )
+  assert.equal(spawnCalls(), 0)
+  await assert.rejects(access(preparedRoot), { code: 'ENOENT' })
+  assert.deepEqual(errors, [])
 })
