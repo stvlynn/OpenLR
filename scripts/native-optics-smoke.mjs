@@ -196,10 +196,15 @@ await withNativeWorkspace(process.argv[2], async ({ root, call, initial }) => {
   const start = point(24, 38),
     end = point(104, 58)
   const reference = { start, end, axis: 'horizontal' }
+  const picking = await geometry('straighten-tool', { axis: 'horizontal' })
+  assert.deepEqual(picking.straightenTool, { axis: 'horizontal', first: null })
   await assert.rejects(geometry('straighten', { ...reference, end: start }), /two distinct points/)
   await assert.rejects(geometry('straighten', { ...reference, photoId: 'stale' }), /selected photo changed/)
   assert.deepEqual(row(await state()).edit, baseline)
-  const straightEdit = row(await geometry('straighten', reference)).edit
+  assert.deepEqual((await state()).straightenTool, picking.straightenTool)
+  const completed = await geometry('straighten', reference)
+  assert.deepEqual(completed.straightenTool, { axis: 'off', first: null })
+  const straightEdit = row(completed).edit
   const expectedAngle = -(Math.atan2(20, 80) * 180) / Math.PI
   assert.ok(Math.abs(straightEdit.optics.rotate - expectedAngle) < 1e-6)
   assert.deepEqual(straightEdit, { ...baseline, optics: straightEdit.optics })

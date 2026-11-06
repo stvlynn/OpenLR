@@ -201,8 +201,9 @@ export function mountOptics({ run, getActive, notify, onChange }) {
       }
       const start = first,
         axis = mode
-      setMode('')
-      run('straighten', { start, end: point, axis, photoId: getActive()?.id }).catch(showError)
+      run('straighten', { start, end: point, axis, photoId: getActive()?.id }, undefined, {
+        straightenReference: start
+      }).catch(showError)
     }
     const click = (event) => {
       if (consumeClick()) {
@@ -235,6 +236,7 @@ export function mountOptics({ run, getActive, notify, onChange }) {
     },
     active: () => Boolean(mode),
     snapshot: () => ({ axis: mode || 'off', first: first ? { ...first } : null }),
+    ownsReference: (point) => first === point,
     deactivate: () => setMode(''),
     panel
   }

@@ -12,6 +12,8 @@ Profile application selects an exact calibration sample or linearly interpolates
 
 While picking, the same button becomes **Cancel straighten line**. Escape cancels the reference without leaving Detail, including when an inspector input retains focus; an open dialog keeps its own Escape handling. `straighten-tool --axis off` performs the same cancellation. The command accepts an optional `--photoId` guard. Full and summary `state` expose `straightenTool:{axis,first}`, with `off`/`null` when inactive and the first point in normalized original-image coordinates while picking. The first click emits the ordinary live observation event. Cancellation changes neither the recipe nor undo history; changing photo/view or activating another image tool discards the reference.
 
+A successful `straighten` ends the picker for both the GUI and the CLI. If a GUI second point is queued against a reference that has since ended or been replaced, the command reports the change and leaves the saved rotation alone. An invalid or wrong-photo command leaves the active reference available for retry or cancellation.
+
 ## Rendering and coordinates
 
 `web/optics.js` compiles one mapping shared by image resampling, local-tool input and overlays. The pipeline is original-image local masks/repair, lens/TCA and geometry, crop/quarter-turn/reflection, then global color rendering. Crop fractions refer to the corrected base canvas, which retains the original image bounds.

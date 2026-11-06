@@ -1638,6 +1638,8 @@ async function execute(command, args, context = {}) {
           if (isVideo(p)) throw Error('Optics and geometry correction require a still photo')
           if (args.photoId !== undefined && args.photoId !== p.id)
             throw Error('The selected photo changed; optics edit was canceled')
+          if (context.straightenReference && !opticsUI.ownsReference(context.straightenReference))
+            throw Error('The straighten reference changed; choose two new points')
           await source(p.id)
           let optics
           if (command === 'optics') optics = validateOptics({ ...p.edit.optics, ...args.changes })
@@ -1661,6 +1663,7 @@ async function execute(command, args, context = {}) {
           if (optics) compileOptics(p, optics)
           const { optics: previous, ...other } = p.edit
           await replace(p, { edit: optics ? { ...other, optics } : other })
+          if (command === 'straighten') opticsUI.deactivate()
           rememberEdit(p)
           redo.length = 0
           compare = cropping = false
