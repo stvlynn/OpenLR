@@ -4,7 +4,7 @@ import path from 'node:path'
 import { makePng } from '../tests/fixtures/png.mjs'
 import { withNativeWorkspace } from './native-workspace.mjs'
 
-const persistent = process.platform === 'win32'
+const persistent = ['win32', 'linux'].includes(process.platform)
 await withNativeWorkspace(
   process.argv[2],
   async ({ root, call, initial, restart }) => {

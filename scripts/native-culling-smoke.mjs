@@ -7,7 +7,7 @@ import { readPng } from '../web/png.js'
 import { withNativeWorkspace } from './native-workspace.mjs'
 
 const portrait = fileURLToPath(new URL('../tests/fixtures/ai/astronaut.png', import.meta.url))
-const persistent = process.platform === 'win32'
+const persistent = ['win32', 'linux'].includes(process.platform)
 const flashRgb = [245, 29, 22]
 const control = [6, 6]
 const dims = ({ width, height }) => [width, height]

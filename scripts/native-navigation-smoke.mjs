@@ -8,6 +8,7 @@ import { withNativeWorkspace } from './native-workspace.mjs'
 
 const defaults = { autoAdvance: false, filenames: true, extensions: true, shortcuts: true }
 const windows = process.platform === 'win32'
+const persistent = windows || process.platform === 'linux'
 const dimensions = ({ width, height }) => [width, height]
 function centerRgb({ width, height, data }) {
   const offset = (Math.floor(height / 2) * width + Math.floor(width / 2)) * 4
@@ -250,11 +251,13 @@ await withNativeWorkspace(
     assert.equal(photo(await call('library-undo')).rating, 0)
     assert.equal(photo(await call('library-redo')).rating, 3)
 
-    if (windows) {
+    if (persistent) {
       const reopened = await restart()
       assert.deepEqual(photo(reopened).edit, edit)
       assert.equal(photo(reopened).rating, 3)
       assert.deepEqual(await call('preferences'), disabled)
+    }
+    if (windows) {
       await call('sort', '--order', 'name', '--direction', 'asc')
       await inspectWebView(profile, async (page) => {
         assert.deepEqual(await gridLabels(page), names(false, false))
@@ -299,14 +302,15 @@ await withNativeWorkspace(
           displayOriginal: originalCount,
           displayPair: pairCount
         },
-        fullscreen: fullScreen || 'Windows check',
-        preferenceRestartAndKeyboard: windows,
+        fullscreen: fullScreen || null,
+        preferenceRestart: persistent,
+        trustedKeyboard: windows,
         preservedOriginals: fixtures.length
       })
     )
   },
   {
-    persistent: windows,
+    persistent,
     env: windows
       ? {
           WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS:
