@@ -1,12 +1,20 @@
 name: macOS ARM depth crash trace
 on:
   workflow_dispatch:
+    inputs:
+      sequence:
+        description: Workflow sequence before depth
+        type: choice
+        options:
+          - standalone
+          - suite
+        default: standalone
 permissions:
   contents: read
 jobs:
   depth-trace:
     runs-on: macos-15
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -19,7 +27,12 @@ jobs:
       - name: Build the native distribution
         run: node scripts/desktop.mjs build -o build/release -platform darwin/universal
       - name: Trace the owned host during depth estimation and the first recipe read
+        if: inputs.sequence == 'standalone'
         timeout-minutes: 5
         env:
           OPENLR_DIAGNOSTICS: '1'
         run: node scripts/native-depth-smoke.mjs build/release/darwin-universal/OpenLR.app/Contents/MacOS/OpenLR --lldb
+      - name: Run the ordinary suite sequence through traced depth
+        if: inputs.sequence == 'suite'
+        timeout-minutes: 15
+        run: node scripts/native-suite.mjs build/release/darwin-universal/OpenLR.app/Contents/MacOS/OpenLR --depth-trace

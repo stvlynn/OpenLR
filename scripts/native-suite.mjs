@@ -5,7 +5,15 @@ import { fileURLToPath } from 'node:url'
 
 const root = fileURLToPath(new URL('..', import.meta.url)),
   suffix = process.platform === 'win32' ? '.exe' : ''
-const app = process.argv[2] ? path.resolve(process.argv[2]) : path.join(root, 'build', 'smoke' + suffix)
+const [executable, mode, ...extra] = process.argv.slice(2)
+const depthTrace = mode === '--depth-trace'
+if (
+  executable?.startsWith('--') ||
+  extra.length ||
+  (mode !== undefined && (!depthTrace || process.platform !== 'darwin'))
+)
+  throw Error('Usage: node scripts/native-suite.mjs [executable [--depth-trace (macOS only)]]')
+const app = executable ? path.resolve(executable) : path.join(root, 'build', 'smoke' + suffix)
 const bundledGo = path.join(root, '.tools', 'go', 'bin', 'go' + suffix),
   go = process.env.GO_BINARY || (existsSync(bundledGo) ? bundledGo : 'go')
 const build = path.join(root, 'build', 'acceptance')
@@ -20,7 +28,7 @@ function run(command, args) {
   if (result.error) throw result.error
   if (result.status !== 0) process.exit(result.status ?? 1)
 }
-if (!process.argv[2]) run(go, ['build', '-o', app, '.'])
+if (!executable) run(go, ['build', '-o', app, '.'])
 const editor = path.join(build, 'test-editor' + suffix),
   share = path.join(build, 'openlr-share' + suffix)
 run(go, ['build', '-o', editor, './scripts/fixtures/editor'])
@@ -44,5 +52,8 @@ for (const [name, ...args] of [
   ['native-camera-smoke'],
   ['native-sharing-smoke', share],
   ['native-integration-smoke']
-])
-  run(process.execPath, ['scripts/' + name + '.mjs', app, ...args])
+]) {
+  const trace = depthTrace && name === 'native-depth-smoke'
+  run(process.execPath, ['scripts/' + name + '.mjs', app, ...args, ...(trace ? ['--lldb'] : [])])
+  if (trace) break
+}
