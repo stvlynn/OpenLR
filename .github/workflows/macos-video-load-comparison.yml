@@ -8,13 +8,14 @@ on:
         options: [load, pause, decoder, poster]
         default: load
 permissions:
+  actions: read
   contents: read
 jobs:
   comparison:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-15-intel, macos-15]
+        os: [macos-15]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     env:
@@ -108,6 +109,19 @@ jobs:
               for file, original in originals.items():
                   file.write_bytes(original)
           PY
+      - name: Retrieve the exact fixture from the first poster comparison
+        if: inputs.comparison == 'poster'
+        uses: actions/download-artifact@v4
+        with:
+          name: video-poster-macos-15
+          path: build/prior-poster-trials
+          run-id: 42279407377
+          github-token: ${{ github.token }}
+      - name: Use the same generated WebM for both packages
+        if: inputs.comparison == 'poster'
+        run: |
+          mkdir -p build/video-poster-trials
+          cp build/prior-poster-trials/fixture.webm build/video-poster-trials/fixture.webm
       - name: Compare actual import, seek, playback, frames and audio export
         run: >-
           node scripts/native-video-load-comparison.mjs

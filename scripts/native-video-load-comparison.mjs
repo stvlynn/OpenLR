@@ -8,7 +8,7 @@ const abbaOrder = (control, candidate) =>
 export const videoLoadOrder = abbaOrder('automatic', 'explicit')
 export const videoPauseOrder = abbaOrder('frame-first', 'anchor-first')
 export const videoDecoderOrder = abbaOrder('default-decoder', 'software-decoder')
-export const videoPosterOrder = abbaOrder('native-poster', 'decoded-poster')
+export const videoPosterOrder = abbaOrder('decoded-poster', 'native-poster')
 
 async function main(control, candidate, destination, comparison = 'load') {
   if (!control || !candidate || !destination)
@@ -20,7 +20,7 @@ async function main(control, candidate, destination, comparison = 'load') {
     ['poster', videoPosterOrder]
   ]).get(comparison)
   if (!order) throw Error('Choose the load, pause, decoder or poster comparison')
-  const [controlLabel, candidateLabel] = order
+  const [controlLabel, candidateLabel] = comparison === 'poster' ? [order[1], order[0]] : order
   await runVideoTrials({ apps: { [controlLabel]: control, [candidateLabel]: candidate }, order, destination })
 }
 
