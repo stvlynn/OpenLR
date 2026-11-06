@@ -216,3 +216,76 @@ test(
     await assert.rejects(run('draft-commit', { id: clone.id }), /draft changed/i)
   }
 )
+
+test('local PNG retains the published mask and marker across an equivalent redraw', async (t) => {
+  const { page, run } = await workspace(t)
+  await run('local-tool', { tool: 'clone' })
+  await run('repair-source', { point: { x: 0.25, y: 0.25 } })
+  await run('local-tool', { tool: 'brush' })
+  const { id } = await run('mask.add', {
+    mask: { type: 'brush', points: [{ x: 0.5, y: 0.5 }], radius: 0.16, feather: 0 },
+    draft: true
+  })
+  assert.equal(await page.locator('.local-overlay > image').count(), 1)
+  assert.equal(await page.locator('.local-overlay > circle').count(), 1)
+
+  const readback = async () => {
+    await page.evaluate((draftId) => {
+      const toBlob = HTMLCanvasElement.prototype.toBlob
+      HTMLCanvasElement.prototype.toBlob = function (callback, ...args) {
+        HTMLCanvasElement.prototype.toBlob = toBlob
+        window.releaseLocalPng = () => toBlob.call(this, callback, ...args)
+      }
+      window.pendingLocalPng = window.openlr.dispatch('preview', { source: 'local-draft', draftId })
+    }, id)
+    await page.waitForFunction(() => typeof window.releaseLocalPng === 'function')
+  }
+  const release = () =>
+    page.evaluate(async () => {
+      window.releaseLocalPng()
+      window.releaseLocalPng = null
+      return window.pendingLocalPng
+    })
+
+  await page.evaluate(() => {
+    // Reproduce SVG image readback with its nested PNG omitted. The mounted
+    // overlay keeps its real PNG, and vector snapshot serialization is unchanged.
+    const serialize = XMLSerializer.prototype.serializeToString
+    XMLSerializer.prototype.serializeToString = function (node) {
+      if (node.matches?.('.local-overlay') && node.querySelector('image')) {
+        node = node.cloneNode(true)
+        node.querySelector('image').remove()
+      }
+      return serialize.call(this, node)
+    }
+  })
+  const baseline = await overlayPng(page, id)
+  const { width, height, data } = baseline
+  const center = (Math.floor(height / 2) * width + Math.floor(width / 2)) * 4
+  assert.deepEqual(Array.from(data.subarray(center, center + 3)), [1, 0, 0])
+  assert.ok([76, 77].includes(Math.round(data[center + 3] * 255)))
+  assert.ok(data.some((alpha, i) => i % 4 === 3 && alpha > 0.8 && data[i - 3] < 0.45 && data[i - 1] > 0.94))
+  assert.deepEqual(Array.from(data.subarray(0, 4)), [0, 0, 0, 0])
+
+  await readback()
+  assert.equal(
+    await page.evaluate(() => {
+      const previous = document.querySelector('.local-overlay > image')
+      window.dispatchEvent(new Event('resize'))
+      const next = document.querySelector('.local-overlay > image')
+      return previous !== next && previous.isEqualNode(next)
+    }),
+    true
+  )
+  const unchanged = await release()
+  assert.equal(unchanged.ok, true, unchanged.error?.message)
+  assert.deepEqual(readPng(Buffer.from(unchanged.result.base64, 'base64')).data, data)
+
+  await readback()
+  await run('mask-overlay', { enabled: false })
+  const changed = await release()
+  assert.equal(changed.ok, false)
+  assert.match(changed.error.message, /draft changed/i)
+  assert.equal((await run('state')).localDraft.id, id)
+  assert.ok((await overlayPng(page, id)).data.every((channel) => channel === 0))
+})

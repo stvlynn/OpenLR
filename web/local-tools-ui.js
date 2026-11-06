@@ -491,7 +491,6 @@ export function createLocalToolsUI({ container, run, getActive, notify, onDraftC
     if (!mounted) return
     const { canvas, overlay, image, edit } = mounted,
       bounds = canvas.getBoundingClientRect()
-    mounted.overlayRevision++
     Object.assign(overlay.style, {
       left: bounds.left + 'px',
       top: bounds.top + 'px',
@@ -672,30 +671,55 @@ export function createLocalToolsUI({ container, run, getActive, notify, onDraftC
   }
   async function draftImage(id) {
     const record = currentDraft(id),
-      { overlay, overlayRevision } = record.surface
+      { overlay } = record.surface
+    const viewBox = overlay.getAttribute('viewBox')
     const { width, height } = overlay.viewBox.baseVal
     const snapshot = overlay.cloneNode(true)
-    snapshot.removeAttribute('style')
-    snapshot.setAttribute('width', Math.max(1, Math.round(width)))
-    snapshot.setAttribute('height', Math.max(1, Math.round(height)))
-    const url = URL.createObjectURL(
-      new Blob([new XMLSerializer().serializeToString(snapshot)], { type: 'image/svg+xml' })
-    )
-    try {
+    const children = [...snapshot.children]
+    const canvas = document.createElement('canvas')
+    canvas.width = Math.max(1, Math.round(width))
+    canvas.height = Math.max(1, Math.round(height))
+    const ctx = canvas.getContext('2d')
+    // SVG loaded as an image can paint before its embedded PNG is ready.
+    // Decode the published raster directly, then draw the published vectors over it.
+    const raster = snapshot.querySelector('image')
+    if (raster && width > 0 && height > 0) {
+      raster.remove()
       const image = new Image()
-      image.src = url
+      image.src = raster.getAttribute('href')
       await image.decode()
-      const canvas = document.createElement('canvas')
-      canvas.width = image.naturalWidth
-      canvas.height = image.naturalHeight
-      canvas.getContext('2d').drawImage(image, 0, 0)
-      const blob = await toBlob(canvas, 'image/png')
-      if (currentDraft(id) !== record || record.surface.overlayRevision !== overlayRevision)
-        throw Error(LOCAL_DRAFT_MESSAGES.changed)
-      return { blob, filename: 'local-stroke-draft.png' }
-    } finally {
-      URL.revokeObjectURL(url)
+      const scale = Math.min(canvas.width / width, canvas.height / height)
+      const w = width * scale,
+        h = height * scale
+      ctx.globalAlpha = Number(raster.getAttribute('opacity'))
+      ctx.drawImage(image, (canvas.width - w) / 2, (canvas.height - h) / 2, w, h)
+      ctx.globalAlpha = 1
     }
+    snapshot.removeAttribute('style')
+    snapshot.setAttribute('width', canvas.width)
+    snapshot.setAttribute('height', canvas.height)
+    if (snapshot.childElementCount && width > 0 && height > 0) {
+      const url = URL.createObjectURL(
+        new Blob([new XMLSerializer().serializeToString(snapshot)], { type: 'image/svg+xml' })
+      )
+      try {
+        const image = new Image()
+        image.src = url
+        await image.decode()
+        ctx.drawImage(image, 0, 0)
+      } finally {
+        URL.revokeObjectURL(url)
+      }
+    }
+    const blob = await toBlob(canvas, 'image/png')
+    if (
+      currentDraft(id) !== record ||
+      overlay.getAttribute('viewBox') !== viewBox ||
+      overlay.childElementCount !== children.length ||
+      !children.every((child, index) => child.isEqualNode(overlay.children[index]))
+    )
+      throw Error(LOCAL_DRAFT_MESSAGES.changed)
+    return { blob, filename: 'local-stroke-draft.png' }
   }
   function cancelGesture(redraw = true) {
     const previous = gesture
@@ -722,7 +746,7 @@ export function createLocalToolsUI({ container, run, getActive, notify, onDraftC
     const overlay = svgNode('svg', { 'aria-hidden': 'true', class: 'local-overlay' })
     Object.assign(overlay.style, { position: 'fixed', pointerEvents: 'none', zIndex: 5, overflow: 'hidden' })
     document.body.append(overlay)
-    mounted = { canvas, overlay, image, edit, overlayRevision: 0 }
+    mounted = { canvas, overlay, image, edit }
     canvas.style.cursor = mode.value === 'off' && !colorPicking ? 'zoom-in' : 'crosshair'
     const point = (event) => {
       const r = canvas.getBoundingClientRect()
