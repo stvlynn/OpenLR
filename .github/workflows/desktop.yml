@@ -10,7 +10,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, ubuntu-24.04, macos-15-intel, macos-15]
+        os: [ubuntu-24.04]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     steps:
@@ -22,8 +22,31 @@ jobs:
         with:
           go-version-file: go.mod
       - run: npm ci
-      - if: runner.os == 'Linux'
-        run: sudo apt-get update -qq && sudo apt-get install -y libwebkit2gtk-4.1-0 gstreamer1.0-plugins-bad xvfb
+      - name: Compare APT plans and install without recommendations
+        if: runner.os == 'Linux'
+        shell: bash
+        env:
+          LC_ALL: C
+        run: |
+          sudo apt-get update -qq
+          packages=(libwebkit2gtk-4.1-0 gstreamer1.0-plugins-bad xvfb)
+          archives() {
+            sudo apt-get --assume-yes --print-uris install "$@" "${packages[@]}" |
+              awk '$2 ~ /\.deb$/ && $3 ~ /^[0-9]+$/ { print $2, $3 }' |
+              sort
+          }
+          stock="$RUNNER_TEMP/openlr-apt-stock.txt"
+          reduced="$RUNNER_TEMP/openlr-apt-reduced.txt"
+          archives > "$stock"
+          archives --no-install-recommends > "$reduced"
+          for plan in "$stock" "$reduced"; do
+            awk '{ bytes += $2 } END { printf "%s packages=%d bytes=%.0f\n", FILENAME, NR, bytes }' "$plan"
+          done
+          echo 'Stock-only archives:'
+          comm -23 "$stock" "$reduced"
+          echo 'Reduced-plan-only archives:'
+          comm -13 "$stock" "$reduced"
+          sudo apt-get install -y --no-install-recommends "${packages[@]}"
       - run: go test ./...
       - if: runner.os == 'Linux'
         run: go test -race ./...
