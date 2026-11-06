@@ -76,7 +76,7 @@ import {
 import { mountOptics } from './optics-ui.js'
 import * as migration from './migration.js'
 import { mountMigration } from './migration-ui.js'
-import { LOCAL_COMMANDS, updateLocalTools, localToolAt } from './local-tools.js'
+import { LOCAL_COMMANDS, updateLocalTools, localToolAt, validateLocalTool } from './local-tools.js'
 import { createLocalToolsUI, viewToOriginal } from './local-tools-ui.js'
 import { neutralBalance, WHITE_BALANCE_MESSAGES } from './white-balance.js'
 import { analyzeFocus, validEye } from './culling.js'
@@ -866,6 +866,7 @@ function snapshot() {
     cropping,
     cropDraft: cropDraft(),
     adjustmentDraft: adjustmentDraftState(),
+    localDraft: localToolsUI?.draftState() ?? null,
     cropGuide: { ...cropSurface.guide },
     straightenTool: opticsUI?.snapshot(),
     localSelection: localToolsUI?.selection(),
@@ -992,6 +993,15 @@ async function execute(command, args, context = {}) {
   if (args.draft && context.draftSource && (!p || p.edit !== context.draftEdit || p.id !== args.photoId))
     return null
   if (command === 'draft-commit') {
+    if (localToolsUI?.hasDraftId(args.id)) {
+      const draft = localToolsUI.takeDraft(args.id)
+      try {
+        return await execute(draft.command, draft.args)
+      } catch (error) {
+        notifyWorkspaceChange()
+        throw error
+      }
+    }
     const record = currentAdjustment(args.id)
     if (record.state.status === 'failed') throw Error(record.state.error)
     record.source?.cancel()
@@ -1029,6 +1039,10 @@ async function execute(command, args, context = {}) {
   const nextId = advance ? visible()[visible().findIndex((row) => row.id === selected) + 1]?.id : null
   switch (command) {
     case 'draft-cancel': {
+      if (!context.draftSource && localToolsUI?.hasDraftId(args.id)) {
+        localToolsUI.takeDraft(args.id)
+        return { canceled: true }
+      }
       if (context.draftSource) {
         if (adjustmentDraft?.source !== context.draftSource) return { canceled: false }
       } else currentAdjustment(args.id)
@@ -1110,6 +1124,7 @@ async function execute(command, args, context = {}) {
         processing: processingState(),
         cropDraft: cropDraft(),
         adjustmentDraft: adjustmentDraftState(),
+        localDraft: localToolsUI?.draftState() ?? null,
         cropGuide: { ...cropSurface.guide },
         straightenTool: opticsUI?.snapshot(),
         localSelection: localToolsUI?.selection(),
@@ -1308,6 +1323,7 @@ async function execute(command, args, context = {}) {
     case 'straighten-tool': {
       if (args.photoId !== undefined && args.photoId !== p?.id) throw Error('The selected photo changed')
       if (args.axis === 'off') {
+        if (args.referenceId !== undefined) opticsUI.requireReference(p?.edit, args.referenceId)
         opticsUI.deactivate()
         break
       }
@@ -1318,6 +1334,11 @@ async function execute(command, args, context = {}) {
       localToolsUI.deactivate()
       opticsUI.setMode(enumValue(args.axis ?? 'horizontal', ['horizontal', 'vertical']))
       break
+    }
+    case 'straighten-point': {
+      if (args.photoId !== undefined && args.photoId !== p?.id) throw Error('The selected photo changed')
+      const line = opticsUI.placePoint(args.point, p?.edit, args.referenceId, context.straightenOwner)
+      return line ? execute('straighten', { ...line, photoId: p.id }) : snapshot()
     }
     case 'presets':
       return presets.items
@@ -1753,8 +1774,18 @@ async function execute(command, args, context = {}) {
       if ((command.startsWith('curve-') || command.startsWith('grading-')) && p.local?.sidecarError)
         throw Error(p.local.sidecarError)
       if (LOCAL_COMMANDS.includes(command)) {
+        if (context.localGesture && !localToolsUI.ownsGesture(context.localGesture)) return null
         if (args.photoId !== undefined && args.photoId !== p.id)
           throw Error('The selected photo changed; local edit was canceled')
+        if (args.draft) {
+          const kind = command.split('.')[0]
+          return localToolsUI.stageDraft(
+            command,
+            args,
+            validateLocalTool(kind, args[kind]),
+            context.localGesture
+          )
+        }
         const edit = updateLocalTools(p.edit, command, args)
         await replace(p, { edit })
         rememberEdit(p)
@@ -1795,8 +1826,6 @@ async function execute(command, args, context = {}) {
           if (isVideo(p)) throw Error('Optics and geometry correction require a still photo')
           if (args.photoId !== undefined && args.photoId !== p.id)
             throw Error('The selected photo changed; optics edit was canceled')
-          if (context.straightenReference && !opticsUI.ownsReference(context.straightenReference))
-            throw Error('The straighten reference changed; choose two new points')
           await source(p.id)
           let optics
           if (command === 'optics') optics = validateOptics({ ...p.edit.optics, ...args.changes })
@@ -2407,12 +2436,14 @@ const ready = Promise.all([db.all('photos'), db.all('albums'), presets.load()]).
   globalThis.openlrStartupMilestone?.('workspace-ready')
 })
 export function run(command, args = {}, observe, context) {
-  if (command === 'preview' && args?.source === 'draft')
+  if (command === 'preview' && args?.source !== undefined)
     return queue
       .then(() => ready)
       .then(async () => {
         validateArgs(command, args)
-        const result = await draftImage(args.draftId)
+        const result = await (args.source === 'local-draft'
+          ? localToolsUI.draftImage(args.draftId)
+          : draftImage(args.draftId))
         return observe ? observe(result, snapshot()) : result
       })
   if (command === 'export-status' || command === 'export-cancel') {
@@ -2431,7 +2462,7 @@ export function run(command, args = {}, observe, context) {
       const result = await execute(command, args, context)
       libraryHistory.record(previous, photos, albums)
       const unchangedPoll =
-        (context?.draftSource && result === null) ||
+        ((context?.draftSource || context?.localGesture) && result === null) ||
         (command === 'draft-cancel' && !result.canceled) ||
         (command === 'repair-source' && args.point === undefined && args.picking === undefined) ||
         (command === 'viewport' && args.x === undefined && args.y === undefined) ||
@@ -2495,7 +2526,13 @@ processingLabel.append(processingSelect)
 $('reset').before(processingLabel)
 const localToolContainer = document.createElement('div')
 $('reset').before(localToolContainer)
-localToolsUI = createLocalToolsUI({ container: localToolContainer, run, getActive: active, notify: notice })
+localToolsUI = createLocalToolsUI({
+  container: localToolContainer,
+  run,
+  getActive: active,
+  notify: notice,
+  onDraftChange: notifyWorkspaceChange
+})
 async function importUI(files) {
   const result = await act('import', { files: [...files] })
   if (result?.failed.length) notice(result.failed.map((f) => f.name + ': ' + f.error).join(' · '))
@@ -3013,7 +3050,7 @@ $('layout').onclick = () => act('grid-layout')
 $('end-slides').onclick = () => act('slideshow', { stop: true })
 updateMerge = mountMerge(run, notice)
 updateEnhance = mountEnhance(run, notice)
-opticsUI = mountOptics({ run, getActive: active, notify: notice, onChange: notifyWorkspaceChange })
+opticsUI = mountOptics({ run, getActive: active, notify: notice })
 migrationUI = mountMigration({ run, notify: notice })
 
 // Capture base titles once, before draw can add live text such as a filter count.

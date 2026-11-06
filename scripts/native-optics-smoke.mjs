@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict'
 import { readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
+import { setTimeout as delay } from 'node:timers/promises'
+import { watch } from '../cli/openlr.mjs'
 import { makePng } from '../tests/fixtures/png.mjs'
 import { readPng } from '../web/png.js'
 import { withNativeWorkspace } from './native-workspace.mjs'
@@ -83,7 +85,7 @@ function assertSameImage(actual, expected) {
   assert.deepEqual(actual.data, expected.data)
 }
 
-await withNativeWorkspace(process.argv[2], async ({ root, call, initial }) => {
+await withNativeWorkspace(process.argv[2], async ({ root, call, initial, session }) => {
   assert.deepEqual(initial.photos, [])
   const input = path.join(root, 'calibration-scene.png')
   const source = generatedScene()
@@ -218,7 +220,67 @@ await withNativeWorkspace(process.argv[2], async ({ root, call, initial }) => {
   await assert.rejects(geometry('straighten', { ...reference, photoId: 'stale' }), /selected photo changed/)
   assert.deepEqual(row(await state()).edit, baseline)
   assert.deepEqual((await state()).straightenTool, picking.straightenTool)
-  const completed = await geometry('straighten', reference)
+  const revisions = []
+  let observedReference
+  await Promise.race([
+    watch({ session, count: 2 }, async (update) => {
+      revisions.push(update.revision)
+      assert.equal(update.selected, id)
+      if (revisions.length === 1) {
+        assert.deepEqual(update.straightenTool, picking.straightenTool)
+        const first = await geometry('straighten-point', { point: start })
+        observedReference = first.straightenTool
+        assert.equal(typeof observedReference.referenceId, 'string')
+        assert.ok(observedReference.referenceId)
+        assert.deepEqual(observedReference.first, start)
+        assert.equal(observedReference.axis, 'horizontal')
+        assert.deepEqual(row(first).edit, baseline)
+      } else {
+        assert.deepEqual(update.straightenTool, observedReference)
+      }
+    }),
+    delay(15_000, undefined, { ref: false }).then(() => {
+      throw Error('Straighten first-point watch did not publish the changed state')
+    })
+  ])
+  assert.equal(revisions[1], revisions[0] + 1)
+  assert.deepEqual((await state()).straightenTool, observedReference)
+  assertSameImage(await exported('straighten-first-point'), uncorrected)
+
+  const canceled = await geometry('straighten-tool', {
+    axis: 'off',
+    referenceId: observedReference.referenceId
+  })
+  assert.deepEqual(canceled.straightenTool, { axis: 'off', first: null })
+  assert.deepEqual(row(canceled).edit, baseline)
+  await assert.rejects(
+    geometry('straighten-point', { point: end, referenceId: observedReference.referenceId }),
+    /straighten reference changed/
+  )
+  await geometry('straighten-tool', { axis: 'horizontal' })
+  const pending = (await geometry('straighten-point', { point: start })).straightenTool
+  assert.notEqual(pending.referenceId, observedReference.referenceId)
+  assert.deepEqual(pending.first, start)
+  await assert.rejects(
+    geometry('straighten-point', { point: end, referenceId: observedReference.referenceId }),
+    /straighten reference changed/
+  )
+  await assert.rejects(
+    geometry('straighten-tool', { axis: 'off', referenceId: observedReference.referenceId }),
+    /straighten reference changed/
+  )
+  await assert.rejects(
+    geometry('straighten-point', { point: end, referenceId: pending.referenceId, photoId: 'stale' }),
+    /selected photo changed/
+  )
+  await assert.rejects(
+    geometry('straighten-point', { point: start, referenceId: pending.referenceId }),
+    /two distinct points/
+  )
+  const beforeSecond = await state()
+  assert.deepEqual(beforeSecond.straightenTool, pending)
+  assert.deepEqual(row(beforeSecond).edit, baseline)
+  const completed = await geometry('straighten-point', { point: end, referenceId: pending.referenceId })
   assert.deepEqual(completed.straightenTool, { axis: 'off', first: null })
   const straightEdit = row(completed).edit
   const expectedAngle = -(Math.atan2(20, 80) * 180) / Math.PI
@@ -232,8 +294,13 @@ await withNativeWorkspace(process.argv[2], async ({ root, call, initial }) => {
   assert.ok(Math.abs(referenceTilt[1]) <= 2, JSON.stringify(referenceTilt))
   assert.deepEqual(row(await call('undo')).edit, baseline)
   assertSameImage(await exported('undone-straighten'), uncorrected)
+  assert.deepEqual(row(await call('undo')).edit, shiftedEdit, 'Staged and canceled points add no history')
+  assert.deepEqual(row(await call('redo')).edit, baseline)
   assert.deepEqual(row(await call('redo')).edit, straightEdit)
   assertSameImage(await exported('redone-straighten'), straight)
+  await call('undo')
+  assert.deepEqual(row(await geometry('straighten', reference)).edit, straightEdit)
+  assertSameImage(await exported('direct-straighten'), straight)
 
   const preserved = await call('export', '--format', 'original', '--output', path.join(root, 'original.png'))
   assert.deepEqual(await readFile(preserved.path), original)
@@ -252,6 +319,7 @@ await withNativeWorkspace(process.argv[2], async ({ root, call, initial }) => {
         rotated: [height - 1 - 21, 28],
         reflected: [height - 1 - 21, width - 1 - 28]
       },
+      straightenFirstPointObserved: true,
       straightenDegrees: straightEdit.optics.rotate,
       referenceTilt,
       preservedOriginals: 1

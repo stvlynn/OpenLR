@@ -10,7 +10,12 @@ import { validCrop } from './geometry.js'
 import { CROP_GUIDES } from './crop-guides.js'
 import { COLOR_SPACES } from './color-spaces.js'
 import { validateExportColorSpace } from './export-color.js'
-import { LOCAL_CONTROLS, validateLocalTool, validateLocalChanges } from './local-tools.js'
+import {
+  LOCAL_CONTROLS,
+  validateLocalTool,
+  validateLocalChanges,
+  validateOriginalPoint
+} from './local-tools.js'
 import { EXPORT_TYPES } from './formats.js'
 import { EXPORT_METADATA_POLICIES, validateExportMetadataPolicy } from './export-metadata.js'
 import { OUTPUT_SHARPENING_LEVELS, validateOutputSharpening } from './export-sharpening.js'
@@ -35,9 +40,10 @@ const entry = (summary, properties = {}, required = [], extra = {}) => ({
   ...extra
 })
 const edits = Object.assign({}, ...Object.values(controls))
-const draftMode = { type: 'boolean', description: 'Stage a temporary adjustment without saving it' }
+const draftMode = { type: 'boolean', description: 'Stage a temporary change without saving it' }
 export const ADJUSTMENT_DRAFT_MESSAGES = Object.freeze({
   numericOnly: 'Choose a numeric adjustment for the draft',
+  strokeOnly: 'Choose a brush, linear or radial mask for the draft',
   previewArguments: 'Draft preview requires its ID and uses the displayed size',
   detail: 'Open a photo in Detail or pause the video before previewing an adjustment',
   changed: 'The adjustment draft changed',
@@ -163,7 +169,10 @@ for (const kind of ['mask', 'repair']) {
       (kind === 'mask'
         ? 'linear/radial/brush adjustment mask'
         : 'clone or mean-color matched texture repair'),
-    { [kind]: { type: 'object', properties, required: ['type'], additionalProperties: false } },
+    {
+      draft: draftMode,
+      [kind]: { type: 'object', properties, required: ['type'], additionalProperties: false }
+    },
     [kind]
   )
   localDefinitions[kind + '.update'] = entry(
@@ -402,10 +411,20 @@ export const definitions = {
     },
     ['start', 'end']
   ),
-  'straighten-tool': entry('Choose two image points in the GUI for an actual straightening reference', {
+  'straighten-tool': entry('Start or cancel the horizontal or vertical straightening reference', {
     axis: string('Reference line axis, or off to cancel', { enum: ['horizontal', 'vertical', 'off'] }),
-    photoId: string('Optional selected-photo identity guard')
+    photoId: string('Optional selected-photo identity guard'),
+    referenceId: string('When canceling, require this staged reference ID')
   }),
+  'straighten-point': entry(
+    'Set the first point in the active straighten picker, or complete its reference with the second',
+    {
+      point: pointRule,
+      photoId: string('Optional selected-photo identity guard'),
+      referenceId: string('Optional ID of the staged first point')
+    },
+    ['point']
+  ),
   'mask.combine': entry(
     'Combine two mask coverages into one group; retain first adjustments and consume second mask',
     {
@@ -1002,13 +1021,13 @@ export const definitions = {
     ['channel', 'points']
   ),
   'draft-commit': entry(
-    'Save the current adjustment draft as one edit',
-    { id: string('Current adjustment draft ID') },
+    'Save the current adjustment or local stroke draft as one edit',
+    { id: string('Current draft ID') },
     ['id']
   ),
   'draft-cancel': entry(
-    'Discard the current adjustment draft and restore the committed preview',
-    { id: string('Current adjustment draft ID') },
+    'Discard the current adjustment or local stroke draft',
+    { id: string('Current draft ID') },
     ['id']
   ),
   reset: entry('Reset all selected-photo edits, retaining its processing version'),
@@ -1026,8 +1045,10 @@ export const definitions = {
     'Read the current edited or comparison image as PNG',
     {
       maxSize: { type: 'integer', minimum: 1, description: 'Maximum image edge in pixels' },
-      source: string('Read the published adjustment draft canvas', { enum: ['draft'] }),
-      draftId: string('Current adjustment draft ID; required for source draft')
+      source: string('Read the published adjustment canvas or local stroke overlay', {
+        enum: ['draft', 'local-draft']
+      }),
+      draftId: string('Current draft ID; required when choosing a source')
     },
     [],
     { returns: 'image/png' }
@@ -1184,6 +1205,9 @@ export function validateArgs(command, args) {
       throw Error('Choose point or picking, not both')
     if (args.point !== undefined) validateLocalChanges('repair', { source: args.point })
   }
+  if (command === 'straighten-point') validateOriginalPoint(args.point, 'Straighten point')
+  if (command === 'straighten-tool' && args.referenceId !== undefined && args.axis !== 'off')
+    throw Error('A straighten reference ID can only guard cancellation')
   if (command === 'grading-set') {
     if (args.patch !== undefined) {
       if (!args.photoId || Object.hasOwn(args, 'value') || Object.hasOwn(args, 'expectedValue'))
@@ -1209,7 +1233,7 @@ export function validateArgs(command, args) {
     if (args.options !== undefined) validateArgs('export', args.options)
   }
   if (command === 'preview' && (args.source !== undefined || args.draftId !== undefined)) {
-    if (!args.draftId || args.source !== 'draft' || args.maxSize !== undefined)
+    if (!args.draftId || args.source === undefined || args.maxSize !== undefined)
       throw Error(ADJUSTMENT_DRAFT_MESSAGES.previewArguments)
   }
   if (command === 'edit') {
@@ -1224,8 +1248,12 @@ export function validateArgs(command, args) {
     } else if (!definitions.edit.specialControls[key]?.includes(value))
       throw new Error('Invalid value for ' + key)
   }
-  if (command === 'mask.add' || command === 'repair.add')
-    validateLocalTool(command.split('.')[0], args[command.split('.')[0]])
+  if (command === 'mask.add' || command === 'repair.add') {
+    const kind = command.split('.')[0]
+    const tool = validateLocalTool(kind, args[kind])
+    if (args.draft && kind === 'mask' && !['brush', 'linear', 'radial'].includes(tool.type))
+      throw Error(ADJUSTMENT_DRAFT_MESSAGES.strokeOnly)
+  }
   if (command === 'mask.update' || command === 'repair.update')
     validateLocalChanges(command.split('.')[0], args.changes)
   if (command === 'local-select' && args.path?.some((index) => index !== 0 && index !== 1))

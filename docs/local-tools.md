@@ -36,6 +36,18 @@ node cli/openlr.mjs repair.remove --id 'ID from state'
 
 `mask.add/update/remove` and `repair.add/update/remove` share nested validation with the GUI. IDs are generated on add; update/remove require an existing ID. Updates merge adjustment values without changing other local settings. An optional `photoId` rejects a request if selection has changed. There is no separate hidden CLI catalog.
 
+To inspect a new stroke without adding it, activate the matching local tool and add `--draft true` to `mask.add` for Brush, Linear or Radial, or to `repair.add` for Clone or Heal. The geometry uses the same original-image coordinates as the saved form. Clone and Heal take the source point in their recipe. Full and summary `state` expose `localDraft` with its ID, photo, typed geometry, status and overlay visibility. The existing photo preview and exports continue to use the saved recipe.
+
+```sh
+node cli/openlr.mjs local-tool --tool radial
+node cli/openlr.mjs mask.add --args '{"mask":{"type":"radial","center":{"x":0.5,"y":0.5},"rx":0.2,"ry":0.3},"draft":true}'
+node cli/openlr.mjs preview --source local-draft --draftId ID --output overlay.png
+node cli/openlr.mjs draft-commit --id ID
+node cli/openlr.mjs draft-cancel --id ID
+```
+
+The PNG is the actual transparent overlay at its displayed dimensions. Masks show red coverage at the editor's overlay opacity, and repairs show the stroke path and source marker. A hidden mask overlay returns a transparent layer. For the photo and controls together, use `--capture` or `screenshot`. `mask-preview` continues to export coverage of a saved mask. A new draft supersedes the old ID. Commit adds one ordinary mask or repair with its normal history and selection behavior. Cancel clears the layer without saving, and `local-cancel` still discards the current local stroke. [Draft design and verification](../research/local-stroke-drafts.md)
+
 The GUI **Local tool** selector runs the same `local-tool` command as the CLI. Selecting a tool opens Detail and exits crop, comparison and sampling before mounting its interaction surface. This changes presentation state, not the photo recipe; creating or changing a mask remains a separate command. Both full and summary `state` expose `localTool` as `off`, `brush`, `linear`, `radial`, `clone` or `heal`. It identifies the selected mode, which may remain selected while Grid is displayed; `mode` supplies that context. `localSelection` retains its existing mask/component/overlay contract. Tool changes notify live observers through the dispatcher.
 
 ## Sources and verification

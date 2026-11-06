@@ -1,7 +1,7 @@
 import { OPTICS_CONTROLS, listLensProfiles } from './optics.js'
 import { viewToOriginal } from './local-tools-ui.js'
 
-export function mountOptics({ run, getActive, notify, onChange }) {
+export function mountOptics({ run, getActive, notify }) {
   const el = (tag, props = {}) => Object.assign(document.createElement(tag), props)
   document.head.append(el('link', { rel: 'stylesheet', href: new URL('./optics.css', import.meta.url).href }))
   const panel = el('details', { id: 'optics-panel' }),
@@ -66,7 +66,7 @@ export function mountOptics({ run, getActive, notify, onChange }) {
     lastProfile = '',
     candidates = listLensProfiles(),
     mode = '',
-    first = null,
+    reference = null,
     suppressClick = false,
     cleanup = () => {}
   function options(items = candidates) {
@@ -124,9 +124,26 @@ export function mountOptics({ run, getActive, notify, onChange }) {
     run('straighten-tool', { axis: mode ? 'off' : axis.value, photoId: getActive()?.id }).catch(showError)
   function setMode(value) {
     mode = value
-    first = null
+    reference = value ? { edit: getActive()?.edit, first: null } : null
     guide.textContent = value ? 'Cancel straighten line' : 'Draw straighten line'
     status.textContent = value ? 'Click two points along a ' + value + ' reference line.' : ''
+  }
+  function requireReference(edit, id, owner) {
+    if (
+      !reference ||
+      reference.edit !== edit ||
+      (id !== undefined && id !== reference.id) ||
+      (owner && owner !== reference)
+    )
+      throw Error('The straighten reference changed; choose two new points')
+  }
+  function placePoint(point, edit, id, owner) {
+    requireReference(edit, id, owner)
+    if (reference.first) return { start: reference.first, end: point, axis: mode }
+    reference.first = { ...point }
+    reference.id = crypto.randomUUID()
+    status.textContent = 'First point set. Click the other end of the reference line.'
+    return null
   }
   function sync() {
     const photo = getActive(),
@@ -141,6 +158,7 @@ export function mountOptics({ run, getActive, notify, onChange }) {
       candidates = listLensProfiles()
       options()
     }
+    if (reference && reference.edit !== photo?.edit) setMode('')
     if (profile?.id !== lastProfile) {
       lastProfile = profile?.id ?? ''
       if (profile) {
@@ -193,16 +211,8 @@ export function mountOptics({ run, getActive, notify, onChange }) {
         status.textContent = 'Choose a point on the source image, away from transparent edges.'
         return
       }
-      if (!first) {
-        first = point
-        status.textContent = 'First point set. Click the other end of the reference line.'
-        onChange?.()
-        return
-      }
-      const start = first,
-        axis = mode
-      run('straighten', { start, end: point, axis, photoId: getActive()?.id }, undefined, {
-        straightenReference: start
+      run('straighten-point', { point, photoId: getActive()?.id }, undefined, {
+        straightenOwner: reference
       }).catch(showError)
     }
     const click = (event) => {
@@ -235,8 +245,13 @@ export function mountOptics({ run, getActive, notify, onChange }) {
       cleanup = () => {}
     },
     active: () => Boolean(mode),
-    snapshot: () => ({ axis: mode || 'off', first: first ? { ...first } : null }),
-    ownsReference: (point) => first === point,
+    snapshot: () => ({
+      axis: mode || 'off',
+      first: reference?.first ? { ...reference.first } : null,
+      ...(reference?.id ? { referenceId: reference.id } : {})
+    }),
+    requireReference,
+    placePoint,
     deactivate: () => setMode(''),
     panel
   }

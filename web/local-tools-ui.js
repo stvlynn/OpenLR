@@ -3,6 +3,12 @@ import { LOCAL_CONTROLS, localToolAt } from './local-tools.js'
 import { compileOptics, renderOpticsSource } from './optics.js'
 import { AI_TARGETS } from './ai-models.js'
 import { maskCoverageSource } from './mask-preview.js'
+import { toBlob } from './render.js'
+
+export const LOCAL_DRAFT_MESSAGES = Object.freeze({
+  tool: 'Choose the corresponding local tool in Detail before previewing a stroke',
+  changed: 'The local stroke draft changed'
+})
 
 const clamp = (v) => Math.max(0, Math.min(1, v))
 export function viewToOriginal(point, image, edit = {}) {
@@ -38,7 +44,7 @@ function element(tag, attributes = {}, text) {
   if (text) node.textContent = text
   return node
 }
-export function createLocalToolsUI({ container, run, getActive, notify }) {
+export function createLocalToolsUI({ container, run, getActive, notify, onDraftChange = () => {} }) {
   const panel = element('details', { class: 'local-tools' }),
     heading = element('summary', {}, 'Masks & local repair')
   const mode = element('select', { 'aria-label': 'Local tool' }),
@@ -334,13 +340,13 @@ export function createLocalToolsUI({ container, run, getActive, notify }) {
       list.value,
       component.value ? component.value.split('.').map(Number) : []
     )
-  const commit = (command, args) => {
+  const commit = (command, args, context) => {
     if (command === 'mask.update' && component.value) {
       args = { ...args, id: list.value, path: component.value.split('.').map(Number) }
       command = 'mask.component-update'
     }
-    return run(command, { ...args, photoId: args.photoId ?? getActive()?.id }).catch((error) =>
-      notify(error.message)
+    return run(command, { ...args, photoId: args.photoId ?? getActive()?.id }, undefined, context).catch(
+      (error) => notify(error.message)
     )
   }
   function sync(requestedPath) {
@@ -485,6 +491,7 @@ export function createLocalToolsUI({ container, run, getActive, notify }) {
     if (!mounted) return
     const { canvas, overlay, image, edit } = mounted,
       bounds = canvas.getBoundingClientRect()
+    mounted.overlayRevision++
     Object.assign(overlay.style, {
       left: bounds.left + 'px',
       top: bounds.top + 'px',
@@ -519,7 +526,7 @@ export function createLocalToolsUI({ container, run, getActive, notify }) {
           svgNode('circle', { cx: q.x, cy: q.y, r: 5, fill: 'none', stroke: '#59d9ff', 'stroke-width': 2 })
         )
     }
-    const tool = draft || selectedItem()
+    const tool = draft?.tool ?? selectedItem()
     if (tool && !['clone', 'heal'].includes(tool.type)) {
       if (!overlayVisible.checked) return
       const small = maskCoverageSource(image, edit, tool, { maxEdge: 384 }),
@@ -595,15 +602,110 @@ export function createLocalToolsUI({ container, run, getActive, notify }) {
         })
       )
     }
-    if (source) circle(source)
+    const shownSource = draft && ['clone', 'heal'].includes(tool?.type) ? tool.source : source
+    if (shownSource) circle(shownSource)
   }
-  function cancelGesture() {
+  function ownsGesture(candidate) {
+    const photo = getActive()
+    return Boolean(
+      photo &&
+      candidate &&
+      !candidate.canceled &&
+      candidate.surface === mounted &&
+      candidate.photoId === photo?.id &&
+      candidate.surface.edit === photo.edit
+    )
+  }
+  function ownsDraft(record) {
+    const photo = getActive()
+    return Boolean(
+      record &&
+      record.surface === mounted &&
+      record.state.photoId === photo?.id &&
+      record.surface.edit === photo.edit &&
+      record.surface.canvas.isConnected
+    )
+  }
+  function draftState() {
+    return ownsDraft(draft)
+      ? structuredClone({ ...draft.state, visible: Boolean(mounted.overlay.childElementCount) })
+      : null
+  }
+  function stageDraft(command, args, tool, origin) {
+    const photo = getActive()
+    if (origin && !ownsGesture(origin)) return null
+    if (!mounted || mounted.edit !== photo?.edit || mode.value !== tool.type) {
+      if (origin) return null
+      throw Error(LOCAL_DRAFT_MESSAGES.tool)
+    }
+    const { draft: _, ...change } = args
+    if (!origin) cancelGesture(false)
+    else if (draft?.gesture && draft.gesture !== origin) draft.gesture.canceled = true
+    draft = {
+      surface: mounted,
+      gesture: origin,
+      tool,
+      state: {
+        id: crypto.randomUUID(),
+        photoId: photo.id,
+        command,
+        args: structuredClone({ ...change, [command.split('.')[0]]: tool, photoId: photo.id }),
+        status: 'ready'
+      }
+    }
+    try {
+      drawOverlay()
+    } catch (error) {
+      draft = null
+      throw error
+    }
+    return draftState()
+  }
+  function currentDraft(id) {
+    if (!ownsDraft(draft) || draft.state.id !== id) throw Error(LOCAL_DRAFT_MESSAGES.changed)
+    return draft
+  }
+  function takeDraft(id) {
+    const state = currentDraft(id).state
+    cancelGesture()
+    return state
+  }
+  async function draftImage(id) {
+    const record = currentDraft(id),
+      { overlay, overlayRevision } = record.surface
+    const { width, height } = overlay.viewBox.baseVal
+    const snapshot = overlay.cloneNode(true)
+    snapshot.removeAttribute('style')
+    snapshot.setAttribute('width', Math.max(1, Math.round(width)))
+    snapshot.setAttribute('height', Math.max(1, Math.round(height)))
+    const url = URL.createObjectURL(
+      new Blob([new XMLSerializer().serializeToString(snapshot)], { type: 'image/svg+xml' })
+    )
+    try {
+      const image = new Image()
+      image.src = url
+      await image.decode()
+      const canvas = document.createElement('canvas')
+      canvas.width = image.naturalWidth
+      canvas.height = image.naturalHeight
+      canvas.getContext('2d').drawImage(image, 0, 0)
+      const blob = await toBlob(canvas, 'image/png')
+      if (currentDraft(id) !== record || record.surface.overlayRevision !== overlayRevision)
+        throw Error(LOCAL_DRAFT_MESSAGES.changed)
+      return { blob, filename: 'local-stroke-draft.png' }
+    } finally {
+      URL.revokeObjectURL(url)
+    }
+  }
+  function cancelGesture(redraw = true) {
     const previous = gesture
     const canceled = Boolean(gesture || draft)
+    if (previous) previous.canceled = true
+    if (draft?.gesture) draft.gesture.canceled = true
     gesture = draft = null
     if (previous && mounted?.canvas.hasPointerCapture(previous.pointerId))
       mounted.canvas.releasePointerCapture(previous.pointerId)
-    if (canceled && mounted) drawOverlay()
+    if (canceled && mounted && redraw) drawOverlay()
     return canceled
   }
   function unmount() {
@@ -620,7 +722,7 @@ export function createLocalToolsUI({ container, run, getActive, notify }) {
     const overlay = svgNode('svg', { 'aria-hidden': 'true', class: 'local-overlay' })
     Object.assign(overlay.style, { position: 'fixed', pointerEvents: 'none', zIndex: 5, overflow: 'hidden' })
     document.body.append(overlay)
-    mounted = { canvas, overlay, image, edit }
+    mounted = { canvas, overlay, image, edit, overlayRevision: 0 }
     canvas.style.cursor = mode.value === 'off' && !colorPicking ? 'zoom-in' : 'crosshair'
     const point = (event) => {
       const r = canvas.getBoundingClientRect()
@@ -652,71 +754,91 @@ export function createLocalToolsUI({ container, run, getActive, notify }) {
         run('repair-source', { point: p, photoId: getActive()?.id }).catch((error) => notify(error.message))
         return
       }
-      gesture = { id: getActive()?.id, start: p, points: [p], pointerId: event.pointerId, type: mode.value }
+      if (gesture && !gesture.released) return
+      gesture = {
+        photoId: getActive()?.id,
+        surface: mounted,
+        start: p,
+        points: [p],
+        pointerId: event.pointerId,
+        type: mode.value
+      }
       canvas.setPointerCapture(event.pointerId)
-      updateDraft(p)
+      stageGesture(p)
     }
-    function updateDraft(end) {
+    function gestureTool(end) {
       const base = {
         type: gesture.type,
         opacity: Number(sliders.opacity.value),
         feather: Number(sliders.feather.value)
       }
-      if (base.type === 'linear') draft = { ...base, start: gesture.start, end }
+      let tool
+      if (base.type === 'linear') tool = { ...base, start: gesture.start, end }
       else if (base.type === 'radial')
-        draft = {
+        tool = {
           ...base,
           center: gesture.start,
           rx: Math.max(0.00001, Math.abs(end.x - gesture.start.x)),
           ry: Math.max(0.00001, Math.abs(end.y - gesture.start.y))
         }
       else
-        draft = {
+        tool = {
           ...base,
           points: [...gesture.points],
           radius: Number(sliders.radius.value),
           ...(['clone', 'heal'].includes(base.type) ? { source } : {})
         }
-      if (!['clone', 'heal'].includes(base.type)) draft.adjustments = {}
-      drawOverlay()
+      if (!['clone', 'heal'].includes(base.type)) tool.adjustments = {}
+      return tool
+    }
+    function gestureDistance(tool) {
+      return Math.hypot(tool.end.x - tool.start.x, tool.end.y - tool.start.y)
+    }
+    function gestureCommand(tool, staging) {
+      const kind = ['clone', 'heal'].includes(tool.type) ? 'repair' : 'mask'
+      return commit(
+        kind + '.add',
+        { [kind]: tool, photoId: gesture.photoId, ...(staging && { draft: true }) },
+        { localGesture: gesture }
+      )
+    }
+    function stageGesture(end) {
+      const tool = gestureTool(end)
+      if (tool.type !== 'linear' || gestureDistance(tool) >= 1e-8) gestureCommand(tool, true)
     }
     const move = (event) => {
-      if (!gesture || event.pointerId !== gesture.pointerId) return
+      if (!gesture || gesture.released || event.pointerId !== gesture.pointerId) return
       event.preventDefault()
       event.stopPropagation()
       const p = point(event),
         previous = gesture.points.at(-1)
       if (!p) return
       if (Math.hypot(p.x - previous.x, p.y - previous.y) > 0.001) gesture.points.push(p)
-      updateDraft(p)
+      stageGesture(p)
     }
     const up = (event) => {
-      if (!gesture || event.pointerId !== gesture.pointerId) return
+      if (!gesture || gesture.released || event.pointerId !== gesture.pointerId) return
       event.preventDefault()
       event.stopPropagation()
       const end = point(event)
       if (!end) {
-        cancelGesture()
+        if (cancelGesture()) onDraftChange()
         return
       }
-      updateDraft(end)
-      const tool = draft,
+      const tool = gestureTool(end),
         current = gesture
-      cancelGesture()
-      if (current.id === getActive()?.id) {
-        const repair = ['clone', 'heal'].includes(tool.type)
-        if (
-          tool.type === 'linear' &&
-          Math.hypot(tool.end.x - tool.start.x, tool.end.y - tool.start.y) < 0.002
-        ) {
-          drawOverlay()
-          return
-        }
-        commit(repair ? 'repair.add' : 'mask.add', { [repair ? 'repair' : 'mask']: tool })
+      if (tool.type === 'linear' && gestureDistance(tool) < 0.002) {
+        if (cancelGesture()) onDraftChange()
+        return
       }
+      current.released = true
+      canvas.releasePointerCapture(event.pointerId)
+      gestureCommand(tool, false).finally(() => {
+        if ((gesture === current || draft?.gesture === current) && cancelGesture()) onDraftChange()
+      })
     }
     const cancel = (event) => {
-      if (event.pointerId === gesture?.pointerId) cancelGesture()
+      if (event.pointerId === gesture?.pointerId && !gesture.released && cancelGesture()) onDraftChange()
     }
     const click = (event) => {
       if (mode.value !== 'off' || colorPicking || sampledClick) {
@@ -816,6 +938,12 @@ export function createLocalToolsUI({ container, run, getActive, notify }) {
     sync,
     mount,
     cancelGesture,
+    ownsGesture,
+    stageDraft,
+    draftState,
+    hasDraftId: (id) => ownsDraft(draft) && draft.state.id === id,
+    takeDraft,
+    draftImage,
     hasDraft: () => Boolean(gesture || draft),
     setMode,
     getMode: () => (colorPicking ? 'color-sample' : mode.value),

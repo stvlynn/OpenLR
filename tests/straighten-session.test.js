@@ -75,12 +75,75 @@ test('straighten reference exposes live points and cancels through GUI and guard
   assert.deepEqual((await run('state')).straightenTool, { axis: 'off', first: null })
   await run('straighten-tool')
   await click(0.25, 0.3)
-  await click(0.75, 0.5)
-  state = await run('state')
+  const { first, referenceId } = (await run('state')).straightenTool
+  assert.ok(referenceId)
+  const end = { x: 0.75, y: 0.5 }
+  state = await run('straighten-point', { point: end, referenceId, photoId: id })
   assert.deepEqual(state.straightenTool, { axis: 'off', first: null })
-  assert.ok(Math.abs(state.photos[0].edit.optics.rotate) > 1)
+  const angle = (-Math.atan2((end.y - first.y) * 160, (end.x - first.x) * 240) * 180) / Math.PI
+  assert.ok(Math.abs(state.photos[0].edit.optics.rotate - angle) < 0.001)
   await run('undo')
   assert.deepEqual((await run('state')).photos[0].edit, before.photos[0].edit)
+})
+
+test('straighten-point stages normalized original coordinates and rejects stale photo, edit and reference guards', async (t) => {
+  const { page, run, id } = await workspace(t)
+  await run('edit', { key: 'crop', value: { x: 0.15, y: 0.1, w: 0.75, h: 0.8 } })
+  await run('rotate', { direction: 'right' })
+  const saved = (await run('state')).photos[0].edit
+  const start = { x: 0.32, y: 0.25 },
+    end = { x: 0.54, y: 0.72 }
+  await run('straighten-tool', { axis: 'horizontal', photoId: id })
+  await assert.rejects(run('straighten-point', { point: start, photoId: 'stale' }), /selected photo changed/)
+  await assert.rejects(run('straighten-point', { point: { x: 1.1, y: 0.5 } }), /between 0 and 1/)
+  assert.deepEqual((await run('state')).straightenTool, { axis: 'horizontal', first: null })
+  const changes = await page.evaluate(() => window.straightenChanges)
+  const initial = await run('straighten-point', { point: start, photoId: id })
+  const first = initial.straightenTool
+  assert.deepEqual(first.first, start)
+  assert.ok(first.referenceId)
+  assert.equal(await page.evaluate(() => window.straightenChanges), changes + 1)
+  assert.deepEqual(initial.photos[0].edit, saved)
+  assert.deepEqual((await run('state', { summary: true })).straightenTool, first)
+  await run('rate', { value: 2, advance: false })
+  assert.deepEqual((await run('state')).straightenTool, first, 'metadata retains the current geometry owner')
+
+  await run('straighten-tool', { axis: 'off', referenceId: first.referenceId, photoId: id })
+  await run('straighten-tool', { axis: 'horizontal', photoId: id })
+  const next = (await run('straighten-point', { point: start })).straightenTool
+  assert.notEqual(next.referenceId, first.referenceId)
+  await assert.rejects(
+    run('straighten-tool', { axis: 'off', referenceId: first.referenceId }),
+    /reference changed/
+  )
+  await assert.rejects(
+    run('straighten-point', { point: end, referenceId: first.referenceId }),
+    /reference changed/
+  )
+  await assert.rejects(
+    run('straighten-point', { point: start, referenceId: next.referenceId }),
+    /distinct points/
+  )
+  assert.deepEqual((await run('state')).straightenTool, next)
+  await run('flip')
+  assert.deepEqual((await run('state')).straightenTool, { axis: 'off', first: null })
+  await assert.rejects(
+    run('straighten-point', { point: end, referenceId: next.referenceId }),
+    /reference changed/
+  )
+  await run('undo')
+  assert.deepEqual((await run('state')).photos[0].edit, saved)
+
+  await run('straighten-tool', { axis: 'horizontal' })
+  const { referenceId } = (await run('straighten-point', { point: start })).straightenTool
+  const applied = await run('straighten-point', { point: end, referenceId, photoId: id })
+  // After a quarter turn, a horizontal display reference is vertical in the
+  // uncropped original. Its angle uses the full 240 × 160 source dimensions.
+  const originalAngle = (Math.atan2((end.y - start.y) * 160, (end.x - start.x) * 240) * 180) / Math.PI
+  assert.ok(Math.abs(applied.photos[0].edit.optics.rotate - (90 - originalAngle)) < 0.001)
+  assert.deepEqual(applied.straightenTool, { axis: 'off', first: null })
+  await run('undo')
+  assert.deepEqual((await run('state')).photos[0].edit, saved)
 })
 
 test('a successful explicit straighten completes the active reference and rejects a queued GUI second point', async (t) => {

@@ -367,6 +367,102 @@ await withNativeWorkspace(process.argv[2], async ({ root, call, initial }) => {
   assert.deepEqual(tools(await local('repair.remove', { id: healRecipe.id })).repairs, [])
   assertImage(await exported(), baseline)
 
+  // Probe the staged overlay and saved output at original-image pixel
+  // centers. The 48×48 square covers x=40..87, y=24..71 and the flip/turn
+  // maps an original (x,y) to (71-y,87-x) within that square.
+  for (const [key, value] of [
+    ['crop', { x: 0.25, y: 0.25, w: 0.5, h: 0.5 }],
+    ['aspect', '1'],
+    ['flip', true],
+    ['turn', 1]
+  ])
+    await edit(key, value)
+  const projected = (image, x, y) =>
+    pixel(image, Math.floor(((71.5 - y) * image.width) / 48), Math.floor(((87.5 - x) * image.height) / 48))
+  const stroke = { points: [point(64, 64), point(64, 65)], radius: 4.1 / height, feather: 0 }
+  const drafts = [
+    { ...stroke, type: 'brush' },
+    { type: 'linear', start: point(46, 44), end: point(82, 44) },
+    { type: 'radial', center: point(64, 64), rx: 8 / width, ry: 6 / height, feather: 0 },
+    { ...stroke, type: 'clone', source: clone.source },
+    { ...stroke, type: 'heal', source: heal.source }
+  ]
+  const draftSamples = {}
+  const draftImage = (draftId) => png('preview', { source: 'local-draft', draftId })
+  for (const version of [1, 2]) {
+    await local('processing', { version })
+    const saved = await exported()
+    assert.deepEqual(dims(saved), [48, 48])
+    const savedRecipe = tools(await state())
+    draftSamples[version] = {}
+    for (const recipe of drafts) {
+      const { type } = recipe,
+        kind = recipe.source ? 'repair' : 'mask',
+        command = kind + '.add',
+        candidate = recipe.source ? recipe : { ...recipe, adjustments: { Exposure: 1 } },
+        target = type === 'linear' ? [86, 44] : [64, 64],
+        exterior = type === 'linear' ? [42, 44] : [44, 30]
+      await local('local-tool', { tool: type })
+      await run('mask-overlay', { enabled: true })
+      const stage = () => local(command, { [kind]: candidate, draft: true })
+      const draft = await stage()
+      assert.ok(draft.id, type)
+      assert.equal(draft.command, command)
+      assert.equal(draft.photoId, photoId)
+      assert.equal(draft.args[kind].type, type)
+      assert.equal(draft.status, 'ready')
+      assert.equal(draft.visible, true)
+      assert.deepEqual((await call('state', '--summary', 'true')).localDraft, draft)
+      const current = await state()
+      assert.deepEqual(current.localDraft, draft)
+      assert.deepEqual(tools(current), savedRecipe)
+      assertImage(await exported(), saved)
+
+      const visible = await draftImage(draft.id)
+      assert.equal(visible.width, visible.height)
+      assert.ok(visible.width >= 48)
+      const inside = projected(visible, ...target),
+        outside = projected(visible, ...exterior)
+      assertPixelNear(inside, kind === 'mask' ? [255, 0, 0, 76] : [255, 177, 92, 115], 3)
+      assert.deepEqual(outside, [0, 0, 0, 0])
+      draftSamples[version][type] = { inside, outside }
+
+      if (type === 'brush') {
+        await assert.rejects(coverage(), /Choose an existing mask/)
+        await run('mask-overlay', { enabled: false })
+        assert.equal((await state()).localDraft.visible, false)
+        const hiddenDraft = await draftImage(draft.id)
+        assert.deepEqual(dims(hiddenDraft), dims(visible))
+        assert.ok(
+          hiddenDraft.data.every((value) => value === 0),
+          'hidden overlay PNG is transparent'
+        )
+        await run('mask-overlay', { enabled: true })
+      }
+      assert.deepEqual(await run('draft-cancel', { id: draft.id }), { canceled: true })
+      assert.equal((await state()).localDraft, null)
+      await assert.rejects(run('draft-commit', { id: draft.id }), /draft changed/i)
+      const next = await stage()
+      assert.notEqual(next.id, draft.id)
+      const committed = await run('draft-commit', { id: next.id })
+      assert.equal(committed.localDraft, null)
+      const collection = kind === 'mask' ? 'masks' : 'repairs'
+      assert.deepEqual(
+        tools(committed)[collection].map((item) => item.type),
+        [type]
+      )
+      const output = await exported()
+      assert.deepEqual(projected(output, ...exterior), projected(saved, ...exterior))
+      if (type === 'clone') assert.deepEqual(projected(output, ...target), [...cloneA, 255])
+      else if (type === 'heal') {
+        assert.ok(projected(output, 62, 64)[0] < gray[0] - 10)
+        assert.ok(projected(output, 66, 64)[0] > gray[0] + 10)
+      } else assert.ok(projected(output, ...target)[0] > projected(saved, ...target)[0] + 25)
+      assert.deepEqual(tools(await call('undo')), savedRecipe)
+      assertImage(await exported(), saved)
+    }
+  }
+
   const original = await call('export', '--format', 'original', '--output', path.join(root, 'original.png'))
   assert.deepEqual(await readFile(original.path), bytes)
   assert.deepEqual(await readFile(source), bytes)
@@ -379,6 +475,7 @@ await withNativeWorkspace(process.argv[2], async ({ root, call, initial }) => {
       transformedSize: dims(transformed),
       clone: [[...cloneA, 255], mixedPixel],
       heal: [healPair(healed), healPair(halfHeal)],
+      draftSamples,
       preservedOriginals: 1
     })
   )

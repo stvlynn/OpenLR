@@ -35,6 +35,7 @@ function point(value, name) {
     throw Error(name + ' must be an x/y point')
   return { x: scalar(value.x, 0, 1, name + '.x'), y: scalar(value.y, 0, 1, name + '.y') }
 }
+export { point as validateOriginalPoint }
 function points(value) {
   if (!Array.isArray(value) || !value.length) throw Error('A brush needs at least one point')
   return value.map((p, i) => point(p, 'points[' + i + ']'))
