@@ -19,6 +19,8 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
+      - name: Compile the System Events driver
+        run: osacompile -o "$RUNNER_TEMP/OpenLRNativeDialog.scpt" scripts/drive-native-dialog.applescript
       - uses: actions/checkout@v5
         with:
           ref: 8a76636467041ea8720d20756dd754fc01f67e7c

@@ -85,11 +85,11 @@ on panelButton(candidate, panelKind)
     end if
     tell application "System Events"
         try
-            set control to value of attribute axAttribute of candidate
-            if name of control is in buttonNames then return control
+            set candidateButton to value of attribute axAttribute of candidate
+            if name of candidateButton is in buttonNames then return candidateButton
         end try
-        repeat with control in (buttons of candidate)
-            if name of control is in buttonNames then return contents of control
+        repeat with candidateButton in (buttons of candidate)
+            if name of candidateButton is in buttonNames then return contents of candidateButton
         end repeat
     end tell
     return missing value
