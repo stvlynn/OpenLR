@@ -2,6 +2,14 @@
 
 对照目标为本机 Adobe Lightroom 9.4 云桌面版。REA 证据来自可执行文件及其资源；登录后的 Windows 运行观察已核对裁剪、蒙版入口及导出设置，见 [运行记录](../research/lightroom.md#登录后的-windows-运行观察)。当前仍未建立全部功能逐屏、逐像素的 Adobe 对照。静态入口、独立实现及实际通过的测试分别记录。
 
+## 桌面验收与交付快照 — 2026-11-07
+
+`6a03088` 在 Windows、Linux、Intel macOS 和 ARM macOS 的完整托管任务均通过。Linux 修复延后了诊断中的原生时间轴读取。本机 WebKitGTK 的对照从 8 次均报告零时长，变为 8 次通过真实定位、播放、帧像素、音频导出及原件检查。[四平台结果](https://github.com/stvlynn/OpenLR/actions/runs/42264627961) · [Linux 消融记录](../research/native-video.md)
+
+较新的 `40fdeaa` 在 Windows、Linux 和 Intel macOS 通过。ARM 通过主视频流程，随后短多音轨用例在第一次裁剪时返回解码错误，发生在导出之前。原生媒体错误会立即返回给 CLI。裁剪诊断、生成输入留存和帧解码对照另行验证。[完整矩阵](https://github.com/stvlynn/OpenLR/actions/runs/42265530525) · [ARM 裁剪诊断](https://github.com/stvlynn/OpenLR/actions/runs/42267893913) · [帧解码对照](https://github.com/stvlynn/OpenLR/actions/runs/42266059363)
+
+干净 `556e8d7` Windows 归档验证了随包单文件 CLI 在源码目录外的 311 次命令和四个实时观察进程，包括实际工作区截图、图像导出、原件和目录重启。实际 GTK/X11 选目录验证了取消和授权、预览像素与原件。该 GTK 结果使用较早 Linux 包，覆盖隔离 X11 环境。[独立交付记录](delivery-review.md#windows-tracked-snapshot-556e8d7) · [系统选目录记录](local-folders.md)
+
 ## 自动堆栈视图保护 — 2026-11-06
 
 `2d0f448` 的最终矩阵结果为 Windows、Linux、Intel macOS 成功，ARM macOS 视频导入失败；没有重试覆盖该失败。下方记录中的 Windows 等待状态现已结束，完整终态日志保留于忽略目录 `.workspace/2d0-ci.log`。
