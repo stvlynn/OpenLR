@@ -4,13 +4,15 @@
 
 ## 桌面验收与交付快照 — 2026-11-07
 
-Photos 迁移的 Windows 正式包对照使用公开的 Catalina 导出 XMP 与两张生成 PNG。修复前，一张缺少图库日期，另一张保留了与侧车不同的内嵌日期。修复后，两张都保留侧车的带时区日期，并通过实际 CLI 预览和原件逐字节检查。迁移、CLI 与同步定向回归 **19/19**，普通原生迁移套件通过。[来源及验证边界](../research/catalog-migration.md#apple-export-boundary)
+Photos 迁移的 Windows 正式包对照使用公开的 Catalina 导出 XMP 与两张生成 PNG。修复前，一张缺少图库日期，另一张保留了与侧车不同的内嵌日期。修复后，两张都保留侧车的带时区日期，并通过实际 CLI 预览和原件逐字节检查。迁移、CLI 与同步定向回归 **19/19**，普通原生迁移套件通过。
+
+`205cd45` 在本机 Windows Chrome 157.0.8103.38 启用独立色彩和元数据校验，完整浏览器回归 **494/494**，零失败、零跳过，305.9 秒。[迁移来源及验证边界](../research/catalog-migration.md#apple-export-boundary) · [四平台作业](https://github.com/stvlynn/OpenLR/actions/runs/42298650204)
 
 `6715e0e` 在本机 Windows Chrome 启用独立色彩和元数据校验，完整浏览器回归 **492/492，零失败、零跳过**，308.8 秒。包括旧视频缩略图重建、原件和编辑参数保留，以及 RAW 缓存和视频操作。Windows 和两种 macOS 的首次托管作业通过，Windows 浏览器 484 项通过、8 项可选资源跳过。Ubuntu 首次作业在 APT 下载阶段超时，同一提交的 Ubuntu 重跑通过了实际 Debian 安装、随包 CLI、原生套件和清除检查。四平台矩阵最终通过。[完整矩阵](https://github.com/stvlynn/OpenLR/actions/runs/42290137975) · [Ubuntu 重跑](https://github.com/stvlynn/OpenLR/actions/runs/42290137975/job/128156327770)
 
 `77412e5` 的本机视频定向回归 **12/12**，包含原生播放器切换、模拟新视频加载失败后重新打开，以及从共享预览命令读回像素。启用独立色彩和元数据校验的完整 Windows Chrome 回归 **493/493**，零失败、零跳过，303.4 秒。Apple Silicon 两次对照中，提前释放的候选共通过 30/32，现有顺序通过 26/32。正式包专项在八个独立工作区通过 **32/32** 首次跳转，核验实际详情像素与全部原件，记录 24 次旧播放器释放。本轮没有实际跳转失败，重试路径由受控浏览器测试另行验证。[四平台验收](https://github.com/stvlynn/OpenLR/actions/runs/42295055561) · [正式包跳转复验](https://github.com/stvlynn/OpenLR/actions/runs/42295482515)
 
-`5cbf4c3` 的本机完整浏览器回归 **494/494**，零失败、零跳过，306.0 秒。托管 Apple Silicon 的普通视频套件在 MP4 导出第二窗口遇到进程 `SIGTRAP`，独立短音频检查继续运行。这是原生导出退出，日志未取得匹配的崩溃报告。[Apple Silicon 作业](https://github.com/stvlynn/OpenLR/actions/runs/42296938322/job/128164521981) · [调试器复验](https://github.com/stvlynn/OpenLR/actions/runs/42298466309)
+`5cbf4c3` 的本机完整浏览器回归 **494/494**，零失败、零跳过，306.0 秒。托管 Apple Silicon 的普通视频套件在 MP4 导出第二窗口遇到进程 `SIGTRAP`，独立短音频检查继续运行，日志未取得匹配的崩溃报告。同一提交在导入前附加 LLDB 的八次独立试验全部通过，均验证实际帧、两种导出的音频、原件和清理。调试器附加改变了运行时序，普通导出的间歇性退出仍待定位。[Apple Silicon 作业](https://github.com/stvlynn/OpenLR/actions/runs/42296938322/job/128164521981) · [八次调试器复验](https://github.com/stvlynn/OpenLR/actions/runs/42298466309) · [普通运行的事后诊断](https://github.com/stvlynn/OpenLR/actions/runs/42299659571)
 
 `dad42fe` 的四平台托管矩阵全部通过。Windows 托管浏览器 483 项通过、零失败、8 项可选资源跳过，实际 NSIS 安装及卸载、六种文件关联和随包 CLI 也通过。两种 macOS 正式包的独立对照均验证六个可播放样本的首帧缩略图和原件字节。Intel 的跳转全部通过，Apple Silicon 在一条 BT.709 VP9 的 0.25 秒跳转收到原生解码错误。Ubuntu 托管发行包另行通过 GTK Portal 的目录选择和保存，实际 D-Bus 前端和后端均有记录。[四平台矩阵](https://github.com/stvlynn/OpenLR/actions/runs/42289203264) · [正式包视频专项](https://github.com/stvlynn/OpenLR/actions/runs/42289483649) · [Portal 目录选择](local-folders.md#verification) · [Portal 保存](export-settings.md#verification)
 
