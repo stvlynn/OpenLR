@@ -1,16 +1,28 @@
+diff --git a/src/index.ts b/src/index.ts
+index 798c192..b447413 100644
+--- a/src/index.ts
++++ b/src/index.ts
+@@ -320,5 +320,6 @@ export {
+ 	AttachedFile,
+ 	type TrackDisposition,
+ } from './metadata';
++export { parseOpusTocByte } from './codec-data';
+ 
+ // 🐡🦔
 diff --git a/src/input-track.ts b/src/input-track.ts
-index a3430b6..83fa9b7 100644
+index a3430b6..06f1fcc 100644
 --- a/src/input-track.ts
 +++ b/src/input-track.ts
-@@ -1064,6 +1064,7 @@ export interface InputAudioTrackBacking extends InputTrackBacking {
+@@ -1064,6 +1064,8 @@ export interface InputAudioTrackBacking extends InputTrackBacking {
  	getNumberOfChannels(): MaybePromise<number>;
  	getSampleRate(): MaybePromise<number>;
  	getDecoderConfig(): Promise<AudioDecoderConfig | null>;
 +	getPresentationRange?(): { start: number; end: number } | null;
++	getDeclaredPreRollDuration?(): number;
  }
  
  /**
-@@ -1084,6 +1085,11 @@ export class InputAudioTrack extends InputTrack {
+@@ -1084,6 +1086,11 @@ export class InputAudioTrack extends InputTrack {
  		return 'audio';
  	}
  
@@ -22,6 +34,18 @@ index a3430b6..83fa9b7 100644
  	/** The codec of the track's packets. */
  	async getCodec(): Promise<AudioCodec | null> {
  		return this._backing.getCodec();
+@@ -1162,7 +1169,10 @@ export class InputAudioTrack extends InputTrack {
+ 
+ 		const decoderConfig = await this._backing.getDecoderConfig();
+ 		assert(decoderConfig);
+-		return getAudioPreRollDuration(codec, decoderConfig);
++		return Math.max(
++			getAudioPreRollDuration(codec, decoderConfig),
++			this._backing.getDeclaredPreRollDuration?.() ?? 0,
++		);
+ 	}
+ 
+ 	async canDecode() {
 diff --git a/src/isobmff/isobmff-boxes.ts b/src/isobmff/isobmff-boxes.ts
 index e5168d9..c8e5862 100644
 --- a/src/isobmff/isobmff-boxes.ts
@@ -282,7 +306,7 @@ index 962b0a8..fdf71ef 100644
  	Cluster = 0x1f43b675,
  	Timestamp = 0xe7,
 diff --git a/src/matroska/matroska-demuxer.ts b/src/matroska/matroska-demuxer.ts
-index 02b62e4..0ee5339 100644
+index 02b62e4..8fba04b 100644
 --- a/src/matroska/matroska-demuxer.ts
 +++ b/src/matroska/matroska-demuxer.ts
 @@ -77,6 +77,7 @@ import {
@@ -293,25 +317,57 @@ index 02b62e4..0ee5339 100644
  	readUnsignedInt,
  	readVarInt,
  	resync,
-@@ -160,6 +161,7 @@ enum BlockLacing {
+@@ -160,6 +161,8 @@ enum BlockLacing {
  type ClusterBlock = {
  	timestamp: number;
  	duration: number;
 +	discardPaddingNs?: number;
++	audioLace?: { index: number; count: number; timestamp: number };
  	isKeyFrame: boolean;
  	data: Uint8Array;
  	lacing: BlockLacing;
-@@ -954,6 +956,9 @@ export class MatroskaDemuxer extends Demuxer {
+@@ -222,6 +225,7 @@ type InternalTrack = {
+ 	defaultDurationNs: number | null;
+ 	codecDelay: number;
+ 	codecDelayNs: number;
++	seekPreRollNs: number;
+ 	name: string | null;
+ 	languageCode: string;
+ 	hasLanguageBcp47: boolean;
+@@ -954,6 +958,12 @@ export class MatroskaDemuxer extends Demuxer {
  				expandedBlocks.push({
  					timestamp: frameTimestamp,
  					duration: frameDuration,
 +					discardPaddingNs: (originalBlock.discardPaddingNs ?? 0) < 0
 +						? (i === 0 ? originalBlock.discardPaddingNs : undefined)
 +						: (i === frameCount - 1 ? originalBlock.discardPaddingNs : undefined),
++					audioLace: track.info?.type === 'audio'
++						? { index: i, count: frameCount, timestamp: originalBlock.timestamp }
++						: undefined,
  					isKeyFrame: originalBlock.isKeyFrame,
  					data: frameData,
  					lacing: BlockLacing.None,
-@@ -1798,6 +1803,10 @@ export class MatroskaDemuxer extends Demuxer {
+@@ -1146,6 +1156,7 @@ export class MatroskaDemuxer extends Demuxer {
+ 					defaultDurationNs: null,
+ 					codecDelay: 0,
+ 					codecDelayNs: 0,
++					seekPreRollNs: 0,
+ 					name: null,
+ 					languageCode: 'eng', // The default in Matroska
+ 					hasLanguageBcp47: false,
+@@ -1429,6 +1440,11 @@ export class MatroskaDemuxer extends Demuxer {
+ 				this.currentTrack.codecDelayNs = readUnsignedInt(slice, size);
+ 			}; break;
+ 
++			case EBMLId.SeekPreRoll: {
++				if (!this.currentTrack) break;
++				this.currentTrack.seekPreRollNs = readUnsignedInt(slice, size);
++			}; break;
++
+ 			case EBMLId.Name: {
+ 				if (!this.currentTrack) break;
+ 
+@@ -1798,6 +1814,10 @@ export class MatroskaDemuxer extends Demuxer {
  
  				this.currentBlock.duration = readUnsignedInt(slice, size);
  			}; break;
@@ -322,7 +378,7 @@ index 02b62e4..0ee5339 100644
  
  			case EBMLId.ReferenceBlock: {
  				if (!this.currentBlock) break;
-@@ -2269,8 +2278,8 @@ abstract class MatroskaTrackBacking implements InputTrackBacking {
+@@ -2269,8 +2289,8 @@ abstract class MatroskaTrackBacking implements InputTrackBacking {
  		// Do a little rounding to catch cases where the result is very close to an integer. If it is, it's likely
  		// that the number was originally an integer divided by the timescale. For stability, it's best
  		// to return the integer in this case.
@@ -333,7 +389,7 @@ index 02b62e4..0ee5339 100644
  	}
  
  	async getPacket(timestamp: number, options: PacketRetrievalOptions) {
-@@ -2458,11 +2467,14 @@ abstract class MatroskaTrackBacking implements InputTrackBacking {
+@@ -2458,11 +2478,21 @@ abstract class MatroskaTrackBacking implements InputTrackBacking {
  
  		const data = options.metadataOnly ? PLACEHOLDER_DATA : block.data;
  
@@ -347,9 +403,27 @@ index 02b62e4..0ee5339 100644
 +		if (block.discardPaddingNs && this.internalTrack.info?.type === 'audio') {
 +			sideData.audioDiscardPadding = block.discardPaddingNs / 1e9;
 +		}
++		if (block.audioLace) {
++			sideData.audioLace = {
++				index: block.audioLace.index,
++				count: block.audioLace.count,
++				timestamp: block.audioLace.timestamp / segment.timestampFactor - codecDelayNs / 1e9,
++			};
++		}
  		if (block.mainAdditional && this.internalTrack.info?.type === 'video' && this.internalTrack.info.alphaMode) {
  			sideData.alpha = options.metadataOnly ? PLACEHOLDER_DATA : block.mainAdditional;
  			sideData.alphaByteLength = block.mainAdditional.byteLength;
+@@ -2871,6 +2901,10 @@ class MatroskaAudioTrackBacking extends MatroskaTrackBacking implements InputAud
+ 		return this.internalTrack.info.sampleRate;
+ 	}
+ 
++	getDeclaredPreRollDuration() {
++		return this.internalTrack.seekPreRollNs / 1e9;
++	}
++
+ 	async getDecoderConfig(): Promise<AudioDecoderConfig | null> {
+ 		if (!this.internalTrack.info.codec) {
+ 			return null;
 diff --git a/src/matroska/matroska-muxer.ts b/src/matroska/matroska-muxer.ts
 index d9571b8..2189af4 100644
 --- a/src/matroska/matroska-muxer.ts
@@ -557,21 +631,23 @@ index 64bae2c..91d3848 100644
  			throw new TypeError('options.appendOnly, when provided, must be a boolean.');
  		}
 diff --git a/src/packet.ts b/src/packet.ts
-index f345b5d..a3f7cb6 100644
+index f345b5d..920611b 100644
 --- a/src/packet.ts
 +++ b/src/packet.ts
-@@ -34,6 +34,10 @@ export type EncodedPacketSideData = {
+@@ -34,6 +34,12 @@ export type EncodedPacketSideData = {
  	 * `alpha` field contains no bytes.
  	 */
  	alphaByteLength?: number;
 +	/** Codec priming in seconds, set only on the first encoded audio packet. */
 +	audioPriming?: number;
-+	/** Seconds to discard at the end (positive) or start (negative) of this audio packet. */
++	/** Seconds to discard at the end (positive) or start (negative) of the encoded audio block. */
 +	audioDiscardPadding?: number;
++	/** Original Matroska block position and packet index when this packet was expanded from audio lacing. */
++	audioLace?: { index: number; count: number; timestamp: number };
  };
  
  /**
-@@ -114,6 +118,12 @@ export class EncodedPacket {
+@@ -114,6 +120,12 @@ export class EncodedPacket {
  		if (sideData?.alpha !== undefined && !(sideData.alpha instanceof Uint8Array)) {
  			throw new TypeError('sideData.alpha, when provided, must be a Uint8Array.');
  		}

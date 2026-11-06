@@ -37,7 +37,7 @@ async function decodeStill(page, result) {
 }
 
 async function decodeClip(page, result) {
-  assert.equal(result.mimeType, 'video/webm')
+  assert.ok(['video/webm', 'video/mp4'].includes(result.mimeType))
   return page.evaluate(
     async ({ bytes, frequencies }) => {
       const m = await import('/vendor/mediabunny/mediabunny.mjs')
@@ -114,6 +114,28 @@ function near(actual, expected, tolerance, label) {
     Math.abs(actual - expected) <= tolerance,
     `${label}: expected ${expected} ± ${tolerance}, got ${actual}`
   )
+}
+
+async function playableAudio(page, file) {
+  return page.evaluate(
+    async (bytes) => {
+      const context = new OfflineAudioContext(2, 1, 48000)
+      const decoded = await context.decodeAudioData(Uint8Array.from(bytes).buffer)
+      return { frames: decoded.length, sampleRate: decoded.sampleRate, channels: decoded.numberOfChannels }
+    },
+    Array.from(await readFile(file))
+  )
+}
+
+function checkSignal(decoded) {
+  for (const [index, { rms, amplitude }] of decoded.signal.entries()) {
+    assert.ok(rms > 0.08 && rms < 0.22, `Decoded audio level in window ${index}: ${rms}`)
+    assert.ok(amplitude[index + 1] > 0.12, `Expected tone missing in window ${index}: ${amplitude}`)
+    assert.ok(
+      amplitude.every((value, tone) => tone === index + 1 || value < 0.04),
+      `Unexpected tone in window ${index}: ${amplitude}`
+    )
+  }
 }
 
 function checkColor(pixel, channel, label) {
@@ -244,13 +266,35 @@ try {
     near(decoded.audioDuration, trim.end - trim.start, 0.055, 'Decoded PCM duration')
     checkColor(decoded.pixels[0], 1, 'Trimmed first segment')
     checkColor(decoded.pixels[1], 2, 'Trimmed second segment')
-    for (const [index, { rms, amplitude }] of decoded.signal.entries()) {
-      assert.ok(rms > 0.08 && rms < 0.22, `Decoded audio level in window ${index}: ${rms}`)
-      assert.ok(amplitude[index + 1] > 0.12, `Expected tone missing in window ${index}: ${amplitude}`)
-      assert.ok(
-        amplitude.every((value, tone) => tone === index + 1 || value < 0.04),
-        `Unexpected tone in window ${index}: ${amplitude}`
-      )
+    checkSignal(decoded)
+
+    let nativeAudio
+    if (process.platform === 'darwin') {
+      const mp4 = await call('export', '--format', 'video/mp4', '--output', path.join(root, 'trimmed.mp4'))
+      const decodedMp4 = await decodeClip(page, mp4)
+      assert.equal(decodedMp4.videoCodec, 'avc')
+      assert.equal(decodedMp4.audioCodec, 'aac')
+      checkSignal(decodedMp4)
+      assert.deepEqual(decodedMp4.size, turnedSize)
+      checkColor(decodedMp4.pixels[0], 1, 'MP4 first segment')
+      checkColor(decodedMp4.pixels[1], 2, 'MP4 second segment')
+      nativeAudio = {}
+      for (const [format, result] of [
+        ['webm', output],
+        ['mp4', mp4]
+      ]) {
+        const audio = await playableAudio(page, result.path)
+        assert.equal(audio.channels, 1, format)
+        assert.equal(
+          audio.frames,
+          Math.round(trim.end * audio.sampleRate) - Math.round(trim.start * audio.sampleRate),
+          format
+        )
+        nativeAudio[format] = audio
+      }
+      const finalState = await call('state')
+      for (const key of ['mode', 'selected', 'selection', 'photos', 'playback'])
+        assert.deepEqual(finalState[key], before[key], key)
     }
 
     console.log(
@@ -260,6 +304,7 @@ try {
         previewPixels: [red.pixel, green.pixel, blue.pixel],
         savedFrame: still,
         exported: decoded,
+        ...(nativeAudio && { nativeAudio }),
         preservedOriginalBytes: bytes.length
       })
     )

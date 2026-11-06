@@ -1,6 +1,7 @@
 import { renderPrepared as render } from './render.js'
 import { geometry } from './geometry.js'
 import { applyWatermark } from './export-options.js'
+import { desktopAudioEncoder, executeAudioExport, planAudioExport } from './audio-export.js'
 export const isVideo = (asset) =>
   Boolean(
     asset &&
@@ -166,7 +167,8 @@ export function clipRange(trim, duration) {
     throw Error('Trim must fit within the video duration')
   return { start, end: Math.min(end, duration) }
 }
-export async function exportVideo(file, photo, args) {
+export async function exportVideo(file, photo, args, { encode = desktopAudioEncoder(), decodeAac } = {}) {
+  const media = await import('./vendor/mediabunny/mediabunny.mjs')
   const {
     Input,
     BlobSource,
@@ -177,41 +179,53 @@ export async function exportVideo(file, photo, args) {
     WebMOutputFormat,
     Conversion,
     QUALITY_HIGH
-  } = await import('./vendor/mediabunny/mediabunny.mjs')
+  } = media
   const input = new Input({ formats: ALL_FORMATS, source: new BlobSource(file) })
   try {
     const mp4 = args.format === 'video/mp4',
       target = new BufferTarget()
-    const output = new Output({ format: mp4 ? new Mp4OutputFormat() : new WebMOutputFormat(), target })
+    const format = mp4 ? new Mp4OutputFormat() : new WebMOutputFormat()
+    const trim = clipRange(photo.edit.trim, await input.computeDuration())
+    const audioPlan = encode ? await planAudioExport(media, input, format, mp4, args.signal) : null
+    const output = new Output({ format: audioPlan?.outputFormat ?? format, target })
     const size = geometry(photo, photo.edit, args.maxSize ?? Infinity)
     const frame = document.createElement('canvas')
     frame.width = photo.width
     frame.height = photo.height
     const ctx = frame.getContext('2d')
-    const conversion = await Conversion.init({
-      input,
-      output,
-      trim: clipRange(photo.edit.trim, await input.computeDuration()),
-      video: {
-        codec: mp4 ? 'avc' : 'vp9',
-        bitrate: QUALITY_HIGH,
-        allowRotationMetadata: false,
-        processedWidth: size.turn % 2 ? size.height : size.width,
-        processedHeight: size.turn % 2 ? size.width : size.height,
-        async process(sample) {
-          args.signal?.throwIfAborted()
-          if (frame.width !== sample.displayWidth) frame.width = sample.displayWidth
-          if (frame.height !== sample.displayHeight) frame.height = sample.displayHeight
-          sample.draw(ctx, 0, 0)
-          const canvas = await render(frame, photo.edit, args.maxSize ?? Infinity, { signal: args.signal })
-          applyWatermark(canvas, args.watermark)
-          return canvas
-        }
+    const video = (signal) => ({
+      codec: mp4 ? 'avc' : 'vp9',
+      bitrate: QUALITY_HIGH,
+      allowRotationMetadata: false,
+      processedWidth: size.turn % 2 ? size.height : size.width,
+      processedHeight: size.turn % 2 ? size.width : size.height,
+      async process(sample) {
+        signal?.throwIfAborted()
+        if (frame.width !== sample.displayWidth) frame.width = sample.displayWidth
+        if (frame.height !== sample.displayHeight) frame.height = sample.displayHeight
+        sample.draw(ctx, 0, 0)
+        const canvas = await render(frame, photo.edit, args.maxSize ?? Infinity, { signal })
+        applyWatermark(canvas, args.watermark)
+        return canvas
       }
     })
-    if (!conversion.isValid || conversion.discardedTracks.length)
-      throw Error('This device cannot encode every source track in the selected video format')
-    await conversion.execute()
+    if (audioPlan) {
+      await executeAudioExport(media, {
+        input,
+        output,
+        trim,
+        video,
+        plan: audioPlan,
+        encode,
+        decodeAac,
+        signal: args.signal
+      })
+    } else {
+      const conversion = await Conversion.init({ input, output, trim, video: video(args.signal) })
+      if (!conversion.isValid || conversion.discardedTracks.length)
+        throw Error('This device cannot encode every source track in the selected video format')
+      await conversion.execute()
+    }
     return {
       blob: new Blob([target.buffer], { type: args.format }),
       filename: photo.name.replace(/\.[^.]+$/, '') + (mp4 ? '.mp4' : '.webm')

@@ -1,5 +1,5 @@
-// audio-stream-probe compares the pure Go streaming path with the standalone
-// AudioToolbox fixture on the same macOS host.
+// audio-stream-probe compares the pure Go streaming path with a standalone
+// AudioToolbox fixture, or decodes raw AAC from a separate browser fixture.
 package main
 
 import (
@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"io"
 	"math"
 	"os"
 	"os/exec"
@@ -267,12 +268,75 @@ func run(referencePath string) error {
 	return nil
 }
 
+type aacInput struct {
+	SampleRate uint32   `json:"sampleRate"`
+	Channels   uint32   `json:"channels"`
+	Cookie     []byte   `json:"cookie"`
+	Packets    [][]byte `json:"packets"`
+}
+
+func readAACInput(reader io.Reader) (nativeaudio.Config, collected, error) {
+	data, err := io.ReadAll(io.LimitReader(reader, nativeaudio.MaxChunkBytes+1))
+	if err != nil {
+		return nativeaudio.Config{}, collected{}, err
+	}
+	if len(data) > nativeaudio.MaxChunkBytes {
+		return nativeaudio.Config{}, collected{}, fmt.Errorf("AAC fixture input exceeds 64 KiB")
+	}
+	var fixture aacInput
+	if err := json.Unmarshal(data, &fixture); err != nil {
+		return nativeaudio.Config{}, collected{}, fmt.Errorf("read AAC fixture: %w", err)
+	}
+	if (fixture.SampleRate != 44100 && fixture.SampleRate != 48000) || fixture.Channels < 1 || fixture.Channels > 2 ||
+		len(fixture.Cookie) == 0 || len(fixture.Packets) < 4 || len(fixture.Packets) > 32 {
+		return nativeaudio.Config{}, collected{}, fmt.Errorf("invalid AAC fixture format, cookie or packet count")
+	}
+	const framesPerPacket = 1024
+	config := nativeaudio.Config{Codec: "aac", Decode: true, SampleRate: fixture.SampleRate,
+		Channels: fixture.Channels, FramesPerPacket: framesPerPacket, Cookie: fixture.Cookie}
+	var encoded collected
+	for _, packet := range fixture.Packets {
+		if len(packet) == 0 {
+			return nativeaudio.Config{}, collected{}, fmt.Errorf("empty AAC fixture packet")
+		}
+		encoded.packets = append(encoded.packets, nativeaudio.Packet{Offset: len(encoded.data), Size: len(packet), Frames: framesPerPacket})
+		encoded.data = append(encoded.data, packet...)
+		encoded.frames += framesPerPacket
+	}
+	return config, encoded, nil
+}
+
+func runAACInput(reader io.Reader, writer io.Writer) error {
+	config, encoded, err := readAACInput(reader)
+	if err != nil {
+		return err
+	}
+	decoded, err := decode(config, encoded, []int{1, 3, 2})
+	if err != nil {
+		return fmt.Errorf("decode browser AAC through AudioToolbox: %w", err)
+	}
+	if decoded.underflows < 2 || decoded.consumed != uint64(encoded.frames) || len(decoded.packets) != 0 ||
+		len(decoded.data) != int(decoded.frames)*int(config.Channels)*4 {
+		return fmt.Errorf("unexpected AAC decode shape: consumed %d/%d, decoded %d, bytes %d, underflows %d",
+			decoded.consumed, encoded.frames, decoded.frames, len(decoded.data), decoded.underflows)
+	}
+	return json.NewEncoder(writer).Encode(map[string]any{
+		"codedFrames": encoded.frames, "decodedFrames": decoded.frames, "decodeChunks": decoded.underflows, "pcm": decoded.data,
+	})
+}
+
 func main() {
 	if len(os.Args) != 2 {
-		fmt.Fprintln(os.Stderr, "Pass the standalone AudioToolbox C fixture executable")
+		fmt.Fprintln(os.Stderr, "Pass the standalone AudioToolbox C fixture executable, or --aac-input to decode the fixture from stdin")
 		os.Exit(1)
 	}
-	if err := run(os.Args[1]); err != nil {
+	var err error
+	if os.Args[1] == "--aac-input" {
+		err = runAACInput(os.Stdin, os.Stdout)
+	} else {
+		err = run(os.Args[1])
+	}
+	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}

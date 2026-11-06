@@ -64,6 +64,8 @@ Video imports declare a media type from the case-insensitive suffix for WebM, MO
 
 Video playback and audio use the native media element. When its pixels are origin-restricted, OpenLR decodes visual frames from the original file for thumbnails, the live editor, previews and still exports. Pause and automatic trim-end stop retain the captured playback position if the native clock rolls back while the paused frame is being prepared. A saved frame uses the playback time captured for that command. Batch still export uses its own decoded frame at the saved trim start. Video-container exports require the selected format to retain every source track.
 
+On macOS, a missing exact browser audio codec selects the native export path: AAC-LC input uses AudioToolbox, Opus input uses the bundled packet decoder, and AudioToolbox encodes the replacement audio. This path preserves mono/stereo layout and the source sample rate, supporting 48 kHz Opus and 44.1/48 kHz AAC. It preserves delayed starts and gaps on the video trim timeline. Unsupported configurations or a replacement track with no audible overlap fail before saving; there is no automatic downmix or sample-rate change. Cancellation closes the export's codec handles. Current verification and remaining native checks are recorded in [the audio export record](../research/native-audio-export.md).
+
 ```powershell
 node cli/openlr.mjs schema export
 node cli/openlr.mjs import --file 'C:\Photos\one.jpg' --file 'C:\Photos\two.png'
