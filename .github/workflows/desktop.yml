@@ -15,9 +15,12 @@ jobs:
         shell: bash
         run: |
           test "$RUNNER_ENVIRONMENT" = github-hosted
-          if pgrep -x Photos >/dev/null || find "$HOME/Pictures" -maxdepth 1 -name '*.photoslibrary' 2>/dev/null | grep -q .; then
-            echo 'Expected a fresh runner with no Photos library'
+          if pgrep -x Photos >/dev/null; then
+            echo 'Photos was running before the experiment'
             exit 1
+          fi
+          if find "$HOME/Pictures" -maxdepth 1 -name '*.photoslibrary' 2>/dev/null | grep -q .; then
+            echo 'The runner image already has a default Photos library'
           fi
           sw_vers
           /usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' /System/Applications/Photos.app/Contents/Info.plist
@@ -32,8 +35,6 @@ jobs:
           }))
           NODE
           osacompile -o "$PHOTOS_PROBE/inspect.scpt" scripts/fixtures/photos-inspect.applescript
-          open -a Photos
-          osascript "$PHOTOS_PROBE/inspect.scpt"
-          open -a Photos "$PHOTOS_PROBE/Generated.png"
-          sleep 1
+          defaults write com.apple.Photos IPXDefaultShowLibraryChooserOnLaunch -bool true
+          open -b com.apple.Photos
           osascript "$PHOTOS_PROBE/inspect.scpt"
