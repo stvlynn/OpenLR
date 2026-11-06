@@ -64,8 +64,25 @@ test(
       }
       let result, cancellation, emptyTrack
       const controller = new AbortController()
+      const diagnostics = []
+      const previousBridge = globalThis.mygo
+      const previousDiagnostics = globalThis.openlrDiagnostics
+      let diagnosticBehavior = 'pending'
+      const { beginVideoExportTrace } = await import('/video-import-diagnostics.js')
+      globalThis.openlrDiagnostics = false
+      const disabledTrace = beginVideoExportTrace('video/webm') === undefined
+      globalThis.openlrDiagnostics = true
+      globalThis.mygo = {
+        call(method, report) {
+          if (method === 'Desktop.VideoImportDiagnostic') diagnostics.push(JSON.parse(report))
+          if (diagnosticBehavior === 'throw') throw Error('Diagnostic bridge threw')
+          if (diagnosticBehavior === 'reject') return Promise.reject(Error('Diagnostic bridge rejected'))
+          return new Promise(() => {})
+        }
+      }
       try {
         result = await exportVideo(original, recipe, { format: 'video/webm' }, { encode })
+        diagnosticBehavior = 'throw'
         try {
           await exportVideo(
             original,
@@ -87,6 +104,7 @@ test(
             closed++
           }
         }
+        diagnosticBehavior = 'reject'
         try {
           await exportVideo(
             original,
@@ -98,6 +116,8 @@ test(
           cancellation = error === controller.signal.reason
         }
       } finally {
+        globalThis.mygo = previousBridge
+        globalThis.openlrDiagnostics = previousDiagnostics
         AudioDecoder.isConfigSupported = decoderSupported
       }
 
@@ -203,6 +223,8 @@ test(
           opened,
           closed,
           cancellation,
+          diagnostics,
+          disabledTrace,
           emptyTrack,
           expected: {
             delayed: delays[1] - frame(start),
@@ -221,6 +243,29 @@ test(
     assert.equal(evidence.paired, true)
     assert.ok(evidence.outputPixel[0] > evidence.sourcePixel[0] + 15, JSON.stringify(evidence))
     assert.equal(evidence.cancellation, true)
+    assert.equal(evidence.disabledTrace, true)
+    const traces = Array.from(Map.groupBy(evidence.diagnostics, (record) => record.sequence).values())
+    assert.equal(traces.length, 3)
+    const stages = traces.map((records) => records.map((record) => record.stage))
+    assert.ok(stages[0].includes('output-finalized'))
+    assert.ok(stages[0].includes('worker-completed'))
+    assert.deepEqual(
+      [
+        ...new Set(
+          traces[0].filter((record) => record.stage === 'worker-completed').map((record) => record.index)
+        )
+      ].sort(),
+      [0, 1, 2]
+    )
+    assert.ok(stages[0].includes('output-ready'))
+    assert.ok(stages[1].includes('conversion-failed'))
+    assert.ok(stages[2].includes('conversion-failed'))
+    assert.ok(traces.every((records) => records.at(-1).stage === 'input-dispose'))
+    assert.ok(evidence.diagnostics.every((record) => record.operation === 'export'))
+    assert.doesNotMatch(
+      JSON.stringify(evidence.diagnostics),
+      /generated|fixture cancellation|Diagnostic bridge/
+    )
     assert.match(evidence.emptyTrack, /Audio track 2: .*no audible samples/)
     assert.equal(evidence.opened, evidence.closed)
     assert.ok(evidence.opened > 2)

@@ -3,6 +3,7 @@ import { geometry } from './geometry.js'
 import { applyWatermark } from './export-options.js'
 import { executeAudioExport, planAudioExport } from './audio-export.js'
 import {
+  beginVideoExportTrace,
   markVideoImport,
   markVideoSeek,
   observeVideoImportMedia,
@@ -176,6 +177,8 @@ export function clipRange(trim, duration) {
   return { start, end: Math.min(end, duration) }
 }
 export async function exportVideo(file, photo, args, { encode, decodeAac } = {}) {
+  const trace = beginVideoExportTrace(args.format)
+  trace?.('module-load')
   const media = await import('./vendor/mediabunny/mediabunny.mjs')
   const {
     Input,
@@ -193,18 +196,22 @@ export async function exportVideo(file, photo, args, { encode, decodeAac } = {})
     const mp4 = args.format === 'video/mp4',
       target = new BufferTarget()
     const format = mp4 ? new Mp4OutputFormat() : new WebMOutputFormat()
+    trace?.('duration')
     const trim = clipRange(photo.edit.trim, await input.computeDuration())
+    trace?.('audio-plan')
     const audioPlan = await planAudioExport(media, input, format, mp4, {
       signal: args.signal,
       encode,
       decodeAac
     })
+    trace?.('audio-planned')
     const output = new Output({ format: audioPlan?.outputFormat ?? format, target })
     const size = geometry(photo, photo.edit, args.maxSize ?? Infinity)
     const frame = document.createElement('canvas')
     frame.width = photo.width
     frame.height = photo.height
     const ctx = frame.getContext('2d')
+    let firstFrame = true
     const video = (signal) => ({
       codec: mp4 ? 'avc' : 'vp9',
       bitrate: QUALITY_HIGH,
@@ -212,12 +219,15 @@ export async function exportVideo(file, photo, args, { encode, decodeAac } = {})
       processedWidth: size.turn % 2 ? size.height : size.width,
       processedHeight: size.turn % 2 ? size.width : size.height,
       async process(sample) {
+        if (firstFrame) trace?.('first-frame')
         signal?.throwIfAborted()
         if (frame.width !== sample.displayWidth) frame.width = sample.displayWidth
         if (frame.height !== sample.displayHeight) frame.height = sample.displayHeight
         sample.draw(ctx, 0, 0)
         const canvas = await render(frame, photo.edit, args.maxSize ?? Infinity, { signal })
         applyWatermark(canvas, args.watermark)
+        if (firstFrame) trace?.('first-frame-rendered')
+        firstFrame = false
         return canvas
       }
     })
@@ -228,19 +238,24 @@ export async function exportVideo(file, photo, args, { encode, decodeAac } = {})
         trim,
         video,
         plan: audioPlan,
-        signal: args.signal
+        signal: args.signal,
+        trace
       })
     } else {
+      trace?.('conversion-init')
       const conversion = await Conversion.init({ input, output, trim, video: video(args.signal) })
       if (!conversion.isValid || conversion.discardedTracks.length)
         throw Error('This device cannot encode every source track in the selected video format')
+      trace?.('conversion-execute')
       await conversion.execute()
     }
+    trace?.('output-ready')
     return {
       blob: new Blob([target.buffer], { type: args.format }),
       filename: photo.name.replace(/\.[^.]+$/, '') + (mp4 ? '.mp4' : '.webm')
     }
   } finally {
+    trace?.('input-dispose')
     input.dispose()
   }
 }

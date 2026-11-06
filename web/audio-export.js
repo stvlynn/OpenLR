@@ -257,7 +257,7 @@ async function* timedPackets(track, format, blocks, first, encode, signal) {
   }
 }
 
-export async function executeAudioExport(media, { input, output, trim, video, plan, signal }) {
+export async function executeAudioExport(media, { input, output, trim, video, plan, signal, trace }) {
   const { planAudioTrack } = await import('./audio-track.js')
   const { tracks, audio } = plan
   const abort = new AbortController()
@@ -291,6 +291,7 @@ export async function executeAudioExport(media, { input, output, trim, video, pl
       const entry = { source: new media.EncodedAudioPacketSource(format.codec) }
       replacements.set(track, entry)
       try {
+        trace?.('audio-timeline')
         const timeline = await planAudioTrack(track, trim, {
           signal: abort.signal,
           decodeAac: format.decodeAac
@@ -298,7 +299,9 @@ export async function executeAudioExport(media, { input, output, trim, video, pl
         if (timeline.sampleRate !== format.sampleRate || timeline.channels !== format.channels)
           throw Error('The source track has inconsistent sample rate or channel metadata')
         entry.blocks = timeline.blocks()[Symbol.asyncIterator]()
+        trace?.('audio-first-block')
         const first = await entry.blocks.next()
+        trace?.('audio-first-block-read')
         if (first.done) throw Error('The selected interval contains no audible samples for this track')
         entry.packets = timedPackets(track, format, entry.blocks, first, format.encode, abort.signal)
         const [name, language, disposition] = await Promise.all([
@@ -319,6 +322,7 @@ export async function executeAudioExport(media, { input, output, trim, video, pl
     }
 
     abort.signal.throwIfAborted()
+    trace?.('conversion-init')
     conversion = await media.Conversion.init({
       input,
       output,
@@ -332,6 +336,7 @@ export async function executeAudioExport(media, { input, output, trim, video, pl
           ? { discard: true }
           : { codec: audio.get(track).codec, group: groups.get(track) }
     })
+    trace?.('conversion-initialized')
     abort.signal.throwIfAborted()
     const utilized = new Set(conversion.utilizedTracks)
     if (!conversion.isValid || tracks.some((track) => !utilized.has(track) && !replacements.has(track)))
@@ -342,7 +347,9 @@ export async function executeAudioExport(media, { input, output, trim, video, pl
     if ((await input.getFormat()).mimeType !== output.format.mimeType) delete tags.raw
     output.setMetadataTags(tags)
     abort.signal.throwIfAborted()
+    trace?.('output-start')
     await output.start()
+    trace?.('output-started')
 
     async function advance(entry, until) {
       while (!entry.done && !(entry.timestamp >= until)) {
@@ -368,17 +375,29 @@ export async function executeAudioExport(media, { input, output, trim, video, pl
     for (let until = 1; ; until++) {
       const limit = until < duration ? until : Infinity
       abort.signal.throwIfAborted()
+      trace?.('window-start', until)
       workers = [
         conversion.execute({ until: limit }),
         ...Array.from(replacements.values(), (entry) => advance(entry, limit))
       ]
+      if (trace)
+        workers.forEach((worker, index) => {
+          void worker.then(
+            () => trace('worker-completed', index),
+            () => trace('worker-failed', index)
+          )
+        })
       await Promise.all(workers)
+      trace?.('window-completed', until)
       if (limit === Infinity) break
     }
     abort.signal.throwIfAborted()
+    trace?.('output-finalize')
     await output.finalize()
+    trace?.('output-finalized')
     abort.signal.throwIfAborted()
   } catch (error) {
+    trace?.('conversion-failed')
     const primary = abort.signal.aborted ? abort.signal.reason : error
     abort.abort(primary)
     await Promise.allSettled(workers)

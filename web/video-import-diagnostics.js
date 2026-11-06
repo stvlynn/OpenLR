@@ -23,6 +23,21 @@ function send(report) {
   }
 }
 
+export function beginVideoExportTrace(format) {
+  if (!globalThis.openlrDiagnostics) return
+  const sequence = ++nextSequence
+  const started = performance.now()
+  return (stage, index) =>
+    send({
+      operation: 'export',
+      sequence,
+      format: format === 'video/mp4' ? 'mp4' : 'webm',
+      stage,
+      elapsedMs: Math.round(performance.now() - started),
+      ...(Number.isSafeInteger(index) && { index })
+    })
+}
+
 function emit(trace, extra) {
   send({
     sequence: trace.sequence,

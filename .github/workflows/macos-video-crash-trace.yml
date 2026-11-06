@@ -1,6 +1,11 @@
 name: macOS ARM video export crash trace
 on:
   workflow_dispatch:
+    inputs:
+      debugger:
+        description: Attach LLDB immediately before exports
+        type: boolean
+        default: true
 permissions:
   contents: read
 jobs:
@@ -28,9 +33,10 @@ jobs:
         timeout-minutes: 5
         env:
           OPENLR_DIAGNOSTICS: '1'
+          OPENLR_TRACE_MODE: ${{ inputs.debugger && '--lldb' || '' }}
         run: |
           set -o pipefail
-          node scripts/native-video-smoke.mjs build/release/darwin-universal/OpenLR.app/Contents/MacOS/OpenLR --lldb 2>&1 | tee build/video-trace.log
+          node scripts/native-video-smoke.mjs build/release/darwin-universal/OpenLR.app/Contents/MacOS/OpenLR $OPENLR_TRACE_MODE 2>&1 | tee build/video-trace.log
       - uses: actions/upload-artifact@v4
         if: always()
         with:
