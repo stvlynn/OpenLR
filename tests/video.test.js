@@ -2,6 +2,105 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { chromium } from 'playwright-core'
 import { serveWorkspace } from './browser-server.mjs'
+import { makeVideoFixture } from './fixtures/video.mjs'
+
+test('origin-restricted video uses decoded frames through live playback, seeking and saved stills', async (t) => {
+  const server = await serveWorkspace()
+  t.after(server.close)
+  const browser = await chromium.launch({ channel: process.env.CHROME_CHANNEL || 'chrome' })
+  t.after(() => browser.close())
+  const page = await browser.newPage()
+  await page.goto(server.url)
+  const bytes = await makeVideoFixture(page)
+  const imported = await page.evaluate(async (bytes) => {
+    const tainted = new WeakSet(),
+      drawImage = CanvasRenderingContext2D.prototype.drawImage,
+      getImageData = CanvasRenderingContext2D.prototype.getImageData,
+      createImageBitmap = globalThis.createImageBitmap,
+      toBlob = HTMLCanvasElement.prototype.toBlob
+    const restricted = (source) => source instanceof HTMLVideoElement || tainted.has(source)
+    const securityError = () => new DOMException('Unreadable video pixels', 'SecurityError')
+    CanvasRenderingContext2D.prototype.drawImage = function (source, ...args) {
+      const result = drawImage.call(this, source, ...args)
+      if (restricted(source)) tainted.add(this.canvas)
+      return result
+    }
+    CanvasRenderingContext2D.prototype.getImageData = function (...args) {
+      if (tainted.has(this.canvas)) throw securityError()
+      return getImageData.apply(this, args)
+    }
+    HTMLCanvasElement.prototype.toBlob = function (...args) {
+      if (tainted.has(this)) throw securityError()
+      return toBlob.apply(this, args)
+    }
+    globalThis.createImageBitmap = async (source, ...args) => {
+      const bitmap = await createImageBitmap(source, ...args)
+      if (restricted(source)) tainted.add(bitmap)
+      return bitmap
+    }
+    const file = new File([Uint8Array.from(bytes)], 'restricted.webm', { type: 'video/webm' })
+    return window.openlr.run('import', { files: [file] })
+  }, Array.from(bytes))
+  assert.deepEqual(imported.failed, [])
+  assert.equal(imported.added.length, 1)
+
+  const seek = (time) => page.evaluate((time) => window.openlr.run('video-seek', { time }), time)
+  const stageColor = () =>
+    page.evaluate(() => {
+      const canvas = document.querySelector('#stage canvas')
+      return Array.from(
+        canvas.getContext('2d').getImageData(canvas.width >> 1, canvas.height >> 1, 1, 1).data
+      )
+    })
+  const expectColor = (pixel, channel) => {
+    assert.equal(pixel[3], 255)
+    assert.ok(
+      pixel[channel] > 130 && pixel.every((value, index) => index === channel || index === 3 || value < 100),
+      JSON.stringify(pixel)
+    )
+  }
+  await seek(0.35)
+  expectColor(await stageColor(), 0)
+  await page.locator('#play-video').click()
+  await page.waitForFunction(() => {
+    const canvas = document.querySelector('#stage canvas')
+    if (!canvas) return false
+    const [red, green, blue] = canvas
+      .getContext('2d')
+      .getImageData(canvas.width >> 1, canvas.height >> 1, 1, 1).data
+    return green > 130 && red < 100 && blue < 100
+  })
+  const paused = await page.evaluate(() => window.openlr.run('video-pause'))
+  assert.equal(paused.playback.playing, false)
+  assert.ok(paused.playback.time > 1)
+  await seek(2.35)
+  expectColor(await stageColor(), 2)
+
+  const result = await page.evaluate(async () => {
+    const run = window.openlr.run,
+      original = await run('export', { format: 'original' }),
+      still = await run('save-frame'),
+      exported = await run('export', { format: 'original' }),
+      bitmap = await createImageBitmap(exported.blob),
+      canvas = new OffscreenCanvas(bitmap.width, bitmap.height),
+      context = canvas.getContext('2d')
+    context.drawImage(bitmap, 0, 0)
+    bitmap.close()
+    return {
+      still,
+      filename: exported.filename,
+      size: [canvas.width, canvas.height],
+      pixel: Array.from(context.getImageData(canvas.width >> 1, canvas.height >> 1, 1, 1).data),
+      original: Array.from(new Uint8Array(await original.blob.arrayBuffer()))
+    }
+  })
+  assert.deepEqual(result.still.failed, [])
+  assert.equal(result.still.added.length, 1)
+  assert.equal(result.filename, 'restricted-2350.png')
+  assert.deepEqual(result.size, [96, 64])
+  assert.deepEqual(Buffer.from(result.original), bytes)
+  expectColor(result.pixel, 2)
+})
 
 test('video trim, grading, playback and export preserve the audio track and selected frames', async (t) => {
   const server = await serveWorkspace()

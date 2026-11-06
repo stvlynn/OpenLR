@@ -17,6 +17,8 @@
 
 ## 补充验证
 
+- **视频帧读取与完整 Windows 回归**。根据 macOS 的实际 SecurityError，视频帧访问现先检查原生画布读回；只有该安全错误才启用已有 MediaBunny 的独立解码帧。缩略图、预览、保存帧和批量静态导出共用此边界，播放声音与时间仍由原媒体元素负责。延迟帧测试验证暂停、定位、编辑及切换照片后旧帧不能发布；保存帧的文件名时间与像素取自同一快照。Windows／Node 24.9／Chrome 156 的完整配置回归 **374/374、零失败、零跳过**，约 276.2 秒。重新构建的 `video-frame-source` Windows 安装包通过 **十八组原生流程**，其中视频检查实际播放、彩色帧、旋转后的保存图、原件字节及 VP9／Opus 导出的音调与时间范围。日志 `.workspace/video-frame-source-{full,native}.log`。Chrome 中注入安全错误的回归是受控验证，不能替代待执行的 macOS 修复后验收；严格音轨要求没有降低。
+
 - **原生文件打开与更强的图像集成检查**。`f6af855` Windows 包通过实际首次文件参数、第二实例转交、重复打开与私有 profile 重启，所有生成图片的预览／导出像素和原件一致；这不等于 Explorer 关联注册或系统选择器验收。更新后的集成脚本独立解码 panorama PNG，四个场景区平均通道误差为 0／0.15／2.35／3.83，透明边缘正确；RGBE 恢复约 9.33 stops，最大采样误差 2.53%，显示编辑不改变 radiance 导出。Person／Subject／Background 实际覆盖 PNG 通过手工区域和补集检查，局部曝光只改变人物区域。六份合并源的编辑、评级、版本及原件保持，NASA 图原件保持。日志 `.workspace/native-integration-pixels-windows-final.log`；独立 RGBE／合并测试与生命周期测试共 11/11 通过。此轮仅加强验证，没有修改合并或模型算法。
 
 - **`f6af855` 远程终态与 macOS 帧源消融**。[Actions 42149541084](https://github.com/stvlynn/OpenLR/actions/runs/42149541084) 的 Windows、Linux 构建及对应十七／十六组原生流程成功。Windows 浏览器 360/368、8 项可选资源跳过、零失败，第一次普通命令约 8.3 秒完成；这是成功路径时间线，不证明先前超时已修复。macOS Intel 的四个独立探针均返回报告：直接 video、poster bitmap、anonymous video 在两种画布读回上均报 SecurityError；MediaBunny CanvasSink 的 96×64 两帧可实际读回并编码，样本为 `[190,60,44]` 与 `[39,67,202]`。此结果支持使用独立解码帧，而不支持仅修改 CORS 属性。严格套件通过新增局部、深度、增强及此前视频前的流程，随后仍在视频缩略图编码失败。AudioDecoder／AudioEncoder 仍缺失，视频导出尚未执行。日志 `.workspace/startup-trace-ci-{windows,macos}.log`，原始作业保留 Linux 结果。

@@ -32,7 +32,7 @@ export async function preparePhotoExport(
         if (processingVersion(p.edit) === 2) throw Error(PROCESS_MESSAGES.video)
         ownedVideo = await openVideo(file)
         await ownedVideo.seek(clipRange(p.edit.trim, ownedVideo.duration).start)
-        ownedImage = ownedVideo.video
+        ownedImage = await ownedVideo.frameAt()
       } else ownedImage = await decodeEditSource(file, p.edit)
       return ownedImage
     })

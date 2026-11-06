@@ -111,7 +111,18 @@ const times = [0, 2.35]
 const elementStages = ['complete', 'media-load', 'media-duration', 'seek', 'draw']
 const candidates = {
   direct: { times, stages: elementStages },
-  poster: { times: [0], stages: ['complete', 'media-load', 'media-duration', 'poster-bitmap', 'draw'] },
+  poster: {
+    times: [0],
+    stages: [
+      'complete',
+      'media-load',
+      'media-duration',
+      'frame-access',
+      'frame-decode',
+      'poster-bitmap',
+      'draw'
+    ]
+  },
   anonymous: { times, stages: elementStages },
   decoded: { times, stages: ['complete', 'demux', 'decode', 'draw'] }
 }

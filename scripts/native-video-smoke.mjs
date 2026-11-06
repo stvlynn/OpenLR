@@ -181,9 +181,7 @@ try {
     assert.deepEqual(blue.size, turnedSize)
     checkColor(blue.pixel, 2, 'Edited preview')
 
-    const before = await call('state')
-    const output = await call('export', '--format', 'video/webm', '--output', path.join(root, 'trimmed.webm'))
-    const decoded = await decodeClip(page, output)
+    const beforeStill = await call('state')
     const original = await call(
       'export',
       '--format',
@@ -193,6 +191,49 @@ try {
     )
     assert.deepEqual(await readFile(original.path), bytes)
     assert.deepEqual(await readFile(clip), bytes)
+    const afterOriginal = await call('state')
+    for (const key of ['mode', 'selected', 'selection', 'photos', 'playback'])
+      assert.deepEqual(afterOriginal[key], beforeStill[key], key)
+
+    const saved = await call('save-frame')
+    assert.deepEqual(saved.failed, [])
+    assert.equal(saved.added.length, 1)
+    const withStill = await call('state')
+    assert.equal(withStill.selected, saved.added[0])
+    assert.equal(withStill.photos.length, 2)
+    const savedRow = withStill.photos.find((photo) => photo.id === saved.added[0])
+    assert.equal(savedRow.name, `clip-${Math.round(beforeStill.playback.time * 1000)}.png`)
+    assert.deepEqual([savedRow.width, savedRow.height], turnedSize)
+    assert.deepEqual(savedRow.edit, {})
+    const still = await decodeStill(
+      page,
+      await call('export', '--format', 'original', '--output', path.join(root, 'saved.png'))
+    )
+    assert.deepEqual(still, blue)
+
+    await call('select', '--id', id)
+    const before = await call('video-seek', '--time', String(beforeStill.playback.time))
+    assert.equal(before.selected, id)
+    assert.deepEqual(before.selection, beforeStill.selection)
+    assert.equal(before.mode, beforeStill.mode)
+    assert.equal(before.playback.playing, false)
+    near(before.playback.time, beforeStill.playback.time, 0.025, 'Restored frame seek')
+    assert.deepEqual(
+      before.photos.find((photo) => photo.id === id).edit,
+      beforeStill.photos.find((photo) => photo.id === id).edit
+    )
+    console.log(
+      JSON.stringify({
+        nativeVideo: 'frames-passed',
+        playback: { started: started.time, advanced: advanced.time, paused: paused.time },
+        previewPixels: [red.pixel, green.pixel, blue.pixel],
+        savedFrame: still,
+        preservedOriginalBytes: bytes.length
+      })
+    )
+
+    const output = await call('export', '--format', 'video/webm', '--output', path.join(root, 'trimmed.webm'))
+    const decoded = await decodeClip(page, output)
     const after = await call('state')
     for (const key of ['mode', 'selected', 'selection', 'photos', 'playback'])
       assert.deepEqual(after[key], before[key], key)
@@ -211,23 +252,6 @@ try {
         `Unexpected tone in window ${index}: ${amplitude}`
       )
     }
-
-    const saved = await call('save-frame')
-    assert.deepEqual(saved.failed, [])
-    assert.equal(saved.added.length, 1)
-    const withStill = await call('state')
-    assert.equal(withStill.selected, saved.added[0])
-    assert.equal(withStill.photos.length, 2)
-    const savedRow = withStill.photos.find((photo) => photo.id === saved.added[0])
-    assert.equal(savedRow.name, `clip-${Math.round(after.playback.time * 1000)}.png`)
-    assert.deepEqual([savedRow.width, savedRow.height], turnedSize)
-    assert.deepEqual(savedRow.edit, {})
-    assert.deepEqual(withStill.photos.find((photo) => photo.id === id).edit, before.photos[0].edit)
-    const still = await decodeStill(
-      page,
-      await call('export', '--format', 'original', '--output', path.join(root, 'saved.png'))
-    )
-    assert.deepEqual(still, blue)
 
     console.log(
       JSON.stringify({

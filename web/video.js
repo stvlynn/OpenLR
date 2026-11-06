@@ -36,6 +36,20 @@ function recordMediaState(diagnostic, video) {
   diagnostic.mediaErrorCode = video.error?.code ?? null
 }
 
+function nativeVideoPixelsReadable(video) {
+  const canvas = document.createElement('canvas')
+  canvas.width = canvas.height = 1
+  const context = canvas.getContext('2d')
+  try {
+    context.drawImage(video, 0, 0, 1, 1)
+    context.getImageData(0, 0, 1, 1)
+    return true
+  } catch (error) {
+    if (error.name !== 'SecurityError') throw error
+    return false
+  }
+}
+
 export async function openVideo(file, diagnostic) {
   if (diagnostic) diagnostic.stage = 'media-load'
   const url = URL.createObjectURL(file),
@@ -47,7 +61,15 @@ export async function openVideo(file, diagnostic) {
   video.preload = 'auto'
   video.playsInline = true
   video.muted = true
+  let closed = false,
+    frameSource
   const close = () => {
+    if (closed) return
+    closed = true
+    frameSource?.then(
+      (source) => source?.close(),
+      () => {}
+    )
     video.pause()
     video.removeAttribute('src')
     video.load()
@@ -71,6 +93,19 @@ export async function openVideo(file, diagnostic) {
       }
     }
     if (!duration || !video.width || !video.height) throw Error('No playable video track')
+    async function frames() {
+      if (closed) throw new DOMException('The video is closed', 'AbortError')
+      frameSource ??= (async () => {
+        if (diagnostic) diagnostic.stage = 'frame-access'
+        if (nativeVideoPixelsReadable(video)) return null
+        if (diagnostic) diagnostic.stage = 'frame-decode'
+        const { decodeVideoFrames } = await import('./video-frames.js')
+        return decodeVideoFrames(file)
+      })()
+      const source = await frameSource
+      if (closed) throw new DOMException('The video is closed', 'AbortError')
+      return source
+    }
     const seek = async (time) => {
       if (!(time >= 0 && time <= duration)) throw Error('Time is outside the video')
       if (Math.abs(video.currentTime - time) > 0.0001)
@@ -78,7 +113,25 @@ export async function openVideo(file, diagnostic) {
           video.currentTime = time
         })
     }
-    return { video, duration, seek, close }
+    return {
+      video,
+      duration,
+      seek,
+      close,
+      async frameAt(time = video.currentTime) {
+        const source = await frames()
+        return source ? source.at(time) : video
+      },
+      async snapshot() {
+        const source = await frames()
+        const time = video.currentTime
+        const image = source ? await source.at(time) : await createImageBitmap(video)
+        return { time, image }
+      },
+      async playbackFrames() {
+        return (await frames())?.playback(video.currentTime) ?? null
+      }
+    }
   } catch (err) {
     recordMediaState(diagnostic, video)
     close()
@@ -88,9 +141,10 @@ export async function openVideo(file, diagnostic) {
 export async function poster(file, diagnostic) {
   const media = await openVideo(file, diagnostic)
   try {
-    if (diagnostic) diagnostic.stage = 'poster-bitmap'
     recordMediaState(diagnostic, media.video)
-    return { bitmap: await createImageBitmap(media.video), duration: media.duration }
+    const frame = await media.frameAt()
+    if (diagnostic) diagnostic.stage = 'poster-bitmap'
+    return { bitmap: await createImageBitmap(frame), duration: media.duration }
   } finally {
     media.close()
   }

@@ -169,21 +169,48 @@ let updateToneCurves = () => {}
 let gradingMode = 'three',
   updateColorGrading = () => {}
 let playingMedia = null,
+  playbackFrames = null,
+  playbackGeneration = 0,
   frameTicket = 0,
   sliderFrame = 0
+function cancelPlaybackFrames() {
+  playbackGeneration++
+  cancelAnimationFrame(frameTicket)
+  playbackFrames?.close()
+  playbackFrames = null
+}
 function stopPlayback() {
   playingMedia?.video.pause()
-  cancelAnimationFrame(frameTicket)
+  cancelPlaybackFrames()
 }
 async function refreshPlayback() {
-  if (!playingMedia || playingMedia.video.paused || !active() || mode !== 'detail') return
-  const { video, duration } = playingMedia,
+  const media = playingMedia,
     photo = active()
-  if (video.currentTime >= clipRange(photo.edit.trim, duration).end) stopPlayback()
+  if (!media || !photo || bitmapId !== photo.id || mode !== 'detail') return
+  const { video, duration } = media,
+    time = video.currentTime,
+    end = video.paused || time >= clipRange(photo.edit.trim, duration).end
+  if (end) stopPlayback()
+  const generation = playbackGeneration,
+    cursor = playbackFrames
+  const ownsPlayback = () =>
+    playingMedia === media && playbackGeneration === generation && selected === photo.id && mode === 'detail'
+  const ownsFrame = () => ownsPlayback() && active() === photo
   $('play-video').textContent = video.paused ? 'Play' : 'Pause'
-  $('video-position').value = video.currentTime
-  await previewStage(video, photo.edit)
-  if (playingMedia?.video === video && !video.paused) frameTicket = requestAnimationFrame(refreshPlayback)
+  $('video-position').value = time
+  try {
+    const image = cursor ? await cursor.at(time) : await media.frameAt(time)
+    if (image && ownsFrame()) {
+      bitmap = image
+      await previewStage(image, photo.edit, ownsFrame)
+    }
+  } catch (error) {
+    if (!ownsPlayback()) return
+    stopPlayback()
+    $('play-video').textContent = 'Play'
+    notice(error.message)
+  }
+  if (ownsPlayback() && !video.paused) frameTicket = requestAnimationFrame(refreshPlayback)
 }
 const active = () => photos.find((p) => p.id === selected)
 const matches = (p) =>
@@ -211,24 +238,29 @@ async function source(id, recipe = photos.find((photo) => photo.id === id)?.edit
   if (bitmapId !== id || bitmapVersion !== version) {
     const data = await original(id)
     const photo = photos.find((p) => p.id === id)
-    const media = isVideo(data.file) ? await openVideo(data.file) : null
-    if (media && version === 2) {
-      media.close()
-      throw new Error(PROCESS_MESSAGES.video)
-    }
-    const next = media ? media.video : await decodeEditSource(data.file, recipe)
-    if (media) {
-      photo.duration = media.duration
-      await media.seek(clipRange(photo.edit.trim, media.duration).start)
+    const video = isVideo(data.file)
+    if (video && version === 2) throw new Error(PROCESS_MESSAGES.video)
+    let media, next
+    try {
+      if (video) {
+        media = await openVideo(data.file)
+        await media.seek(clipRange(photo.edit.trim, media.duration).start)
+        next = await media.frameAt()
+      } else next = await decodeEditSource(data.file, recipe)
+      if (photo) {
+        photo.metadata ??= await metadata(data.file)
+        if (media) photo.duration = media.duration
+        photo.width = next.width
+        photo.height = next.height
+      }
+    } catch (error) {
+      media?.close()
+      next?.close?.()
+      throw error
     }
     stopPlayback()
     playingMedia?.close()
-    playingMedia = media
-    if (photo) {
-      photo.width = next.width
-      photo.height = next.height
-      photo.metadata ??= await metadata(data.file)
-    }
+    playingMedia = media ?? null
     localToolsUI?.unmount()
     opticsUI?.unmount()
     cancelPaint()
@@ -236,6 +268,11 @@ async function source(id, recipe = photos.find((photo) => photo.id === id)?.edit
     bitmap = next
     bitmapId = id
     bitmapVersion = version
+  } else if (playingMedia) {
+    const media = playingMedia,
+      image = await media.frameAt()
+    if (playingMedia === media && selected === id) bitmap = image
+    return image
   }
   return bitmap
 }
@@ -421,14 +458,14 @@ function displayedHistogram() {
     return null
   return (preview.bins ??= histogram(preview.canvas))
 }
-async function previewStage(image, edit) {
+async function previewStage(image, edit, isCurrent) {
   try {
-    await paintStage(image, edit)
+    await paintStage(image, edit, isCurrent)
   } catch (error) {
     if (error.name !== 'AbortError') notice(error.message)
   }
 }
-async function paintStage(image, edit) {
+async function paintStage(image, edit, isCurrent = () => true) {
   const previous = paintController,
     controller = new AbortController()
   paintController = controller
@@ -463,6 +500,7 @@ async function paintStage(image, edit) {
     paintRevision !== revision ||
     paintController !== controller ||
     controller.signal.aborted ||
+    !isCurrent() ||
     selected !== photoId ||
     active()?.edit !== owner ||
     mode !== 'detail'
@@ -473,6 +511,7 @@ async function paintStage(image, edit) {
     paintRevision !== revision ||
     paintController !== controller ||
     controller.signal.aborted ||
+    !isCurrent() ||
     selected !== photoId ||
     active()?.edit !== owner ||
     mode !== 'detail'
@@ -526,7 +565,10 @@ async function draw() {
   const p = active(),
     detail = mode === 'detail'
   paintRevision++
-  if (!detail || bitmapId !== selected) cancelPaint()
+  if (!detail || bitmapId !== selected) {
+    cancelPaint()
+    if (playingMedia) stopPlayback()
+  }
   const curveSource = p?.local?.sidecarError ? null : p
   const points = p?.edit.pointColors ?? []
   if (pointPhoto !== (p?.id ?? '') || !points.some((point) => point.id === selectedPoint))
@@ -600,7 +642,6 @@ async function draw() {
   localToolsUI?.sync()
   opticsUI?.sync()
   if (!p) {
-    stopPlayback()
     $('video-bar').hidden = true
     return
   }
@@ -645,8 +686,11 @@ async function draw() {
     input.value = p.edit[input.dataset.control] || 0
     input.previousElementSibling.value = input.value
   }
-  if (detail) await paintStage(await source(p.id), p.edit)
-  else stopPlayback()
+  if (detail) {
+    const image =
+      playingMedia && bitmapId === p.id && !playingMedia.video.paused ? bitmap : await source(p.id)
+    await paintStage(image, p.edit)
+  }
   const precision = inputPrecisionDescription(processingState(p)?.input)
   if (precision) $('info').textContent += '\n' + precision
   const video = detail && isVideo(p) && playingMedia
@@ -1061,13 +1105,17 @@ async function execute(command, args, context = {}) {
     }
     case 'save-frame': {
       if (!p || !isVideo(p)) throw Error('Select a video')
-      const canvas = await render(await source(p.id), p.edit),
-        blob = await toBlob(canvas, 'image/png')
-      const file = new File(
-        [blob],
-        p.name.replace(/\.[^.]+$/, '') + '-' + Math.round(playingMedia.video.currentTime * 1000) + '.png',
-        { type: 'image/png' }
-      )
+      if (bitmapId !== p.id) await source(p.id)
+      const { time, image } = await playingMedia.snapshot()
+      let blob
+      try {
+        blob = await toBlob(await render(image, p.edit), 'image/png')
+      } finally {
+        image.close?.()
+      }
+      const file = new File([blob], p.name.replace(/\.[^.]+$/, '') + '-' + Math.round(time * 1000) + '.png', {
+        type: 'image/png'
+      })
       if (local.state()) await showLibrary()
       result = await importFiles([file])
       break
@@ -1901,15 +1949,16 @@ async function execute(command, args, context = {}) {
         case 'video-trim': {
           if (!isVideo(p)) throw Error('Select a video')
           mode = 'detail'
-          await source(p.id)
+          if (bitmapId !== p.id) await source(p.id)
           const media = playingMedia
           if (command === 'video-play') {
             const range = clipRange(p.edit.trim, media.duration)
             if (media.video.currentTime < range.start || media.video.currentTime >= range.end)
               await media.seek(range.start)
+            cancelPlaybackFrames()
             media.video.muted = false
             await media.video.play()
-            cancelAnimationFrame(frameTicket)
+            playbackFrames = await media.playbackFrames()
             frameTicket = requestAnimationFrame(refreshPlayback)
           } else if (command === 'video-pause') stopPlayback()
           else if (command === 'video-seek') {
