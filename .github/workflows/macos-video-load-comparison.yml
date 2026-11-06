@@ -20,6 +20,13 @@ jobs:
         with:
           go-version-file: go.mod
       - run: npm ci
+      - name: Provision the pinned fixture and verification browser
+        run: |
+          chrome_platform=${{ runner.arch == 'ARM64' && 'mac-arm64' || 'mac-x64' }}
+          mkdir -p build/video-oracle
+          curl --fail --location "https://storage.googleapis.com/chrome-for-testing-public/157.0.8103.38/$chrome_platform/chrome-$chrome_platform.zip" -o build/video-oracle/chrome.zip
+          ditto -xk build/video-oracle/chrome.zip build/video-oracle
+          echo "OPENLR_VIDEO_PROBE_CHROME=$PWD/build/video-oracle/chrome-$chrome_platform/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing" >> "$GITHUB_ENV"
       - name: Build the automatic-load control
         run: node scripts/desktop.mjs build -o build/video-automatic -platform darwin/universal
       - name: Build the explicit initial-load candidate

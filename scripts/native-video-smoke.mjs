@@ -149,7 +149,10 @@ function checkColor(pixel, channel, label) {
 const server = await serveWorkspace()
 let browser
 try {
-  browser = await chromium.launch({ channel: process.env.CHROME_CHANNEL || 'chrome' })
+  const oracleChrome = process.env.OPENLR_VIDEO_PROBE_CHROME
+  browser = await chromium.launch(
+    oracleChrome ? { executablePath: oracleChrome } : { channel: process.env.CHROME_CHANNEL || 'chrome' }
+  )
   console.log(JSON.stringify({ nativeVideoBrowser: browser.version() }))
   const page = await browser.newPage()
   // Use Chrome for the fixture and artifact decoder in a page without OpenLR application code.
