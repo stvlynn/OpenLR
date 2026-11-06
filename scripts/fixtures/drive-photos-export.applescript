@@ -5,9 +5,13 @@ on run argv
         set frontmost of targetProcess to true
         if operation is "create" then
             click my waitFor(targetProcess, "AXButton", {"Create New…", "Create New..."})
-            set nameField to my waitFor(targetProcess, "AXTextField", {"Save As:"})
-            set value of nameField to "OpenLR Generated"
+            my waitFor(targetProcess, "AXTextField", {"Save As:"})
             my navigate(targetProcess, item 2 of argv)
+            set nameField to my waitFor(targetProcess, "AXTextField", {"Save As:"})
+            set value of attribute "AXFocused" of nameField to true
+            keystroke "a" using command down
+            keystroke "OpenLR Generated"
+            if value of nameField is not "OpenLR Generated" then error "Photos library filename was not entered"
             click my waitFor(targetProcess, "AXButton", {"OK"})
             return "Requested a new Photos library"
         end if

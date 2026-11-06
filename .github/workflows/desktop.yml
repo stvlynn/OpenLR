@@ -41,7 +41,10 @@ jobs:
             if test -d "$PHOTOS_PROBE/OpenLR Generated.photoslibrary"; then break; fi
             sleep 0.2
           done
-          test -d "$PHOTOS_PROBE/OpenLR Generated.photoslibrary"
+          if ! test -d "$PHOTOS_PROBE/OpenLR Generated.photoslibrary"; then
+            ls -1 "$PHOTOS_PROBE"
+            exit 1
+          fi
           echo 'Photos created the expected disposable library'
           sleep 1
           osascript "$PHOTOS_PROBE/drive.scpt" import "$PHOTOS_PROBE/Generated.png"
