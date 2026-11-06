@@ -30,6 +30,7 @@ for (const [name, ...args] of [
   ...(process.platform === 'win32' ? [['native-sync-smoke'], ['native-file-open-smoke']] : []),
   ['native-organization-smoke'],
   ['native-mask-smoke'],
+  ['native-sky-smoke'],
   ['native-local-tools-smoke'],
   ['native-depth-smoke'],
   ['native-enhance-smoke'],
