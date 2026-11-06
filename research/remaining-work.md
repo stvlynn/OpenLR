@@ -1,5 +1,7 @@
 # OpenLR remaining work
 
+Latest continuation: strict preference persistence passed all four platforms at 77a76cb. Photo-menu ownership at cc340ef passed Linux and both macOS jobs; its Windows browser test used a checked-state helper incompatible with intentional failed-write rollback and is now corrected. Automatic-stack dialog view ownership has also been repaired and verified in fully provisioned Windows Chrome and a rebuilt native organization run. Await its committed platform results, then renew the independent archive and final requirement audit. [Current acceptance](../docs/acceptance.md) · [Interaction findings](command-interaction-inventory.md)
+
 Reviewed 2026-11-06 through the `ba97bfe` Windows and macOS results, the Linux pass at the product-equivalent `9fc50ae`, and the independent `9fc50ae` Windows archive. Product documentation defines supported OpenLR behavior, while installed Lightroom evidence supplies reference observations. [Completion audit](completion-audit.md) · [Current product scope](../README.md) · [Interaction inventory](interaction-coverage.md)
 
 ## Requirement and evidence

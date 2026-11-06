@@ -1,6 +1,9 @@
 import { matchesCatalogFilters } from './organization.js'
 import { PHOTO_MENU_PHOTO_COMMANDS } from './agent-protocol.js'
 
+export const STACK_MESSAGES = { changedView: 'The photos in this view changed; open Auto stack again' }
+export const stackCandidates = (photos) => photos.filter((photo) => !photo.deleted && !photo.stackId)
+
 export function displayedPhotos(list, open) {
   const covers = new Map(),
     seen = new Set()
@@ -31,7 +34,7 @@ function difference(a, b) {
 }
 export async function findStacks(photos, by, threshold) {
   const capture = (p) => Date.parse(p.metadata?.DateTimeOriginal) || p.captured || p.added
-  const list = photos.filter((p) => !p.deleted && !p.stackId).sort((a, b) => capture(a) - capture(b))
+  const list = stackCandidates(photos).sort((a, b) => capture(a) - capture(b))
   const groups = []
   if (by === 'time') {
     for (const p of list) {
@@ -66,7 +69,7 @@ export function smartMatch(photo, rule) {
   return matchesCatalogFilters(photo, rule) && (!rule.text || text.includes(rule.text.toLowerCase()))
 }
 export function stackMenu(run) {
-  let current
+  let current, stackTargets
   const details = document.createElement('details'),
     summary = document.createElement('summary'),
     menu = document.createElement('div')
@@ -95,10 +98,14 @@ export function stackMenu(run) {
     b.disabled = true
     b.onclick = async () => {
       const args = ['stack', 'cull'].includes(action) ? { expectedIds: [...current.selection] } : {}
+      const targets = action.startsWith('auto-stack-')
+        ? stackCandidates(current.photos).map((photo) => photo.id)
+        : null
       if (PHOTO_MENU_PHOTO_COMMANDS.includes(action)) args.photoId = current.selected
       const closing = run('panel', { name, open: false })
       if (action.startsWith('auto-stack-')) {
         await closing
+        stackTargets = targets
         const t = action.endsWith('time'),
           dialog = document.getElementById('stack-dialog')
         const input = dialog.querySelector('input')
@@ -116,10 +123,12 @@ export function stackMenu(run) {
   document.querySelector('.bar').append(details)
   const dialog = document.getElementById('stack-dialog')
   dialog.onclose = () => {
+    const expectedIds = stackTargets
+    stackTargets = null
     if (dialog.returnValue === 'ok') {
       const by = dialog.dataset.by,
         threshold = Number(dialog.querySelector('input').value) / (by === 'time' ? 1 : 100)
-      run('auto-stack', { by, threshold })
+      run('auto-stack', { by, threshold, expectedIds })
     }
     dialog.returnValue = ''
   }

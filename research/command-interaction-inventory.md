@@ -1,5 +1,15 @@
 # Remaining OpenLR GUI / CLI interaction audit
 
+## Auto-stack view ownership — 2026-11-06
+
+At cc340ef, four generated photos were split by keyword search into A and B pairs. Opening capture-time Auto stack on A, changing the live search to B through the dispatcher and confirming the real dialog created a B stack. The reproduction waited for resolved stored state, not a fixed delay or the truthiness of an async predicate. The ignored script is `.workspace/auto-stack-dialog-audit.mjs`.
+
+The dialog now captures eligible visible IDs before queuing menu closure. `stackCandidates` is the single eligibility rule used by grouping, GUI capture and dispatcher validation. `auto-stack.expectedIds` reuses the existing order-independent membership check with a view-specific error. Deleted photos and existing stack members are excluded, so expanding a pre-existing stack does not falsely invalidate the dialog. Selection, order and current per-photo grouping data retain their existing semantics when membership is unchanged. No alternate target list, command queue or extra confirmation is introduced.
+
+Chrome 157.0.8103.38 passed 22 queued-control checks plus 10 CLI checks. Both grouping dialogs rejected a changed search set; another case queued the search before menu closure. Matching reordered IDs, changed sort/selection and expanding an existing stack remained valid. Independent catalog reads verified both resulting groups and reload. The first positive similarity fixture retained a prior Contrast edit, so the default threshold correctly produced no group; the target-ownership check now explicitly chooses a 100% threshold and independently requires a real stack ID before comparing members. The close wait observes handler completion as well as dialog visibility. Logs: `.workspace/auto-stack-focused{,-final}.log`.
+
+The fully provisioned Windows Chrome suite passed 480/480, zero skips, in 295.3 seconds. The rebuilt Windows package passed the expanded native organization flow: mismatched visible IDs rejected, reordered matching IDs worked for time and similarity grouping, restart restored catalog/settings and three original exports matched. Installer generation passed; the unpacked executable was used. Logs: `.workspace/auto-stack-{full,build,native}.log`. Hosted verification of this new product change is still pending.
+
 ## Photo menu target ownership — 2026-11-06
 
 At 77a76cb, a real Chrome workspace held A's thumbnail-write completion, queued selection of B and clicked Create virtual copy while A remained displayed. The created row had B's originalId and name. The ignored reproduction is `.workspace/queued-virtual-copy-audit.mjs`. Source inspection showed the Photo menu passed no target expectations when queuing its actions behind menu closure.

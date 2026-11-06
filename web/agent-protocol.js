@@ -491,6 +491,11 @@ export const definitions = {
     photoId: string('Optional selected-photo guard')
   }),
   'auto-stack': entry('Group library images by capture interval or visual similarity', {
+    expectedIds: {
+      ...expectedIds,
+      description:
+        'Optional exact eligible visible-photo membership guard; excludes deleted photos and existing stacks, ignores order'
+    },
     by: string('Grouping method', { enum: ['time', 'similarity'] }),
     threshold: {
       type: 'number',

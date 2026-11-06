@@ -28,6 +28,8 @@ The shared queue validates command arguments before executing an action or recor
 
 Photo-menu commands `virtual-copy`, `save-frame`, `red-eye`, `stack-cover`, `stack-toggle` and `unstack` accept an optional `--photoId` guard. `stack` also accepts it for the cover photo, plus `--expectedIds` for group membership. `cull` accepts `--expectedIds` for selection ownership; its existing `ids` still specifies the review order and targets. The GUI supplies these guards before queuing menu closure, and a mismatch writes nothing. No guard is required for ordinary CLI execution-time selection.
 
+For `auto-stack`, `--expectedIds` instead checks the eligible photos in the current visible view: non-deleted photos outside existing stacks. Read those IDs from `state.photos`, excluding `deleted` and `stackId` records. Order and current selection do not affect this guard. GUI capture-time and similarity dialogs capture that set before opening, rejecting a changed set on confirmation. Without the guard, CLI grouping uses the execution-time view.
+
 Full and summary `state` expose `clipping`, the current workspace highlight/shadow warning toggle. The `clipping` command, Histogram button and J shortcut share this state. Warnings affect the displayed canvas, not exported image pixels or edit recipes. Starting a color sampler clears them.
 
 ### Histogram

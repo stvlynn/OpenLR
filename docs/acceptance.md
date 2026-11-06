@@ -2,6 +2,10 @@
 
 对照目标为本机 Adobe Lightroom 9.4 云桌面版。REA 证据来自可执行文件及其资源；登录后的 Windows 运行观察已核对裁剪、蒙版入口及导出设置，见 [运行记录](../research/lightroom.md#登录后的-windows-运行观察)。当前仍未建立全部功能逐屏、逐像素的 Adobe 对照。静态入口、独立实现及实际通过的测试分别记录。
 
+## 自动堆栈视图保护 — 2026-11-06
+
+复现了在 A 组打开自动堆栈对话框、切换到 B 组后错误处理 B 的问题。两种分组方式现绑定打开时可参与分组的照片集合，排序、选择及已有堆栈展开仍可正常变化。Windows／Chrome 157.0.8103.38 完整回归 **480/480，零失败、零跳过**，295.3 秒；22 项队列专项、10 项 CLI 检查和重建 Windows 包的组织／重启／原件流程通过。前次 `cc340ef` 的 Linux 和两种 macOS 作业成功；Windows 在偏好失败恢复测试的 `.check()` 动作断言处停止。已改用真实点击并保留最终恢复与存储断言，另行专项通过。新的跨平台验收尚待提交运行。见[自动堆栈证据](../research/command-interaction-inventory.md#auto-stack-view-ownership--2026-11-06)和[偏好测试证据](../research/preferences-persistence.md)。
+
 ## Photo 菜单目标保护 — 2026-11-06
 
 复现了显示 A 时点击虚拟副本却复制排队切换后的 B。单张照片菜单操作现绑定点击目标，Stack selected 和 Review 复用选择成员校验，Stack 同时保护封面照片。完整 Windows／Chrome 157.0.8103.38 回归 **479/479，零失败、零跳过**，313.9 秒；21 项最终队列专项与 10 项 CLI 检查通过。新 Windows 包的主流程、组织、视频与筛选四组原生流程通过，包含实际保存帧和红眼像素、重启及原件。随后仅增加的初始菜单禁用状态已通过浏览器专项，最终平台包尚待 Actions。自动堆栈对话框的视图目标仍需单独审查。见[复现与范围](../research/command-interaction-inventory.md#photo-menu-target-ownership--2026-11-06)。

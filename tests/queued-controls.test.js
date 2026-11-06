@@ -118,6 +118,100 @@ test('queued controls use the intended photo and apply relative actions once', a
     return { page, run, first, second }
   }
 
+  await t.test(
+    'Auto stack retains eligible view membership through dialog and queued navigation',
+    async (t) => {
+      const { page, run, first, second } = await workspace(t, [
+        originals[0],
+        originals[0],
+        originals[1],
+        originals[1]
+      ])
+      const rows = (await run('state')).photos
+      const other = ['2.png', '3.png'].map((name) => rows.find((photo) => photo.name === name).id)
+      const readRows = () => page.evaluate(async () => (await import('/catalog.js')).all('photos'))
+      await run('select-many', { ids: [first, second] })
+      await run('keywords', { value: 'group-a' })
+      await run('select-many', { ids: other })
+      await run('keywords', { value: 'group-b' })
+      async function open(by) {
+        await run('panel', { name: 'Photo', open: true })
+        await page.locator(`[data-action="auto-stack-${by}"]`).click()
+        await page.waitForFunction(() => document.getElementById('stack-dialog').open)
+      }
+      async function confirm() {
+        await page.locator('#stack-dialog button[value="ok"]').click()
+        await page.waitForFunction(() => {
+          const dialog = document.getElementById('stack-dialog')
+          return !dialog.open && dialog.returnValue === ''
+        })
+        return run('state')
+      }
+      for (const by of ['time', 'similar']) {
+        await run('search', { text: 'group-a' })
+        await open(by)
+        await run('search', { text: 'group-b' })
+        await confirm()
+        assert.ok((await readRows()).every((photo) => !photo.stackId))
+        assert.match(await page.locator('#notice').textContent(), /photos in this view changed/i)
+      }
+      await run('search', { text: 'group-a' })
+      await run('panel', { name: 'Photo', open: true })
+      await holdThumbnail(page, '[data-action="auto-stack-time"]')
+      await page.evaluate(() => {
+        window.openlr.run('edit', { key: 'Contrast', value: 20 })
+        window.openlr.run('search', { text: 'group-b' })
+      })
+      await page.waitForFunction(() => Boolean(window.catalogThumbnailHold.release))
+      await page.locator('[data-action="auto-stack-time"]').click()
+      await page.evaluate(() => window.catalogThumbnailHold.release())
+      await page.waitForFunction(() => document.getElementById('stack-dialog').open)
+      await confirm()
+      assert.ok((await readRows()).every((photo) => !photo.stackId))
+      assert.match(await page.locator('#notice').textContent(), /photos in this view changed/i)
+
+      await run('search', { text: 'group-a' })
+      await open('similar')
+      await page.locator('#stack-dialog input').fill('100')
+      await run('sort', { order: 'name', direction: 'desc' })
+      await run('select', { id: second })
+      await confirm()
+      let stored = await readRows()
+      assert.ok(stored.find((photo) => photo.id === first).stackId)
+      assert.equal(
+        stored.find((photo) => photo.id === first).stackId,
+        stored.find((photo) => photo.id === second).stackId
+      )
+      assert.ok(stored.find((photo) => photo.id === second).stackCover)
+      assert.ok(stored.filter((photo) => other.includes(photo.id)).every((photo) => !photo.stackId))
+      await run('unstack', { photoId: second })
+      await assert.rejects(() => run('auto-stack', { expectedIds: other }), /photos in this view changed/i)
+      assert.deepEqual(await run('auto-stack', { by: 'time', threshold: 5, expectedIds: [second, first] }), {
+        groups: 1,
+        photos: 2
+      })
+      await run('unstack')
+
+      await run('search', { text: 'group-b' })
+      await run('select-many', { ids: other })
+      await run('stack')
+      await run('search', { text: '' })
+      await open('time')
+      await run('select', { id: other[0] })
+      await run('stack-toggle')
+      await confirm()
+      stored = await readRows()
+      assert.ok(stored.every((photo) => photo.stackId))
+      assert.equal(new Set(stored.map((photo) => photo.stackId)).size, 2)
+      await page.reload()
+      await page.waitForFunction(() => window.openlr)
+      assert.deepEqual(
+        (await readRows()).map((photo) => [photo.id, photo.stackId]),
+        stored.map((photo) => [photo.id, photo.stackId])
+      )
+    }
+  )
+
   await t.test('Photo menu retains the clicked photo for copies and stack actions', async (t) => {
     const { page, run, first, second } = await workspace(t)
     for (const command of ['virtual-copy', 'red-eye', 'stack-cover', 'stack-toggle', 'unstack']) {

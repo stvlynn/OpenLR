@@ -37,7 +37,14 @@ import {
   displayName,
   colorLabels
 } from './preferences.js'
-import { displayedPhotos, findStacks, smartMatch, stackMenu } from './stacks.js'
+import {
+  displayedPhotos,
+  findStacks,
+  smartMatch,
+  stackMenu,
+  stackCandidates,
+  STACK_MESSAGES
+} from './stacks.js'
 import { readXmp, XMP_MESSAGES } from './xmp.js'
 import { mountSync, synchronize } from './sync.js'
 import { metadata, describe } from './metadata.js'
@@ -1037,8 +1044,11 @@ const exportProgress = new ExportProgress((job) => {
 })
 async function execute(command, args, context = {}) {
   const p = active()
-  if (args.expectedIds !== undefined && command !== 'purge')
-    assertSelection(organization.targets(photos), args.expectedIds)
+  if (args.expectedIds !== undefined && command !== 'purge') {
+    if (command === 'auto-stack')
+      assertSelection(stackCandidates(visible()), args.expectedIds, STACK_MESSAGES.changedView)
+    else assertSelection(organization.targets(photos), args.expectedIds)
+  }
   if (PHOTO_MENU_PHOTO_COMMANDS.includes(command) && args.photoId !== undefined && args.photoId !== p?.id)
     throw Error('The selected photo changed')
   if (context.draftSource?.canceled && command !== 'draft-cancel') return null

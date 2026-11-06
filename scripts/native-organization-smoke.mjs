@@ -219,7 +219,28 @@ await withNativeWorkspace(
       assert.equal(row(unstacked, id).stackCover, false)
     }
     await select(first)
-    const timedStack = await call('auto-stack', '--by', 'time', '--threshold', '3')
+    await assert.rejects(
+      () =>
+        call(
+          'auto-stack',
+          '--by',
+          'time',
+          '--threshold',
+          '3',
+          '--expectedIds',
+          JSON.stringify([first, second])
+        ),
+      /photos in this view changed/i
+    )
+    const timedStack = await call(
+      'auto-stack',
+      '--by',
+      'time',
+      '--threshold',
+      '3',
+      '--expectedIds',
+      JSON.stringify([separate, second, first])
+    )
     assert.deepEqual(timedStack, { groups: 1, photos: 2 })
     const timedId = checkStack(await call('stack-toggle'), first, second)
 
@@ -267,7 +288,15 @@ await withNativeWorkspace(
 
     // Similarity compares current thumbnails. Apply the same edit to both bracket photos first.
     await select(first)
-    const similarStack = await call('auto-stack', '--by', 'similarity', '--threshold', '0.02')
+    const similarStack = await call(
+      'auto-stack',
+      '--by',
+      'similarity',
+      '--threshold',
+      '0.02',
+      '--expectedIds',
+      JSON.stringify([second, separate, first])
+    )
     assert.deepEqual(similarStack, { groups: 1, photos: 2 })
     const similarExpanded = await call('stack-toggle')
     checkStack(similarExpanded, first, second)

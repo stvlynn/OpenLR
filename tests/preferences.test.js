@@ -96,7 +96,13 @@ test('preferences migrate once and acknowledge only committed catalog settings',
   assert.deepEqual(await run('preferences'), migrated)
   assert.deepEqual((await record()).values, migrated)
   await page.locator('#settings').click()
-  await page.locator('#preferences input[name="filenames"]').check()
+  await page.locator('#preferences input[name="filenames"]').evaluate((input) => {
+    input.addEventListener('change', (event) => {
+      window.preferenceAttempt = { trusted: event.isTrusted, checked: input.checked }
+    })
+  })
+  await page.locator('#preferences input[name="filenames"]').click()
+  assert.deepEqual(await page.evaluate(() => window.preferenceAttempt), { trusted: true, checked: true })
   await waitForAsyncFunction(page, async () => Boolean(document.getElementById('notice').textContent))
   assert.deepEqual(await run('preferences'), migrated)
   assert.equal(await page.locator('#preferences input[name="filenames"]').isChecked(), false)
