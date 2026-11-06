@@ -2,6 +2,14 @@
 
 Reviewed through 2026-11-06 on Windows and WSL Linux. This is delivery evidence, not an overall completeness claim.
 
+## Windows tracked snapshot `07ce383`
+
+A fresh Git ZIP archive identified `07ce383e31a4f7f6b9f2a902cbeec387a441ca5c` in its comment. The extracted tree began without dependencies, generated bindings and CLI resources, or build output. Node 24.9.0 and npm 11.6.0 installed 62 packages with `npm ci`, which reported zero vulnerabilities. MyGo 0.7.4 used the external Go 1.27.3 toolchain and shared caches to build the Windows/amd64 application and NSIS installer.
+
+The packaged CLI ran alone in a fresh OS temporary directory with no session file or ancestor `node_modules` and with `NODE_PATH` and `NODE_OPTIONS` unset. Offline schema and dry-run checks covered relative selection, guarded playback and a non-packet-aligned trim. Export schema discovery listed WebM and MP4. An esbuild ESM parse found one source input and six Node builtins.
+
+Nine byte comparisons verified the packaged CLI and license/source resources against their canonical or generated archive files. The source notice linked to the public repository, and the six vendored Opus notice files were present in the archive. This run covers build output and offline CLI execution. GUI launch and installer execution have separate verification scopes. The archive, harness and logs are under ignored `.workspace/delivery-07ce383-*` paths.
+
 ## Windows tracked snapshot `8f9f113`
 
 A fresh Git ZIP archive recorded the full commit `8f9f113d325f9341e05d71ee105bc76156dafd6b` in its comment. The extracted directory began without `node_modules`, generated CLI/bindings or build output. Node 24.9.0 installed 62 packages with `npm ci` and npm reported zero vulnerabilities in that run. The MyGo 0.7.4 build used the external Go 1.27.3 toolchain and shared module and build caches. It produced the unpacked Windows/amd64 application, packaged CLI and NSIS installer.
