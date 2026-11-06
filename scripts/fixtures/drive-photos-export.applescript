@@ -20,7 +20,7 @@ on run argv
         end if
         if operation is "export" then
             keystroke "a" using command down
-            set exportAction to my waitForExport(targetProcess)
+            my waitForExport(targetProcess)
             keystroke "i" using command down
             set keywordField to my waitFor(targetProcess, "AXTextField", {"Add a Keyword", "Add a Keyword…", "Add Keywords"})
             set value of attribute "AXFocused" of keywordField to true
@@ -71,8 +71,8 @@ on waitForExport(targetProcess)
     tell application "System Events"
         repeat 30 times
             set fileMenu to menu 1 of menu bar item "File" of menu bar 1 of targetProcess
-            set actions to get menu items of menu 1 of menu item "Export" of fileMenu
-            repeat with exportAction in actions
+            set exportEntries to get menu items of menu 1 of menu item "Export" of fileMenu
+            repeat with exportAction in exportEntries
                 try
                     if (name of exportAction begins with "Export Unmodified Original") and enabled of exportAction then return contents of exportAction
                 end try
