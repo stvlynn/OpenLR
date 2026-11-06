@@ -411,7 +411,7 @@ try {
     const failures = []
     async function verify(testCase, work) {
       try {
-        await work()
+        return await work()
       } catch (error) {
         console.error(`${testCase.label}: ${error.message}`)
         failures.push(error)
@@ -434,7 +434,16 @@ try {
         sourceOffset: Math.max(0, shortStartFrame - firstFrame)
       }
     })
-    const state = await prepareClip(call, opus, shortStartFrame, sampleRate)
+    const state = await verify(
+      {
+        label: 'Multitrack source preparation',
+        file: path.join(root, 'trimmed.webm'),
+        source: opus,
+        expected
+      },
+      () => prepareClip(call, opus, shortStartFrame, sampleRate)
+    )
+    if (!state) throw new AggregateError(failures, 'Packaged audio source preparation failed')
     await checkOriginal(call, opus, opusBytes)
     for (const [extension, codec] of [
       ['webm', 'opus'],

@@ -167,6 +167,27 @@ test('opt-in native seek tracing observes the real event before its awaited call
   assert.ok(stages.indexOf('pause-frame-read') < stages.indexOf('seek-completed'))
   assert.ok(pause.records.every(({ operation }) => operation === 'pause'))
   assert.doesNotMatch(JSON.stringify(pause.records), /private|blob:|https?:/)
+
+  await page.evaluate(() => {
+    window.deliverSeek({ id: 'private-trim-request', command: 'video-trim', args: { start: 1.25, end: 2 } })
+  })
+  await page.waitForFunction(() => window.seekReplies['private-trim-request'], null, { timeout: 5000 })
+  const trim = await page.evaluate(() => ({
+    records: window.seekRecords.filter(({ operation }) => operation === 'trim'),
+    reply: window.seekReplies['private-trim-request']
+  }))
+  assert.equal(trim.reply.ok, true, trim.reply.error?.message)
+  assert.deepEqual(trim.reply.result.photos.find((photo) => photo.id === photoId).edit.trim, {
+    start: 1.25,
+    end: 2
+  })
+  assert.ok(
+    trim.records.some(
+      ({ stage, currentTime }) => stage === 'seek-completed' && Math.abs(currentTime - 1.25) < 0.01
+    )
+  )
+  assert.ok(trim.records.every(({ requestedTime }) => requestedTime === 1.25))
+  assert.doesNotMatch(JSON.stringify(trim.records), /private|blob:|https?:/)
 })
 
 test('origin-restricted video uses decoded frames through live playback, seeking and saved stills', async (t) => {

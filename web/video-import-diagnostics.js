@@ -73,11 +73,13 @@ export function markNativeVideoImport(started, stage) {
 }
 
 export function beginNativeVideoPlaybackTrace(request) {
-  if (!globalThis.openlrDiagnostics || !['video-seek', 'video-pause'].includes(request.command)) return
-  const requestedTime = request.args?.time
+  if (!globalThis.openlrDiagnostics || !['video-seek', 'video-pause', 'video-trim'].includes(request.command))
+    return
+  const operation = request.command.slice('video-'.length)
+  const requestedTime = operation === 'trim' ? request.args?.start : request.args?.time
   const trace = {
     [videoSeekTrace]: true,
-    operation: request.command === 'video-pause' ? 'pause' : 'seek',
+    operation,
     sequence: ++nextSequence,
     started: performance.now(),
     requestedTime: Number.isFinite(requestedTime) ? requestedTime : null

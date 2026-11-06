@@ -2236,7 +2236,7 @@ async function execute(command, args, context = {}) {
           } else {
             const range = clipRange(args, media.duration)
             stopPlayback()
-            await media.seek(range.start)
+            await media.seek(range.start, false, context.seekTrace)
             await replace(p, { edit: { ...p.edit, trim: range } })
             rememberEdit(p)
             redo.length = 0
