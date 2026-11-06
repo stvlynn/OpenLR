@@ -1,0 +1,586 @@
+diff --git a/src/input-track.ts b/src/input-track.ts
+index a3430b6..83fa9b7 100644
+--- a/src/input-track.ts
++++ b/src/input-track.ts
+@@ -1064,6 +1064,7 @@ export interface InputAudioTrackBacking extends InputTrackBacking {
+ 	getNumberOfChannels(): MaybePromise<number>;
+ 	getSampleRate(): MaybePromise<number>;
+ 	getDecoderConfig(): Promise<AudioDecoderConfig | null>;
++	getPresentationRange?(): { start: number; end: number } | null;
+ }
+ 
+ /**
+@@ -1084,6 +1085,11 @@ export class InputAudioTrack extends InputTrack {
+ 		return 'audio';
+ 	}
+ 
++	/** Intrinsic presentation bounds in seconds, when the container has a finite audio edit. */
++	async getPresentationRange(): Promise<{ start: number; end: number } | null> {
++		return this._backing.getPresentationRange?.() ?? null;
++	}
++
+ 	/** The codec of the track's packets. */
+ 	async getCodec(): Promise<AudioCodec | null> {
+ 		return this._backing.getCodec();
+diff --git a/src/isobmff/isobmff-boxes.ts b/src/isobmff/isobmff-boxes.ts
+index e5168d9..c8e5862 100644
+--- a/src/isobmff/isobmff-boxes.ts
++++ b/src/isobmff/isobmff-boxes.ts
+@@ -383,30 +383,37 @@ export const free = (size: number): Box => ({ type: 'free', size });
+  */
+ export const moov = (muxer: IsobmffMuxer) => {
+ 	return box('moov', undefined, [
+-		mvhd(muxer.creationTime, muxer.trackDatas),
++		mvhd(muxer.creationTime, muxer.trackDatas, muxer.movieTimescale),
+ 		...muxer.trackDatas.map(x => trak(x, muxer.creationTime)),
+ 		muxer.isFragmented ? mvex(muxer.trackDatas) : null,
+ 		udta(muxer),
+ 	]);
+ };
+ 
++const explicitAudioEdit = (trackData: IsobmffTrackData) => {
++	if (trackData.type !== 'audio' || trackData.info.audioPriming === null) return null;
++	const priming = trackData.info.audioPriming;
++	const start = (trackData.startTimestampOffset ?? 0) + priming;
++	const duration = presentationSpan(trackData) - priming - trackData.info.audioEndPadding;
++	if (start < -1e-9 || duration <= 0) throw new Error('Invalid audio presentation interval.');
++	return { start: Math.max(0, start), duration, priming };
++};
++
++const movieTrackDuration = (trackData: IsobmffTrackData, timescale: number) => {
++	const edit = explicitAudioEdit(trackData);
++	const span = edit?.duration ?? presentationSpan(trackData);
++	const offset = edit?.start ?? trackData.startTimestampOffset ?? 0;
++	// Round separately to match the edit list.
++	return Math.max(0, intoTimescale(span, timescale) + intoTimescale(offset, timescale));
++};
++
+ /** Movie Header Box: Used to specify the characteristics of the entire movie, such as timescale and duration. */
+ export const mvhd = (
+ 	creationTime: number,
+ 	trackDatas: IsobmffTrackData[],
++	timescale: number,
+ ) => {
+-	const duration = Math.max(
+-		0,
+-		...trackDatas
+-			.map(trackData => (
+-				// Round separately to match the edit list
+-				Math.max(
+-					0,
+-					intoTimescale(presentationSpan(trackData), GLOBAL_TIMESCALE)
+-					+ intoTimescale(trackData.startTimestampOffset ?? 0, GLOBAL_TIMESCALE),
+-				)
+-			)),
+-	);
++	const duration = Math.max(0, ...trackDatas.map(trackData => movieTrackDuration(trackData, timescale)));
+ 	const nextTrackId = Math.max(0, ...trackDatas.map(x => x.track.id)) + 1;
+ 
+ 	// Conditionally use u64 if u32 isn't enough
+@@ -416,7 +423,7 @@ export const mvhd = (
+ 	return fullBox('mvhd', +needsU64, 0, [
+ 		u32OrU64(creationTime), // Creation time
+ 		u32OrU64(creationTime), // Modification time
+-		u32(GLOBAL_TIMESCALE), // Timescale
++		u32(timescale), // Timescale
+ 		u32OrU64(duration), // Duration
+ 		fixed_16_16(1), // Preferred rate
+ 		fixed_8_8(1), // Preferred volume
+@@ -434,7 +441,8 @@ export const mvhd = (
+  */
+ export const trak = (trackData: IsobmffTrackData, creationTime: number) => {
+ 	const trackMetadata = getTrackMetadata(trackData);
+-	const needsEditList = trackData.startTimestampOffset !== null && trackData.startTimestampOffset !== 0;
++	const needsEditList = (trackData.type === 'audio' && trackData.info.audioPriming !== null)
++		|| (trackData.startTimestampOffset !== null && trackData.startTimestampOffset !== 0);
+ 
+ 	return box('trak', undefined, [
+ 		tkhd(trackData, creationTime),
+@@ -455,12 +463,7 @@ export const tkhd = (
+ 	trackData: IsobmffTrackData,
+ 	creationTime: number,
+ ) => {
+-	// Round separately to match the edit list
+-	const durationInGlobalTimescale = Math.max(
+-		0,
+-		intoTimescale(presentationSpan(trackData), GLOBAL_TIMESCALE)
+-		+ intoTimescale(trackData.startTimestampOffset ?? 0, GLOBAL_TIMESCALE),
+-	);
++	const durationInGlobalTimescale = movieTrackDuration(trackData, trackData.muxer.movieTimescale);
+ 
+ 	const needsU64 = !isU32(creationTime) || !isU32(durationInGlobalTimescale);
+ 	const u32OrU64 = needsU64 ? u64 : u32;
+@@ -517,14 +520,34 @@ export const tkhd = (
+ 
+ /** Edit Box: Specifies edits to the track's media. */
+ export const edts = (trackData: IsobmffTrackData) => {
++	const timescale = trackData.muxer.movieTimescale;
++	const audioEdit = explicitAudioEdit(trackData);
++	if (audioEdit) {
++		const startOffset = intoTimescale(audioEdit.start, timescale);
++		const mediaDuration = intoTimescale(audioEdit.duration, timescale);
++		const mediaTime = intoTimescale(audioEdit.priming, trackData.timescale);
++		const needs64Bits = !isU32(startOffset) || !isU32(mediaDuration) || !isI32(mediaTime);
++		const u32OrU64 = needs64Bits ? u64 : u32;
++		const i32OrI64 = needs64Bits ? i64 : i32;
++		return box('edts', undefined, [
++			fullBox('elst', needs64Bits ? 1 : 0, 0, [
++				u32(startOffset > 0 ? 2 : 1),
++				startOffset > 0 ? [u32OrU64(startOffset), i32OrI64(-1), fixed_16_16(1)] : [],
++				u32OrU64(mediaDuration),
++				i32OrI64(mediaTime),
++				fixed_16_16(1),
++			]),
++		]);
++	}
++
+ 	const offset = trackData.startTimestampOffset;
+ 	assert(offset !== null);
+ 
+ 	if (offset > 0) {
+ 		// Positive offset: empty segment at the start, then the full media afterwards
+ 
+-		const startOffset = intoTimescale(offset, GLOBAL_TIMESCALE);
+-		const mediaDuration = intoTimescale(presentationSpan(trackData), GLOBAL_TIMESCALE);
++		const startOffset = intoTimescale(offset, timescale);
++		const mediaDuration = intoTimescale(presentationSpan(trackData), timescale);
+ 
+ 		const needs64Bits = !isU32(startOffset) || !isU32(mediaDuration);
+ 		const u32OrU64 = needs64Bits ? u64 : u32;
+@@ -554,8 +577,8 @@ export const edts = (trackData: IsobmffTrackData) => {
+ 		// "the segment_duration of this edit may be zero"
+ 		const mediaDuration = Math.max(
+ 			0,
+-			intoTimescale(presentationSpan(trackData), GLOBAL_TIMESCALE)
+-			+ intoTimescale(offset, GLOBAL_TIMESCALE),
++			intoTimescale(presentationSpan(trackData), timescale)
++			+ intoTimescale(offset, timescale),
+ 		);
+ 
+ 		const needs64Bits = !isI32(mediaTime) || !isU32(mediaDuration);
+diff --git a/src/isobmff/isobmff-demuxer.ts b/src/isobmff/isobmff-demuxer.ts
+index e2103b7..a2c5a02 100644
+--- a/src/isobmff/isobmff-demuxer.ts
++++ b/src/isobmff/isobmff-demuxer.ts
+@@ -155,6 +155,8 @@ type InternalTrack = {
+ 	editListPreviousSegmentDurations: number;
+ 	/** The media time offset of the main edit list entry (with media time !== -1) */
+ 	editListOffset: number;
++	/** The finite duration of the main edit in the movie timescale, if known. */
++	editListSegmentDuration: number;
+ 	/** Set when the track's samples are encrypted using a supported scheme (cenc/cens/cbcs), parsed from sinf/tenc. */
+ 	encryptionInfo: TrackEncryptionInfo | null;
+ 	/** For non-fragmented encrypted tracks: parsed saiz+saio from stbl; aux info is fetched lazily on first use. */
+@@ -557,6 +559,7 @@ export class IsobmffDemuxer extends Demuxer {
+ 				fragmentPositionCache: [],
+ 				editListPreviousSegmentDurations: foreignTrack.editListPreviousSegmentDurations,
+ 				editListOffset: foreignTrack.editListOffset,
++				editListSegmentDuration: foreignTrack.editListSegmentDuration,
+ 				encryptionInfo: foreignTrack.encryptionInfo,
+ 				encryptionAuxInfo: null,
+ 				frmaCodecString: null,
+@@ -1037,6 +1040,7 @@ export class IsobmffDemuxer extends Demuxer {
+ 					fragmentPositionCache: [],
+ 					editListPreviousSegmentDurations: 0,
+ 					editListOffset: 0,
++					editListSegmentDuration: 0,
+ 					encryptionInfo: null,
+ 					encryptionAuxInfo: null,
+ 					frmaCodecString: null,
+@@ -1146,6 +1150,7 @@ export class IsobmffDemuxer extends Demuxer {
+ 
+ 					track.editListPreviousSegmentDurations = previousSegmentDurations;
+ 					track.editListOffset = mediaTime;
++					track.editListSegmentDuration = segmentDuration;
+ 					relevantEntryFound = true;
+ 				}
+ 			}; break;
+@@ -3852,6 +3857,15 @@ class IsobmffAudioTrackBacking extends IsobmffTrackBacking implements InputAudio
+ 		return this.internalTrack.info.sampleRate;
+ 	}
+ 
++	getPresentationRange() {
++		const { demuxer, editListPreviousSegmentDurations, editListSegmentDuration } = this.internalTrack;
++		if (demuxer.movieTimescale <= 0 || editListSegmentDuration <= 0) return null;
++		return {
++			start: editListPreviousSegmentDurations / demuxer.movieTimescale,
++			end: (editListPreviousSegmentDurations + editListSegmentDuration) / demuxer.movieTimescale,
++		};
++	}
++
+ 	async getDecoderConfig(): Promise<AudioDecoderConfig | null> {
+ 		if (!this.internalTrack.info.codec) {
+ 			return null;
+diff --git a/src/isobmff/isobmff-muxer.ts b/src/isobmff/isobmff-muxer.ts
+index c072ba8..61bdc3b 100644
+--- a/src/isobmff/isobmff-muxer.ts
++++ b/src/isobmff/isobmff-muxer.ts
+@@ -140,6 +140,8 @@ export type IsobmffTrackData = {
+ 		 */
+ 		requiresAdtsStripping: boolean;
+ 		primingPacket: EncodedPacket | null;
++		audioPriming: number | null;
++		audioEndPadding: number;
+ 		preroll: {
+ 			packetCount: number;
+ 			accumulatedAudioSamples: number;
+@@ -241,6 +243,7 @@ export class IsobmffMuxer extends Muxer {
+ 	minWrittenTimestamp = Infinity;
+ 	maxWrittenEndTimestamp = -Infinity;
+ 	minimumFragmentDuration: number;
++	movieTimescale: number;
+ 	private segmentHeaderSize: number | null = null;
+ 
+ 	constructor(output: Output, format: IsobmffOutputFormat) {
+@@ -248,6 +251,7 @@ export class IsobmffMuxer extends Muxer {
+ 
+ 		this.format = format;
+ 		this.formatOptions = { ...format._options };
++		this.movieTimescale = this.formatOptions.movieTimescale ?? GLOBAL_TIMESCALE;
+ 		this.isQuickTime = format instanceof MovOutputFormat;
+ 		this.isCmaf = format instanceof CmafOutputFormat;
+ 		this.minimumFragmentDuration = this.formatOptions.minimumFragmentDuration
+@@ -619,6 +623,8 @@ export class IsobmffMuxer extends Muxer {
+ 				expectedNextPcmPacketTimestamp: null,
+ 				requiresAdtsStripping,
+ 				primingPacket: packet,
++				audioPriming: null,
++				audioEndPadding: 0,
+ 				preroll: {
+ 					packetCount: 0,
+ 					accumulatedAudioSamples: 0,
+@@ -772,6 +778,19 @@ export class IsobmffMuxer extends Muxer {
+ 
+ 			let timestamp = packet.timestamp;
+ 			let duration = packet.duration;
++			const { audioPriming, audioDiscardPadding } = packet.sideData;
++			if (audioPriming !== undefined) {
++				if (this.isFragmented || trackData.info.preroll.packetCount !== 0) {
++					throw new Error('Explicit audio priming requires the first packet of a non-fragmented track.');
++				}
++				trackData.info.audioPriming = audioPriming;
++			}
++			if (trackData.info.audioPriming !== null) {
++				if (trackData.info.audioEndPadding > 0 || (audioDiscardPadding ?? 0) < 0) {
++					throw new Error('Audio discard padding must be positive and belong to the final packet.');
++				}
++				trackData.info.audioEndPadding = audioDiscardPadding ?? 0;
++			}
+ 
+ 			if (trackData.info.requiresPcmTransformation) {
+ 				// Packets may have only approximate timestamp/duration information, but for our PCM logic, we need it
+diff --git a/src/matroska/ebml.ts b/src/matroska/ebml.ts
+index 962b0a8..fdf71ef 100644
+--- a/src/matroska/ebml.ts
++++ b/src/matroska/ebml.ts
+@@ -121,6 +121,7 @@ export enum EBMLId {
+ 	BlockAdditional = 0xa5,
+ 	BlockAddID = 0xee,
+ 	BlockDuration = 0x9b,
++	DiscardPadding = 0x75a2,
+ 	ReferenceBlock = 0xfb,
+ 	Cluster = 0x1f43b675,
+ 	Timestamp = 0xe7,
+diff --git a/src/matroska/matroska-demuxer.ts b/src/matroska/matroska-demuxer.ts
+index 02b62e4..0ee5339 100644
+--- a/src/matroska/matroska-demuxer.ts
++++ b/src/matroska/matroska-demuxer.ts
+@@ -77,6 +77,7 @@ import {
+ 	readElementHeader,
+ 	readElementId,
+ 	readFloat,
++	readSignedInt,
+ 	readUnsignedInt,
+ 	readVarInt,
+ 	resync,
+@@ -160,6 +161,7 @@ enum BlockLacing {
+ type ClusterBlock = {
+ 	timestamp: number;
+ 	duration: number;
++	discardPaddingNs?: number;
+ 	isKeyFrame: boolean;
+ 	data: Uint8Array;
+ 	lacing: BlockLacing;
+@@ -954,6 +956,9 @@ export class MatroskaDemuxer extends Demuxer {
+ 				expandedBlocks.push({
+ 					timestamp: frameTimestamp,
+ 					duration: frameDuration,
++					discardPaddingNs: (originalBlock.discardPaddingNs ?? 0) < 0
++						? (i === 0 ? originalBlock.discardPaddingNs : undefined)
++						: (i === frameCount - 1 ? originalBlock.discardPaddingNs : undefined),
+ 					isKeyFrame: originalBlock.isKeyFrame,
+ 					data: frameData,
+ 					lacing: BlockLacing.None,
+@@ -1798,6 +1803,10 @@ export class MatroskaDemuxer extends Demuxer {
+ 
+ 				this.currentBlock.duration = readUnsignedInt(slice, size);
+ 			}; break;
++			case EBMLId.DiscardPadding: {
++				if (!this.currentBlock) break;
++				this.currentBlock.discardPaddingNs = readSignedInt(slice, size);
++			}; break;
+ 
+ 			case EBMLId.ReferenceBlock: {
+ 				if (!this.currentBlock) break;
+@@ -2269,8 +2278,8 @@ abstract class MatroskaTrackBacking implements InputTrackBacking {
+ 		// Do a little rounding to catch cases where the result is very close to an integer. If it is, it's likely
+ 		// that the number was originally an integer divided by the timescale. For stability, it's best
+ 		// to return the integer in this case.
+-		return roundIfAlmostInteger(timestamp * this.internalTrack.segment.timestampFactor)
+-			+ this.internalTrack.codecDelay;
++		const { codecDelayNs, segment } = this.internalTrack;
++		return roundIfAlmostInteger((timestamp + codecDelayNs / 1e9) * segment.timestampFactor);
+ 	}
+ 
+ 	async getPacket(timestamp: number, options: PacketRetrievalOptions) {
+@@ -2458,11 +2467,14 @@ abstract class MatroskaTrackBacking implements InputTrackBacking {
+ 
+ 		const data = options.metadataOnly ? PLACEHOLDER_DATA : block.data;
+ 
+-		const { codecDelay, segment } = this.internalTrack;
+-		const timestamp = (block.timestamp - codecDelay) / segment.timestampFactor;
++		const { codecDelayNs, segment } = this.internalTrack;
++		const timestamp = block.timestamp / segment.timestampFactor - codecDelayNs / 1e9;
+ 		const duration = block.duration / segment.timestampFactor;
+ 
+ 		const sideData: EncodedPacketSideData = {};
++		if (block.discardPaddingNs && this.internalTrack.info?.type === 'audio') {
++			sideData.audioDiscardPadding = block.discardPaddingNs / 1e9;
++		}
+ 		if (block.mainAdditional && this.internalTrack.info?.type === 'video' && this.internalTrack.info.alphaMode) {
+ 			sideData.alpha = options.metadataOnly ? PLACEHOLDER_DATA : block.mainAdditional;
+ 			sideData.alphaByteLength = block.mainAdditional.byteLength;
+diff --git a/src/matroska/matroska-muxer.ts b/src/matroska/matroska-muxer.ts
+index d9571b8..2189af4 100644
+--- a/src/matroska/matroska-muxer.ts
++++ b/src/matroska/matroska-muxer.ts
+@@ -88,6 +88,7 @@ type InternalMediaChunk = {
+ 	timestamp: number;
+ 	duration: number;
+ 	additions: Uint8Array | null;
++	discardPadding: number;
+ };
+ 
+ type ClusterBlock = {
+@@ -129,6 +130,7 @@ type MatroskaTrackData = {
+ 		 */
+ 		requiresAdtsStripping: boolean;
+ 		codecDelay: number | null; // in seconds
++		explicitAudioTiming: boolean;
+ 	};
+ } | {
+ 	track: OutputSubtitleTrack;
+@@ -152,6 +154,8 @@ export class MatroskaMuxer extends Muxer {
+ 	private writer!: Writer;
+ 	private ebmlWriter!: EBMLWriter;
+ 	private format: WebMOutputFormat | MkvOutputFormat;
++	private timestampScale: number;
++	private ticksPerSecond: number;
+ 
+ 	private trackDatas: MatroskaTrackData[] = [];
+ 	private allTracksKnown = promiseWithResolvers();
+@@ -177,6 +181,8 @@ export class MatroskaMuxer extends Muxer {
+ 		super(output);
+ 
+ 		this.format = format;
++		this.timestampScale = format._options.timestampScale ?? 1e6;
++		this.ticksPerSecond = 1e9 / this.timestampScale;
+ 	}
+ 
+ 	async start() {
+@@ -328,7 +334,7 @@ export class MatroskaMuxer extends Muxer {
+ 		}
+ 
+ 		const segmentInfo: EBML = { id: EBMLId.Info, data: [
+-			{ id: EBMLId.TimestampScale, data: 1e6 },
++			{ id: EBMLId.TimestampScale, data: this.timestampScale },
+ 			!this.format._options.appendOnly ? segmentDuration : null,
+ 			dateUtc,
+ 			{ id: EBMLId.MuxingApp, data: VERSIONED_NAME },
+@@ -953,6 +959,7 @@ export class MatroskaMuxer extends Muxer {
+ 				decoderConfig,
+ 				requiresAdtsStripping,
+ 				codecDelay: null,
++				explicitAudioTiming: false,
+ 			},
+ 			chunkQueue: [],
+ 			lastWrittenMsTimestamp: null,
+@@ -1070,13 +1077,23 @@ export class MatroskaMuxer extends Muxer {
+ 			this.validateTimestamp(trackData.track, packet.timestamp, isKeyFrame);
+ 
+ 			// A negative start (like from encoder priming) is expressed this way.
+-			trackData.info.codecDelay ??= Math.max(-packet.timestamp, 0);
++			const { audioPriming, audioDiscardPadding = 0 } = packet.sideData;
++			if (audioPriming !== undefined) {
++				if (trackData.info.codecDelay !== null) throw new Error('Audio priming belongs on the first packet.');
++				trackData.info.explicitAudioTiming = true;
++			}
++			trackData.info.codecDelay ??= audioPriming ?? Math.max(-packet.timestamp, 0);
++			if (Math.abs(audioDiscardPadding) - packet.duration > 1e-9) {
++				throw new Error('Audio discard padding exceeds its block duration.');
++			}
+ 
+ 			const audioChunk = this.createInternalChunk(
+ 				packetData,
+ 				packet.timestamp + trackData.info.codecDelay,
+ 				packet.duration,
+ 				packet.type,
++				null,
++				audioDiscardPadding,
+ 			);
+ 			trackData.chunkQueue.push(audioChunk);
+ 			await this.interleaveChunks();
+@@ -1212,6 +1229,7 @@ export class MatroskaMuxer extends Muxer {
+ 		duration: number,
+ 		type: 'key' | 'delta',
+ 		additions: Uint8Array | null = null,
++		discardPadding = 0,
+ 	) {
+ 		const internalChunk: InternalMediaChunk = {
+ 			data,
+@@ -1219,6 +1237,7 @@ export class MatroskaMuxer extends Muxer {
+ 			timestamp,
+ 			duration,
+ 			additions,
++			discardPadding,
+ 		};
+ 
+ 		return internalChunk;
+@@ -1231,7 +1250,7 @@ export class MatroskaMuxer extends Muxer {
+ 			this.createSegment();
+ 		}
+ 
+-		const msTimestamp = Math.round(1000 * chunk.timestamp);
++		const msTimestamp = Math.round(this.ticksPerSecond * chunk.timestamp);
+ 
+ 		// We wanna only finalize this cluster (and begin a new one) if we know that each track will be able to
+ 		// start the new one with a key frame.
+@@ -1262,7 +1281,7 @@ export class MatroskaMuxer extends Muxer {
+ 				// CURRENT chunk, meaning that starting the next cluster at the same timestamp is forbidden (since
+ 				// the already-written block would belong into it instead).
+ 				&& msTimestamp > this.currentClusterMaxMsTimestamp
+-				&& relativeTimestamp >= 1000 * (this.format._options.minimumClusterDuration ?? 1)
++				&& relativeTimestamp >= this.ticksPerSecond * (this.format._options.minimumClusterDuration ?? 1)
+ 			)
+ 			// The cluster would exceed its maximum allowed length. This puts us in an unfortunate position and forces
+ 			// us to begin the next cluster with a delta frame. Although this is undesirable, it is not forbidden by the
+@@ -1297,7 +1316,9 @@ export class MatroskaMuxer extends Muxer {
+ 		});
+ 
+ 		this.startTimestamp = Math.min(this.startTimestamp, msTimestamp);
+-		this.endTimestamp = Math.max(this.endTimestamp, msTimestamp + Math.round(1000 * chunk.duration));
++		const presentationDuration = chunk.duration - Math.max(0, chunk.discardPadding)
++			- (trackData.type === 'audio' && trackData.info.explicitAudioTiming ? trackData.info.codecDelay ?? 0 : 0);
++		this.endTimestamp = Math.max(this.endTimestamp, msTimestamp + Math.round(this.ticksPerSecond * presentationDuration));
+ 		trackData.lastWrittenMsTimestamp = msTimestamp;
+ 
+ 		this.currentClusterMaxMsTimestamp = Math.max(this.currentClusterMaxMsTimestamp!, msTimestamp);
+@@ -1356,7 +1377,7 @@ export class MatroskaMuxer extends Muxer {
+ 
+ 		if (this.format._options.onCluster) {
+ 			const { data, start } = this.writer.stopTrackingWrites();
+-			this.format._options.onCluster(data, start, clusterMsTimestamp / 1000);
++			this.format._options.onCluster(data, start, clusterMsTimestamp / this.ticksPerSecond);
+ 		}
+ 
+ 		const clusterOffsetFromSegment = this.ebmlWriter.offsets.get(cluster)! - this.segmentDataOffset;
+@@ -1401,12 +1422,12 @@ export class MatroskaMuxer extends Muxer {
+ 		view.setUint8(0, 0x80 | trackData.track.id);
+ 		view.setInt16(1, msTimestamp - clusterMsTimestamp, false);
+ 
+-		const msDuration = Math.round(1000 * chunk.duration);
++		const msDuration = Math.round(this.ticksPerSecond * chunk.duration);
+ 
+ 		// A SimpleBlock has no duration; readers infer it from the track's next block. So subtitle cues need an
+ 		// explicit BlockDuration, and so does the last block of each track in the cluster, which has no next block
+ 		// to infer it from
+-		const needsBlockGroup = !!chunk.additions
++		const needsBlockGroup = !!chunk.additions || !!chunk.discardPadding
+ 			|| trackData.type === 'subtitle'
+ 			|| (isLastOfTrack && msDuration > 0);
+ 
+@@ -1439,6 +1460,10 @@ export class MatroskaMuxer extends Muxer {
+ 					] }
+ 				: null,
+ 			msDuration > 0 ? { id: EBMLId.BlockDuration, data: msDuration } : null,
++			chunk.discardPadding ? {
++				id: EBMLId.DiscardPadding,
++				data: new EBMLSignedInt(Math.round(chunk.discardPadding * 1e9)),
++			} : null,
+ 		] };
+ 	}
+ 
+diff --git a/src/output-format.ts b/src/output-format.ts
+index 64bae2c..91d3848 100644
+--- a/src/output-format.ts
++++ b/src/output-format.ts
+@@ -146,6 +146,9 @@ export abstract class OutputFormat {
+  * @public
+  */
+ export type IsobmffOutputFormatOptions = {
++	/** Movie timescale in ticks per second. Media tracks retain their own timescales. */
++	movieTimescale?: number;
++
+ 	/**
+ 	 * Controls the placement of metadata in the file. Placing metadata at the start of the file is known as "Fast
+ 	 * Start", which results in better playback at the cost of more required processing or memory.
+@@ -243,6 +246,10 @@ export abstract class IsobmffOutputFormat extends OutputFormat {
+ 		if (!options || typeof options !== 'object') {
+ 			throw new TypeError('options must be an object.');
+ 		}
++		if (options.movieTimescale !== undefined
++			&& (!Number.isInteger(options.movieTimescale) || options.movieTimescale < 1 || options.movieTimescale > 0xffffffff)) {
++			throw new TypeError('options.movieTimescale must fit an unsigned 32-bit timescale.');
++		}
+ 		if (
+ 			options.fastStart !== undefined
+ 			&& ![false, 'in-memory', 'reserve', 'fragmented'].includes(options.fastStart)
+@@ -483,6 +490,9 @@ export class MovOutputFormat extends IsobmffOutputFormat {
+  * @public
+  */
+ export type MkvOutputFormatOptions = {
++	/** Nanoseconds per Segment Tick, defaulting to one millisecond. */
++	timestampScale?: number;
++
+ 	/**
+ 	 * Configures the output to only append new data at the end, useful for live-streaming the file as it's being
+ 	 * created. When enabled, some features such as storing duration and seeking will be disabled or impacted, so don't
+@@ -541,6 +551,10 @@ export class MkvOutputFormat extends OutputFormat {
+ 		if (!options || typeof options !== 'object') {
+ 			throw new TypeError('options must be an object.');
+ 		}
++		if (options.timestampScale !== undefined
++			&& (!Number.isSafeInteger(options.timestampScale) || options.timestampScale < 1)) {
++			throw new TypeError('options.timestampScale must be a positive safe integer.');
++		}
+ 		if (options.appendOnly !== undefined && typeof options.appendOnly !== 'boolean') {
+ 			throw new TypeError('options.appendOnly, when provided, must be a boolean.');
+ 		}
+diff --git a/src/packet.ts b/src/packet.ts
+index f345b5d..a3f7cb6 100644
+--- a/src/packet.ts
++++ b/src/packet.ts
+@@ -34,6 +34,10 @@ export type EncodedPacketSideData = {
+ 	 * `alpha` field contains no bytes.
+ 	 */
+ 	alphaByteLength?: number;
++	/** Codec priming in seconds, set only on the first encoded audio packet. */
++	audioPriming?: number;
++	/** Seconds to discard at the end (positive) or start (negative) of this audio packet. */
++	audioDiscardPadding?: number;
+ };
+ 
+ /**
+@@ -114,6 +118,12 @@ export class EncodedPacket {
+ 		if (sideData?.alpha !== undefined && !(sideData.alpha instanceof Uint8Array)) {
+ 			throw new TypeError('sideData.alpha, when provided, must be a Uint8Array.');
+ 		}
++		if (sideData?.audioPriming !== undefined && (!Number.isFinite(sideData.audioPriming) || sideData.audioPriming < 0)) {
++			throw new TypeError('sideData.audioPriming, when provided, must be a non-negative finite number.');
++		}
++		if (sideData?.audioDiscardPadding !== undefined && !Number.isFinite(sideData.audioDiscardPadding)) {
++			throw new TypeError('sideData.audioDiscardPadding, when provided, must be finite.');
++		}
+ 		if (
+ 			sideData?.alphaByteLength !== undefined
+ 			&& (!Number.isInteger(sideData.alphaByteLength) || sideData.alphaByteLength < 0)

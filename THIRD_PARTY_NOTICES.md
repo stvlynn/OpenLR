@@ -33,6 +33,8 @@ The list was checked against `go version -m build/windows-amd64/OpenLR.exe`. `go
 
 Dependency manifests and lockfiles identify package versions. Their upstream packages retain their own copyright and license terms. The engineering-reference review above is not a complete inventory of runtime, development, or transitive dependency licenses.
 
+`scripts/fixtures/mygo-startup/mygo-v0.7.4.patch` contains source context from MyGo v0.7.4 and adds fixed-stage WebView2 startup tracing. The diagnostic builder applies it to a disposable copy of the pinned module. The MIT notice in the dependency table above covers the upstream source context.
+
 When vendoring or adapting third-party material, add a record here containing the local paths, upstream URL and fixed revision, copyright holder, applicable license, retained notice locations, and modification summary. Preserve required license texts alongside the imported material. Before distributing a bundle, inventory the actual included packages and assets and include their required notices.
 
 Adobe and Lightroom are names of third-party products discussed as prior art. This repository's name and references do not imply affiliation or endorsement.
@@ -83,7 +85,7 @@ Original + settings archives use fflate 0.8.3 (MIT, Arjun Barrett). Unmodified b
 
 The native application menu in menu.go adapts MyGo menu construction, separators and action callback routing from Arion's apps/desktop/bootstrap/windows.go at 3b1acc15ce251014ba720ee333c3cd74a75ea49b, AGPL-3.0-only. OpenLR supplies its own labels, photo actions and frontend event routing.
 
-Video conversion uses the unmodified Mediabunny 1.65.1 browser module (MPL-2.0). The distribution and license are in web/vendor/mediabunny/. [Corresponding source](https://github.com/Vanilagy/mediabunny/tree/v1.65.1).
+Video conversion uses MediaBunny 1.65.1 (MPL-2.0) with a source patch for audio presentation timing. The browser distribution and license are in `web/vendor/mediabunny/`. `scripts/vendor-mediabunny.mjs` applies the patch to the pinned npm source and regenerates the bundle. [Upstream source](https://github.com/Vanilagy/mediabunny/tree/v1.65.1) · [OpenLR source changes](scripts/mediabunny/audio-timing.patch)
 
 Catalog migration reads SQLite through sql.js 1.15.2 (MIT, copyright sql.js authors). `web/vendor/sqlite/` retains its AUTHORS, MIT license, unchanged WASM, the Emscripten runtime license and a hash manifest. OpenLR appends an ES-module export to the upstream browser factory; it does not modify the compiled SQLite implementation. The underlying SQLite implementation is public domain. [Pinned wrapper source](https://github.com/sql-js/sql.js/tree/v1.15.2). `scripts/vendor-sqlite.mjs` records and reproduces these vendored files.
 
