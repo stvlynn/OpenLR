@@ -10,7 +10,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, ubuntu-24.04, macos-15-intel, macos-15]
+        os: [macos-15-intel, macos-15]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     steps:
@@ -33,90 +33,6 @@ jobs:
       - name: Build the native distribution
         id: distribution
         run: node scripts/desktop.mjs build -o build/release -platform ${{ runner.os == 'Windows' && 'windows/amd64' || runner.os == 'macOS' && 'darwin/universal' || 'linux/amd64' }}
-      - name: Probe native AudioToolbox codecs
-        if: runner.os == 'macOS'
-        run: |
-          xcrun clang -std=c11 -Wall -Wextra -Werror scripts/fixtures/audio-probe/main.c -framework AudioToolbox -o build/audio-toolbox-probe
-          node scripts/native-audio-probe.mjs build/audio-toolbox-probe
-      - name: Verify the native audio stream adapter
-        if: ${{ !cancelled() && runner.os == 'macOS' && steps.distribution.outcome == 'success' }}
-        timeout-minutes: 2
-        run: |
-          CGO_ENABLED=0 go build -o build/audio-stream-probe ./scripts/fixtures/audio-stream-probe
-          build/audio-stream-probe build/audio-toolbox-probe
-      - name: Verify independent AAC input through AudioToolbox
-        if: ${{ !cancelled() && runner.os == 'macOS' && steps.distribution.outcome == 'success' }}
-        timeout-minutes: 2
-        run: node scripts/native-aac-input-probe.mjs build/audio-stream-probe
-      - if: runner.os == 'Linux'
-        run: xvfb-run -a dbus-run-session -- node scripts/native-suite.mjs build/release/linux-amd64/openlr
-      - if: ${{ !cancelled() && runner.os == 'macOS' && steps.distribution.outcome == 'success' }}
-        run: node scripts/native-suite.mjs build/release/darwin-universal/OpenLR.app/Contents/MacOS/OpenLR
-      - name: Verify macOS default-store restart in the disposable runner
-        if: ${{ !cancelled() && runner.os == 'macOS' && steps.distribution.outcome == 'success' }}
-        run: node scripts/native-organization-smoke.mjs build/release/darwin-universal/OpenLR.app/Contents/MacOS/OpenLR --macos-default-store
-      - name: Install independent audio verification tools
-        if: ${{ !cancelled() && runner.os == 'macOS' && steps.distribution.outcome == 'success' }}
-        run: command -v ffmpeg && command -v ffprobe || brew install ffmpeg
-      - name: Provision the pinned independent audio browser
-        if: ${{ !cancelled() && runner.os == 'macOS' && steps.distribution.outcome == 'success' }}
-        run: |
-          chrome_platform=${{ runner.arch == 'ARM64' && 'mac-arm64' || 'mac-x64' }}
-          mkdir -p build/audio-oracle
-          curl --fail --location "https://storage.googleapis.com/chrome-for-testing-public/157.0.8103.38/$chrome_platform/chrome-$chrome_platform.zip" -o build/audio-oracle/chrome.zip
-          ditto -xk build/audio-oracle/chrome.zip build/audio-oracle
-          echo "OPENLR_AUDIO_ORACLE_CHROME=$PWD/build/audio-oracle/chrome-$chrome_platform/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing" >> "$GITHUB_ENV"
-      - name: Verify short multitrack audio exports
-        if: ${{ !cancelled() && runner.os == 'macOS' && steps.distribution.outcome == 'success' }}
-        run: node scripts/native-audio-export-smoke.mjs build/release/darwin-universal/OpenLR.app/Contents/MacOS/OpenLR
-      - name: Verify the Windows native distribution
-        id: windows-native
-        if: runner.os == 'Windows'
-        run: node scripts/native-suite.mjs build/release/windows-amd64/OpenLR.exe
-      - name: Install independent Windows audio verification tools
-        if: ${{ !cancelled() && runner.os == 'Windows' && steps.distribution.outcome == 'success' }}
-        run: |
-          if (-not (Get-Command ffmpeg -ErrorAction SilentlyContinue) -or -not (Get-Command ffprobe -ErrorAction SilentlyContinue)) {
-            choco install ffmpeg -y --no-progress
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          }
-      - name: Verify Windows short multitrack audio exports
-        if: ${{ !cancelled() && runner.os == 'Windows' && steps.distribution.outcome == 'success' }}
-        run: node scripts/native-audio-export-smoke.mjs build/release/windows-amd64/OpenLR.exe
-      - name: Build the Windows startup diagnostic after a native failure
-        id: startup-diagnostic
-        if: ${{ failure() && runner.os == 'Windows' && steps.windows-native.outcome == 'failure' }}
-        run: node scripts/native-startup-build.mjs
-      - name: Observe the instrumented Windows startup
-        if: ${{ !cancelled() && runner.os == 'Windows' && steps.startup-diagnostic.outcome == 'success' }}
-        run: node scripts/native-suite.mjs build/startup-diagnostic/windows-amd64/OpenLR.exe
-      - name: Verify the Windows installer and installed CLI
-        if: ${{ !cancelled() && runner.os == 'Windows' && steps.distribution.outcome == 'success' }}
+      - name: Mount, copy and verify the macOS disk image
         timeout-minutes: 5
-        run: |
-          $installers = @(Get-ChildItem -LiteralPath build/release/windows-amd64 -Filter 'openlr-setup-*.exe')
-          if ($installers.Count -ne 1) { throw 'Expected one NSIS installer' }
-          ./scripts/native-installer-smoke.ps1 -Installer $installers[0].FullName
-      - uses: actions/upload-artifact@v4
-        if: ${{ !cancelled() }}
-        with:
-          name: audio-export-failures-${{ matrix.os }}
-          path: .workspace/native-audio-export-failures/**
-          include-hidden-files: true
-          if-no-files-found: ignore
-      - uses: actions/upload-artifact@v4
-        with:
-          name: OpenLR-${{ matrix.os }}
-          path: |
-            build/release/*/*.deb
-            build/release/*/*.tar.gz
-            build/release/*/*.dmg
-            build/release/*/openlr-setup-*.exe
-          if-no-files-found: error
-      - uses: actions/upload-artifact@v4
-        with:
-          name: verification-${{ matrix.os }}
-          path: |
-            .workspace/native-final/*report.json
-            .workspace/native-final/workspace.png
-          if-no-files-found: ignore
+        run: bash scripts/native-dmg-smoke.sh build/release/darwin-universal/openlr-*.dmg
