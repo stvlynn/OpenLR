@@ -18,34 +18,42 @@ export const isVideo = (asset) =>
       asset.mediaType?.startsWith('video/') ||
       /\.(mov|mp4|m4v|webm|mkv)$/i.test(asset.name))
   )
+function mediaError(video) {
+  return Error(video.error?.message || 'The video codec is unavailable')
+}
+
 function waitForMedia(video, event, action, signal) {
   return new Promise((resolve, reject) => {
     signal.throwIfAborted()
+    if (video.error) throw mediaError(video)
     function cleanup() {
-      video.removeEventListener(event, ok)
+      if (event) video.removeEventListener(event, ok)
       video.removeEventListener('error', fail)
       signal.removeEventListener('abort', abort)
     }
     function ok() {
       cleanup()
-      resolve()
+      if (video.error) reject(mediaError(video))
+      else resolve()
+    }
+    function rejectWait(error) {
+      cleanup()
+      reject(error)
     }
     function fail() {
-      cleanup()
-      reject(Error(video.error?.message || 'The video codec is unavailable'))
+      rejectWait(mediaError(video))
     }
     function abort() {
-      cleanup()
-      reject(signal.reason)
+      rejectWait(signal.reason)
     }
-    video.addEventListener(event, ok)
+    if (event) video.addEventListener(event, ok)
     video.addEventListener('error', fail)
     signal.addEventListener('abort', abort, { once: true })
     try {
-      action()
+      const result = action()
+      if (result) result.then(ok, rejectWait)
     } catch (error) {
-      cleanup()
-      reject(error)
+      rejectWait(error)
     }
   })
 }
@@ -134,6 +142,7 @@ export async function openVideo(file, diagnostic, seekTrace) {
     const seek = async (time, force = false, trace) => {
       lifetime.signal.throwIfAborted()
       if (!(time >= 0 && time <= duration)) throw Error('Time is outside the video')
+      if (video.error) throw mediaError(video)
       const detail = trace && { seekTime: time }
       if (force || Math.abs(video.currentTime - time) > 0.0001) {
         markVideoSeek(trace, 'seek-start', video, detail)
@@ -165,6 +174,9 @@ export async function openVideo(file, diagnostic, seekTrace) {
       seek,
       close,
       frameAt,
+      play() {
+        return waitForMedia(video, null, () => video.play(), lifetime.signal)
+      },
       async pauseFrame(isCurrent, trace) {
         markVideoSeek(trace, 'pause-start', video)
         const beforePause = video.currentTime

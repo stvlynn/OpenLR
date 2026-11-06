@@ -44,6 +44,63 @@ test('video media waits release their listeners and settle on close', { timeout:
     assert.equal(result.outcome, 'AbortError')
   })
 
+  await t.test('play and seek report a native decode error without waiting for another event', async () => {
+    const result = await page.evaluate(async (bytes) => {
+      const { openVideo } = await import('/video.js')
+      const media = await openVideo(
+        new File([Uint8Array.from(bytes)], 'lifecycle.webm', { type: 'video/webm' })
+      )
+      const { video } = media
+      const failure = { code: 3, message: 'Controlled native decode failure' }
+      let error = failure
+      let playCalls = 0
+      Object.defineProperty(video, 'error', { get: () => error })
+      video.play = () => {
+        playCalls++
+        return new Promise(() => {})
+      }
+      async function outcome(operation) {
+        let timer
+        try {
+          return await Promise.race([
+            operation.then(
+              () => 'resolved',
+              (failure) => failure.message
+            ),
+            new Promise((resolve) => (timer = setTimeout(() => resolve('pending'), 1000)))
+          ])
+        } finally {
+          clearTimeout(timer)
+        }
+      }
+      try {
+        const preexisting = await Promise.all([
+          outcome(media.play()),
+          outcome(media.seek(0.35)),
+          outcome(media.seek(video.currentTime))
+        ])
+        const callsBeforeError = playCalls
+        error = null
+        const pending = media.play()
+        error = failure
+        video.dispatchEvent(new Event('error'))
+        return {
+          preexisting,
+          callsBeforeError,
+          duringPlay: await outcome(pending),
+          playCalls,
+          expected: failure.message
+        }
+      } finally {
+        media.close()
+      }
+    }, bytes)
+    assert.deepEqual(result.preexisting, Array(3).fill(result.expected))
+    assert.equal(result.callsBeforeError, 0)
+    assert.equal(result.duringPlay, result.expected)
+    assert.equal(result.playCalls, 1)
+  })
+
   for (const property of ['src', 'currentTime']) {
     await t.test(`removes pending media listeners when the ${property} setter throws`, async () => {
       const result = await page.evaluate(

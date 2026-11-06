@@ -2219,7 +2219,7 @@ async function execute(command, args, context = {}) {
               await media.seek(range.start)
             cancelPlaybackFrames()
             media.video.muted = false
-            await media.video.play()
+            await media.play()
             playbackFrames = await media.playbackFrames()
             frameTicket = requestAnimationFrame(refreshPlayback)
           } else if (command === 'video-pause' || command === 'video-toggle') {
