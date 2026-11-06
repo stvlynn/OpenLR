@@ -43,6 +43,9 @@ jobs:
         run: |
           CGO_ENABLED=0 go build -tags mygo_noinspector -ldflags '-X github.com/egoist/mygo.production=1' -o build/video-origin-probe ./scripts/fixtures/video-probe
           node scripts/native-video-origin-probe.mjs build/video-origin-probe
+      - name: Probe the WKWebView video pause clock
+        if: ${{ !cancelled() && runner.os == 'macOS' && steps.distribution.outcome == 'success' }}
+        run: node scripts/native-video-origin-probe.mjs build/video-origin-probe --playback
       - if: runner.os == 'Linux'
         run: xvfb-run -a dbus-run-session -- node scripts/native-suite.mjs build/release/linux-amd64/openlr
       - if: ${{ !cancelled() && runner.os == 'macOS' && steps.distribution.outcome == 'success' }}

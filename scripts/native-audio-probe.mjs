@@ -21,6 +21,17 @@ const stages = [
   'decode',
   'complete'
 ]
+const decoderStages = ['decoder-create', 'decoder-cookie', 'decoder-prime-method', 'decode', 'complete']
+const opusDecoderVariants = [
+  'encoder-cookie-default',
+  'no-cookie-default',
+  'opushead-zero-default',
+  'encoder-cookie-no-prime',
+  'opushead-312-default'
+]
+const pcmWindowStart = 6400,
+  pcmWindowFrames = 1600,
+  maxLag = 1024
 
 function integer(value, low = 0) {
   assert.ok(Number.isSafeInteger(value) && value >= low)
@@ -34,6 +45,63 @@ function status(value) {
 function hex(value) {
   assert.equal(typeof value, 'string')
   assert.match(value, /^(?:[0-9a-f]{2})*$/)
+}
+
+function optionalStatus(value) {
+  if (value !== null) status(value)
+}
+
+function validatePrime(prime) {
+  optionalStatus(prime.status)
+  if (prime.status === 0) {
+    integer(prime.leading)
+    integer(prime.trailing)
+  }
+}
+
+function validateSignal(signal, frames, channels) {
+  assert.equal(signal.length, frames ? channels : 0)
+  for (const { peak, pulseOffset, toneAmplitude } of signal) {
+    integer(pulseOffset, -9601)
+    assert.ok(Number.isFinite(peak) && peak >= 0)
+    assert.ok(Number.isFinite(toneAmplitude) && toneAmplitude >= 0)
+  }
+}
+
+function validateOpusVariants(candidate) {
+  const { codec, stage, channels, packets } = candidate
+  const variants = candidate.opusDecoderVariants
+  const expected = codec === 'opus' && decoderStages.includes(stage) ? opusDecoderVariants : []
+  assert.deepEqual(
+    variants.map(({ name }) => name),
+    expected
+  )
+  for (const variant of variants) {
+    assert.ok(decoderStages.includes(variant.stage))
+    status(variant.status)
+    assert.equal(variant.status === 0, variant.stage === 'complete')
+    integer(variant.decodedFrames)
+    integer(variant.firstFrames)
+    integer(variant.firstPackets)
+    assert.ok(variant.firstFrames <= variant.decodedFrames && variant.firstPackets <= packets.length)
+    if (variant.stage === 'complete') assert.ok(variant.decodedFrames > 0 && variant.firstFrames > 0)
+    optionalStatus(variant.cookieStatus)
+    optionalStatus(variant.setPrimeMethodStatus)
+    optionalStatus(variant.primeMethod.status)
+    if (variant.primeMethod.status === 0) integer(variant.primeMethod.value)
+    validatePrime(variant.prime)
+    validateSignal(variant.signal, variant.decodedFrames, channels)
+    if (variant.decodedFrames >= pcmWindowStart + pcmWindowFrames) {
+      hex(variant.pcmWindowF32le)
+      assert.equal(variant.pcmWindowF32le.length, pcmWindowFrames * channels * 8)
+    } else assert.equal(variant.pcmWindowF32le, null)
+  }
+  if (variants.length) {
+    const [base] = variants
+    for (const key of ['stage', 'status', 'decodedFrames', 'signal'])
+      assert.deepEqual(base[key], candidate[key])
+    assert.deepEqual(base.prime, candidate.decoderPrime)
+  }
 }
 
 export function parseAudioProbeReport(text) {
@@ -54,14 +122,8 @@ export function parseAudioProbeReport(text) {
     integer(candidate.codedFrames)
     integer(candidate.decodedFrames)
     integer(candidate.framesPerPacket)
-    for (const prime of [candidate.encoderPrime, candidate.decoderPrime]) {
-      if (prime.status !== null) status(prime.status)
-      if (prime.status === 0) {
-        integer(prime.leading)
-        integer(prime.trailing)
-      }
-    }
-    if (candidate.cookieStatus !== null) status(candidate.cookieStatus)
+    for (const prime of [candidate.encoderPrime, candidate.decoderPrime]) validatePrime(prime)
+    optionalStatus(candidate.cookieStatus)
     hex(candidate.cookie)
     assert.ok(candidate.cookie.length <= 8192)
     assert.ok(Array.isArray(packets) && packets.length <= 64)
@@ -74,12 +136,8 @@ export function parseAudioProbeReport(text) {
       packets.reduce((sum, packet) => sum + packet.frames, 0),
       candidate.codedFrames
     )
-    assert.equal(signal.length, candidate.decodedFrames ? channels : 0)
-    for (const { peak, pulseOffset, toneAmplitude } of signal) {
-      integer(pulseOffset, -9601)
-      assert.ok(Number.isFinite(peak) && peak >= 0)
-      assert.ok(Number.isFinite(toneAmplitude) && toneAmplitude >= 0)
-    }
+    validateSignal(signal, candidate.decodedFrames, channels)
+    validateOpusVariants(candidate)
     if (stage === 'complete') {
       assert.ok(candidate.codedFrames >= inputFrames && candidate.decodedFrames > 0)
       for (const value of [
@@ -93,6 +151,29 @@ export function parseAudioProbeReport(text) {
   return report
 }
 
+// The Chrome window has maxLag extra frames before and after the native window.
+export function compareOpusProbeWindows(native, reference, channels) {
+  const power = native.reduce((sum, value) => sum + value * value, 0)
+  if (!(power > 0) || !Number.isFinite(power) || reference.length !== native.length + 2 * maxLag * channels)
+    return null
+  let bestError = Infinity,
+    bestOffset = 0
+  for (let offset = -maxLag; offset <= maxLag; offset++) {
+    const start = (offset + maxLag) * channels
+    let error = 0
+    for (let i = 0; i < native.length; i++) {
+      const difference = native[i] - reference[start + i]
+      error += difference * difference
+    }
+    if (error < bestError) {
+      bestError = error
+      bestOffset = offset
+    }
+  }
+  if (!Number.isFinite(bestError)) return null
+  return { referenceFrameOffset: bestOffset, relativeRmsError: Math.sqrt(bestError / power) }
+}
+
 async function decodeNativePackets(candidates) {
   const { chromium } = await import('playwright-core')
   const server = await serveWorkspace()
@@ -104,7 +185,12 @@ async function decodeNativePackets(candidates) {
       route.fulfill({ contentType: 'text/html', body: '<title>Audio codec oracle</title>' })
     )
     await page.goto(server.url)
-    const evaluation = page.evaluate(async (candidates) => {
+    const input = {
+      candidates,
+      startFrame: pcmWindowStart - maxLag,
+      windowFrames: pcmWindowFrames + 2 * maxLag
+    }
+    const evaluation = page.evaluate(async ({ candidates, startFrame, windowFrames }) => {
       const results = {}
       for (const { name, codec, sampleRate, channels, packets } of candidates) {
         const config = {
@@ -136,6 +222,7 @@ async function decodeNativePackets(candidates) {
           failure,
           channelMismatch = false
         const peaks = Array.from({ length: channels }, () => ({ value: 0, frame: 0 }))
+        const pcmWindow = codec === 'opus' ? new Float32Array(windowFrames * channels) : null
         const decoder = new AudioDecoder({
           error: (error) => {
             failure = error
@@ -148,6 +235,15 @@ async function decodeNativePackets(candidates) {
               }
               const samples = new Float32Array(audio.numberOfFrames * channels)
               audio.copyTo(samples, { format: 'f32', planeIndex: 0 })
+              if (pcmWindow) {
+                const start = Math.max(frames, startFrame)
+                const end = Math.min(frames + audio.numberOfFrames, startFrame + windowFrames)
+                if (start < end)
+                  pcmWindow.set(
+                    samples.subarray((start - frames) * channels, (end - frames) * channels),
+                    (start - startFrame) * channels
+                  )
+              }
               for (let i = 0; i < audio.numberOfFrames; i++)
                 for (let channel = 0; channel < channels; channel++) {
                   const frame = frames + i
@@ -197,6 +293,10 @@ async function decodeNativePackets(candidates) {
             stage: 'complete',
             decodedFrames: frames,
             formatMatches: !channelMismatch,
+            pcmWindow:
+              pcmWindow && !channelMismatch && frames >= startFrame + windowFrames
+                ? Array.from(pcmWindow)
+                : null,
             peaks: peaks.map(({ value, frame }) => ({
               value,
               pulseOffset: frame - Math.floor((sampleRate * 145) / 1000)
@@ -209,7 +309,7 @@ async function decodeNativePackets(candidates) {
         }
       }
       return results
-    }, candidates)
+    }, input)
     return await Promise.race([
       evaluation,
       new Promise((_, reject) => {
@@ -240,11 +340,13 @@ async function main(executable) {
   })
   if (stderr) process.stderr.write(stderr)
   const report = parseAudioProbeReport(stdout)
-  const encoded = report.candidates.filter(({ packets }) => packets.length)
+  const encoded = report.candidates
+    .filter(({ packets }) => packets.length)
+    .map(({ name, codec, sampleRate, channels, packets }) => ({ name, codec, sampleRate, channels, packets }))
   console.log(
     JSON.stringify({ nativeAudio: 'formats', encode: report.encodeFormats, decode: report.decodeFormats })
   )
-  for (const { name, cookie, packets, ...candidate } of report.candidates) {
+  for (const { name, cookie, packets, opusDecoderVariants: variants, ...candidate } of report.candidates) {
     const { codedFrames, inputFrames, encoderPrime, signal } = candidate
     const padding = codedFrames - inputFrames - encoderPrime.leading
     console.log(
@@ -254,6 +356,9 @@ async function main(executable) {
         ...candidate,
         packetFrames: packets.map(({ frames }) => frames),
         cookieBytes: cookie.length / 2,
+        ...(candidate.codec === 'opus'
+          ? { cookieHex: cookie, firstPacketToc: packets[0]?.data.slice(0, 2) ?? null }
+          : {}),
         impliedEndPadding:
           candidate.stage === 'complete' && encoderPrime.status === 0 && padding >= 0 ? padding : null,
         signalMatches:
@@ -262,12 +367,25 @@ async function main(executable) {
           signal.every(({ peak, toneAmplitude }) => peak > 0.25 && toneAmplitude > 0.1)
       })
     )
+    for (const { name: variant, pcmWindowF32le, ...result } of variants)
+      console.log(JSON.stringify({ nativeAudio: 'opus-decoder-variant', name, variant, ...result }))
   }
   if (encoded.length) {
     const chrome = await decodeNativePackets(encoded)
-    for (const { name } of encoded) {
+    for (const { name, channels, opusDecoderVariants: variants } of report.candidates) {
+      if (!encoded.some((candidate) => candidate.name === name)) continue
       assert.ok(chrome[name], `Missing Chrome decoder outcome for ${name}`)
-      console.log(JSON.stringify({ nativeAudio: 'chrome', name, ...chrome[name] }))
+      const { pcmWindow, ...result } = chrome[name]
+      console.log(JSON.stringify({ nativeAudio: 'chrome', name, ...result }))
+      for (const { name: variant, stage, pcmWindowF32le } of variants) {
+        let comparison = null
+        if (stage === 'complete' && pcmWindow && pcmWindowF32le) {
+          const bytes = Buffer.from(pcmWindowF32le, 'hex')
+          const samples = Float32Array.from({ length: bytes.length / 4 }, (_, i) => bytes.readFloatLE(i * 4))
+          comparison = compareOpusProbeWindows(samples, pcmWindow, channels)
+        }
+        console.log(JSON.stringify({ nativeAudio: 'opus-pcm-comparison', name, variant, comparison }))
+      }
     }
   }
   console.log(JSON.stringify({ nativeAudio: 'complete' }))

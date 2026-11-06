@@ -126,6 +126,51 @@ const candidates = {
   anonymous: { times, stages: elementStages },
   decoded: { times, stages: ['complete', 'demux', 'decode', 'draw'] }
 }
+const clockCandidates = ['clock-detached', 'clock-attached', 'clock-frame-stream', 'clock-restore']
+const clockPhases = [
+  'started',
+  'advanced',
+  'beforePause',
+  'immediate',
+  'pauseEvent',
+  'animationFrame',
+  'afterFrame'
+]
+const restorePhases = ['restored', 'restoredAfterFrame']
+
+export function reportClock(result, candidate) {
+  const { stage, errorName, frameSource, playedDuration } = result
+  const stages = [
+    'complete',
+    'media-load',
+    'media-duration',
+    'seek',
+    'frame-access',
+    'frame-decode',
+    'play',
+    'advance',
+    'pause',
+    'restore'
+  ]
+  assert.ok(stages.includes(stage), 'Invalid playback probe stage')
+  if (stage === 'complete') assert.equal(errorName, undefined)
+  else checkError(errorName)
+  const reads = {}
+  for (const [phase, read] of Object.entries(result.reads)) {
+    assert.ok(clockPhases.includes(phase) || (candidate === 'clock-restore' && restorePhases.includes(phase)))
+    assert.ok(Number.isFinite(read.time) && read.time >= 0)
+    assert.equal(typeof read.paused, 'boolean')
+    reads[phase] = { time: read.time, paused: read.paused }
+  }
+  if (stage === 'complete') {
+    for (const phase of clockPhases) assert.ok(reads[phase], `Missing playback read ${phase}`)
+    assert.ok(['element', 'decoded'].includes(frameSource))
+    assert.ok(Number.isFinite(playedDuration) && playedDuration >= 0)
+    if (candidate === 'clock-restore' && reads.afterFrame.time < reads.beforePause.time)
+      for (const phase of restorePhases) assert.ok(reads[phase], `Missing playback read ${phase}`)
+  }
+  return { stage, errorName, frameSource, playedDuration, reads }
+}
 
 function sanitize(report, candidate) {
   assert.equal(report.candidate, candidate, 'Report belongs to a different candidate')
@@ -143,12 +188,14 @@ function sanitize(report, candidate) {
     capabilities[key] = context[key]
   }
   assert.ok(['opaque', 'tuple'].includes(context.documentOrigin), 'Missing renderer origin')
-  const { times, stages } = candidates[candidate]
+  const frame = candidates[candidate]
   return {
-    nativeVideoOrigin: 'candidate',
+    [frame ? 'nativeVideoOrigin' : 'nativeVideoClock']: 'candidate',
     candidate,
     context: { ...capabilities, documentOrigin: context.documentOrigin },
-    result: reportCandidate(report.result, times, stages)
+    result: frame
+      ? reportCandidate(report.result, frame.times, frame.stages)
+      : reportClock(report.result, candidate)
   }
 }
 
@@ -203,8 +250,10 @@ function profileEnvironment(profile) {
   return env
 }
 
-async function main(executable) {
+async function main(executable, mode) {
   if (!executable) throw Error('Pass a built video origin probe executable')
+  if (mode !== undefined && mode !== '--playback') throw Error('Expected --playback or no mode')
+  const names = mode ? clockCandidates : Object.keys(candidates)
   const temp = await realpath(tmpdir()),
     prefix = 'olr-vp-',
     root = await mkdtemp(path.join(temp, prefix))
@@ -215,7 +264,7 @@ async function main(executable) {
     await writeFile(fixture, await generatedVideo())
     const deadline = performance.now() + 75000
     const failed = []
-    for (const candidate of Object.keys(candidates)) {
+    for (const candidate of names) {
       const profilePrefix = `${candidate}-`
       const profile = await mkdtemp(path.join(root, profilePrefix))
       try {
@@ -244,7 +293,7 @@ async function main(executable) {
       }
     }
     if (failed.length) throw new AggregateError(failed, 'Incomplete video origin probe candidates')
-    console.log(JSON.stringify({ nativeVideoOrigin: 'complete' }))
+    console.log(JSON.stringify({ [mode ? 'nativeVideoClock' : 'nativeVideoOrigin']: 'complete' }))
   } finally {
     if (retainRoot)
       console.error(`Video origin probe retained its temporary directory ${path.basename(root)}`)
@@ -252,4 +301,4 @@ async function main(executable) {
   }
 }
 
-if (import.meta.main) await main(process.argv[2])
+if (import.meta.main) await main(process.argv[2], process.argv[3])

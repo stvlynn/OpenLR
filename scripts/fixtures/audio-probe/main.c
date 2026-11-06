@@ -5,7 +5,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-enum { inputFrames = 9601, outputFrames = 32768, maxPackets = 64, maxEncodedBytes = 65536 };
+enum { inputFrames = 9601, outputFrames = 32768, maxPackets = 64, maxEncodedBytes = 65536,
+    pcmWindowStart = 6400, pcmWindowFrames = 1600 };
 static const double tau = 6.283185307179586;
 static const double tones[] = {333, 777};
 static const OSStatus notAttempted = INT32_MIN;
@@ -151,15 +152,122 @@ static void printSignal(const float *samples, UInt32 frames, UInt32 rate, UInt32
     putchar(']');
 }
 
+typedef struct {
+    const char *stage;
+    OSStatus status;
+    OSStatus cookieStatus;
+    OSStatus setMethodStatus;
+    OSStatus methodStatus;
+    UInt32 method;
+    OSStatus primeStatus;
+    AudioConverterPrimeInfo prime;
+    UInt32 frames;
+    UInt32 firstFrames;
+    UInt32 firstPackets;
+} DecodeProbe;
+
+static DecodeProbe decodePackets(const AudioStreamBasicDescription *compressed,
+    const AudioStreamBasicDescription *pcm, const Packet *packets, UInt32 packetCount,
+    const uint8_t *cookie, UInt32 cookieSize, bool noPrime, float *output)
+{
+    DecodeProbe result = {.stage = "decoder-create", .cookieStatus = notAttempted,
+        .setMethodStatus = notAttempted, .methodStatus = notAttempted, .primeStatus = notAttempted};
+    AudioConverterRef decoder = NULL;
+    result.status = AudioConverterNew(compressed, pcm, &decoder);
+    if (result.status)
+        goto finish;
+    if (cookieSize) {
+        result.stage = "decoder-cookie";
+        result.cookieStatus = AudioConverterSetProperty(decoder, kAudioConverterDecompressionMagicCookie, cookieSize, cookie);
+        result.status = result.cookieStatus;
+        if (result.status)
+            goto finish;
+    }
+    if (noPrime) {
+        const UInt32 method = kConverterPrimeMethod_None;
+        result.stage = "decoder-prime-method";
+        result.setMethodStatus = AudioConverterSetProperty(decoder, kAudioConverterPrimeMethod, sizeof(method), &method);
+        result.status = result.setMethodStatus;
+        if (result.status)
+            goto finish;
+    }
+    result.stage = "decode";
+    PacketInput input = {.packets = packets, .count = packetCount, .channels = pcm->mChannelsPerFrame};
+    while (true) {
+        UInt32 count = outputFrames - result.frames;
+        if (!count) {
+            result.status = -1;
+            goto finish;
+        }
+        const UInt32 capacity = count;
+        const UInt32 channels = pcm->mChannelsPerFrame, bytesPerFrame = pcm->mBytesPerFrame;
+        AudioBufferList buffer = {1, {{channels, capacity * bytesPerFrame, output + result.frames * channels}}};
+        result.status = AudioConverterFillComplexBuffer(decoder, feedPackets, &input, &count, &buffer, NULL);
+        if (result.status)
+            goto finish;
+        if (!count)
+            break;
+        if (count > capacity || buffer.mBuffers[0].mDataByteSize != count * bytesPerFrame) {
+            result.status = -1;
+            goto finish;
+        }
+        if (!result.frames) {
+            result.firstFrames = count;
+            result.firstPackets = input.index;
+        }
+        result.frames += count;
+    }
+    if (!result.frames || input.index != packetCount) {
+        result.status = -1;
+        goto finish;
+    }
+    result.primeStatus = converterProperty(decoder, kAudioConverterPrimeInfo, &result.prime, sizeof(result.prime));
+    result.stage = "complete";
+
+finish:
+    if (decoder) {
+        result.methodStatus = converterProperty(decoder, kAudioConverterPrimeMethod, &result.method, sizeof(result.method));
+        AudioConverterDispose(decoder);
+    }
+    return result;
+}
+
+static void printDecoderVariant(const char *name, DecodeProbe result, const float *output,
+    UInt32 rate, UInt32 channels)
+{
+    printf("{\"name\":\"%s\",\"stage\":\"%s\",\"status\":%d,\"decodedFrames\":%u,"
+        "\"firstFrames\":%u,\"firstPackets\":%u,\"cookieStatus\":",
+        name, result.stage, (int)result.status, (unsigned)result.frames,
+        (unsigned)result.firstFrames, (unsigned)result.firstPackets);
+    printStatus(result.cookieStatus);
+    printf(",\"setPrimeMethodStatus\":");
+    printStatus(result.setMethodStatus);
+    printf(",\"primeMethod\":{\"status\":");
+    printStatus(result.methodStatus);
+    if (!result.methodStatus)
+        printf(",\"value\":%u", (unsigned)result.method);
+    printf("},\"prime\":");
+    printPrime(result.primeStatus, result.prime);
+    printf(",\"signal\":");
+    printSignal(output, result.frames, rate, channels);
+    printf(",\"pcmWindowF32le\":");
+    if (result.frames >= pcmWindowStart + pcmWindowFrames)
+        printHex((const uint8_t *)(output + pcmWindowStart * channels), pcmWindowFrames * channels * sizeof(float));
+    else
+        printf("null");
+    putchar('}');
+}
+
 static void probe(const char *name, AudioFormatID codec, UInt32 rate, UInt32 channels)
 {
-    AudioConverterRef encoder = NULL, decoder = NULL;
+    AudioConverterRef encoder = NULL;
     uint8_t encoded[maxEncodedBytes], cookie[4096];
     float input[inputFrames * 2], output[outputFrames * 2];
     Packet packets[maxPackets];
     UInt32 packetCount = 0, codedFrames = 0, decodedFrames = 0, encodedBytes = 0, cookieSize = 0;
-    OSStatus status, cookieStatus = notAttempted, encodePrimeStatus = notAttempted, decodePrimeStatus = notAttempted;
-    AudioConverterPrimeInfo encodePrime = {0}, decodePrime = {0};
+    OSStatus status, cookieStatus = notAttempted, encodePrimeStatus = notAttempted;
+    AudioConverterPrimeInfo encodePrime = {0};
+    DecodeProbe decoded = {.primeStatus = notAttempted};
     const char *stage = "encoder-create";
     const UInt32 bytesPerFrame = channels * sizeof(float);
     const AudioStreamBasicDescription pcm = {
@@ -252,47 +360,12 @@ static void probe(const char *name, AudioFormatID codec, UInt32 rate, UInt32 cha
     if (cookieStatus)
         cookieSize = 0;
 
-    stage = "decoder-create";
-    status = AudioConverterNew(&compressed, &pcm, &decoder);
-    if (status)
-        goto finish;
-    if (cookieSize) {
-        stage = "decoder-cookie";
-        status = AudioConverterSetProperty(decoder, kAudioConverterDecompressionMagicCookie, cookieSize, cookie);
-        if (status)
-            goto finish;
-    }
-    stage = "decode";
-    PacketInput packetInput = {.packets = packets, .count = packetCount, .channels = channels};
-    while (true) {
-        UInt32 count = outputFrames - decodedFrames;
-        if (!count) {
-            status = -1;
-            goto finish;
-        }
-        const UInt32 capacity = count;
-        AudioBufferList buffer = {1, {{channels, capacity * bytesPerFrame, output + decodedFrames * channels}}};
-        status = AudioConverterFillComplexBuffer(decoder, feedPackets, &packetInput, &count, &buffer, NULL);
-        if (status)
-            goto finish;
-        if (!count)
-            break;
-        if (count > capacity || buffer.mBuffers[0].mDataByteSize != count * bytesPerFrame) {
-            status = -1;
-            goto finish;
-        }
-        decodedFrames += count;
-    }
-    if (!decodedFrames || packetInput.index != packetCount) {
-        status = -1;
-        goto finish;
-    }
-    decodePrimeStatus = converterProperty(decoder, kAudioConverterPrimeInfo, &decodePrime, sizeof(decodePrime));
-    stage = "complete";
+    decoded = decodePackets(&compressed, &pcm, packets, packetCount, cookie, cookieSize, false, output);
+    stage = decoded.stage;
+    status = decoded.status;
+    decodedFrames = decoded.frames;
 
 finish:
-    if (decoder)
-        AudioConverterDispose(decoder);
     if (encoder)
         AudioConverterDispose(encoder);
     printf("{\"name\":\"%s\",\"codec\":\"%s\",\"sampleRate\":%u,\"channels\":%u,\"stage\":\"%s\",\"status\":%d,"
@@ -301,7 +374,7 @@ finish:
         (unsigned)inputFrames, (unsigned)codedFrames, (unsigned)decodedFrames, (unsigned)compressed.mFramesPerPacket);
     printPrime(encodePrimeStatus, encodePrime);
     printf(",\"decoderPrime\":");
-    printPrime(decodePrimeStatus, decodePrime);
+    printPrime(decoded.primeStatus, decoded.prime);
     printf(",\"cookieStatus\":");
     printStatus(cookieStatus);
     printf(",\"cookie\":");
@@ -313,6 +386,34 @@ finish:
         printf("%s{\"frames\":%u,\"data\":", i ? "," : "", (unsigned)packets[i].frames);
         printHex(packets[i].bytes, packets[i].description.mDataByteSize);
         putchar('}');
+    }
+    printf("],\"opusDecoderVariants\":[");
+    if (codec == kAudioFormatOpus && decoded.stage) {
+        printDecoderVariant("encoder-cookie-default", decoded, output, rate, channels);
+        const uint8_t opusHead[] = {'O', 'p', 'u', 's', 'H', 'e', 'a', 'd', 1, (uint8_t)channels,
+            0, 0, 0x80, 0xbb, 0, 0, 0, 0, 0};
+        uint8_t opusHeadWithPreSkip[sizeof(opusHead)];
+        for (size_t i = 0; i < sizeof(opusHead); i++)
+            opusHeadWithPreSkip[i] = opusHead[i];
+        opusHeadWithPreSkip[10] = 0x38;
+        opusHeadWithPreSkip[11] = 0x01; // 312 samples in the explicit test header.
+        const struct {
+            const char *name;
+            const uint8_t *cookie;
+            UInt32 size;
+            bool noPrime;
+        } variants[] = {
+            {"no-cookie-default", NULL, 0, false},
+            {"opushead-zero-default", opusHead, sizeof(opusHead), false},
+            {"encoder-cookie-no-prime", cookie, cookieSize, true},
+            {"opushead-312-default", opusHeadWithPreSkip, sizeof(opusHeadWithPreSkip), false},
+        };
+        for (size_t i = 0; i < sizeof(variants) / sizeof(*variants); i++) {
+            putchar(',');
+            const DecodeProbe variant = decodePackets(&compressed, &pcm, packets, packetCount,
+                variants[i].cookie, variants[i].size, variants[i].noPrime, output);
+            printDecoderVariant(variants[i].name, variant, output, rate, channels);
+        }
     }
     printf("]}");
 }

@@ -137,6 +137,71 @@ function elementPath(name, file, open) {
   })
 }
 
+const animationFrame = () => new Promise((resolve) => requestAnimationFrame(resolve))
+
+function playbackPath(name, file, { attach, stream, restore } = {}) {
+  return candidate(name, async (report) => {
+    const reads = (report.reads = {})
+    report.stage = 'media-load'
+    const media = await openVideo(file, report),
+      { video } = media
+    let cursor
+    const read = (phase) => (reads[phase] = { time: video.currentTime, paused: video.paused })
+    try {
+      if (attach) document.body.append(video)
+      report.stage = 'seek'
+      await media.seek(0.35)
+      report.stage = 'frame-access'
+      await media.frameAt()
+      report.stage = 'play'
+      video.muted = false
+      await video.play()
+      const started = read('started').time
+      if (stream) cursor = await media.playbackFrames()
+
+      report.stage = 'advance'
+      while (!video.paused && video.currentTime < started + 0.15) {
+        if (cursor) await cursor.at(video.currentTime)
+        await animationFrame()
+      }
+      if (video.paused) throw Error('Playback ended before pause observation')
+      read('advanced')
+
+      report.stage = 'pause'
+      const paused = new Promise((resolve) => {
+        video.addEventListener('pause', () => resolve(read('pauseEvent')), { once: true })
+      })
+      const position = read('beforePause').time
+      video.pause()
+      read('immediate')
+      cursor?.close()
+      await paused
+      await animationFrame()
+      read('animationFrame')
+
+      report.stage = 'frame-access'
+      const frame = await media.frameAt()
+      report.frameSource = frame === video ? 'element' : 'decoded'
+      const stopped = read('afterFrame').time
+      report.playedDuration = Array.from(
+        { length: video.played.length },
+        (_, index) => video.played.end(index) - video.played.start(index)
+      ).reduce((sum, duration) => sum + duration, 0)
+      if (restore && stopped < position) {
+        report.stage = 'restore'
+        await media.seek(position)
+        read('restored')
+        await media.frameAt()
+        read('restoredAfterFrame')
+      }
+    } finally {
+      cursor?.close()
+      media.close()
+      video.remove()
+    }
+  })
+}
+
 await stage('renderer-start')
 const { candidate: name, encoded } = await globalThis.mygo.call('VideoProbe.Fixture')
 const file = new File(
@@ -156,6 +221,10 @@ const context = {
   audioEncoder: typeof AudioEncoder === 'function'
 }
 const paths = {
+  'clock-detached': () => playbackPath(name, file),
+  'clock-attached': () => playbackPath(name, file, { attach: true }),
+  'clock-frame-stream': () => playbackPath(name, file, { stream: true }),
+  'clock-restore': () => playbackPath(name, file, { restore: true }),
   direct: () => elementPath('direct', file, openVideo),
   poster: () =>
     candidate('poster', async (report) => {

@@ -80,7 +80,8 @@ func main() {
 	}
 	candidate := os.Args[4]
 	switch candidate {
-	case "direct", "poster", "anonymous", "decoded":
+	case "direct", "poster", "anonymous", "decoded",
+		"clock-detached", "clock-attached", "clock-frame-stream", "clock-restore":
 	default:
 		log.Fatal("Invalid video origin probe candidate")
 	}

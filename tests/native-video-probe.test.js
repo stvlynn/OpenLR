@@ -4,7 +4,34 @@ import { EventEmitter } from 'node:events'
 import { syncBuiltinESMExports } from 'node:module'
 import test from 'node:test'
 import { promisify } from 'node:util'
-import { runProbeHost } from '../scripts/native-video-origin-probe.mjs'
+import { reportClock, runProbeHost } from '../scripts/native-video-origin-probe.mjs'
+
+test('video pause probe requires post-seek and post-frame observations when a rewind is repaired', () => {
+  const playing = { time: 0.54, paused: false },
+    rewound = { time: 0.35, paused: true },
+    restored = { time: 0.54, paused: true }
+  const result = {
+    stage: 'complete',
+    frameSource: 'decoded',
+    playedDuration: 0,
+    reads: {
+      started: { time: 0.35, paused: false },
+      advanced: playing,
+      beforePause: playing,
+      immediate: rewound,
+      pauseEvent: rewound,
+      animationFrame: rewound,
+      afterFrame: rewound,
+      restored,
+      restoredAfterFrame: restored
+    }
+  }
+  assert.deepEqual(reportClock(result, 'clock-restore').reads, result.reads)
+  delete result.reads.restoredAfterFrame
+  assert.throws(() => reportClock(result, 'clock-restore'), /Missing playback read restoredAfterFrame/)
+  delete result.reads.pauseEvent
+  assert.throws(() => reportClock(result, 'clock-restore'), /Missing playback read pauseEvent/)
+})
 
 test('video probe host distinguishes clean exit and nonzero exit', async () => {
   await runProbeHost(process.execPath, ['-e', 'process.exit(0)'])

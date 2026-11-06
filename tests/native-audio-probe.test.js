@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { parseAudioProbeReport } from '../scripts/native-audio-probe.mjs'
+import { compareOpusProbeWindows, parseAudioProbeReport } from '../scripts/native-audio-probe.mjs'
 
 function reportFixture() {
   const configurations = [
@@ -29,7 +29,8 @@ function reportFixture() {
       cookieStatus: null,
       cookie: '',
       packets: [],
-      signal: []
+      signal: [],
+      opusDecoderVariants: []
     }))
   }
 }
@@ -55,7 +56,57 @@ test('AudioToolbox probe requires PCM evidence and matching packet counts for a 
     packets: Array.from({ length: 11 }, () => ({ frames: 960, data: '78' })),
     signal: [{ peak: 0.75, pulseOffset: 312, toneAmplitude: 0.22 }]
   })
+  candidate.opusDecoderVariants = [
+    'encoder-cookie-default',
+    'no-cookie-default',
+    'opushead-zero-default',
+    'encoder-cookie-no-prime',
+    'opushead-312-default'
+  ].map((name) => ({
+    name,
+    stage: 'decoder-create',
+    status: -50,
+    decodedFrames: 0,
+    firstFrames: 0,
+    firstPackets: 0,
+    cookieStatus: null,
+    setPrimeMethodStatus: null,
+    primeMethod: { status: null },
+    prime: { status: null },
+    signal: [],
+    pcmWindowF32le: null
+  }))
+  const [base] = candidate.opusDecoderVariants
+  Object.assign(base, {
+    stage: 'complete',
+    status: 0,
+    decodedFrames: 10560,
+    firstFrames: 10560,
+    firstPackets: 11,
+    prime: candidate.decoderPrime,
+    signal: candidate.signal,
+    pcmWindowF32le: '00'.repeat(1600 * 4)
+  })
   assert.deepEqual(parseAudioProbeReport(JSON.stringify(report)), report)
+  const omitted = candidate.opusDecoderVariants.pop()
+  assert.throws(() => parseAudioProbeReport(JSON.stringify(report)))
+  candidate.opusDecoderVariants.push(omitted)
   candidate.codedFrames++
   assert.throws(() => parseAudioProbeReport(JSON.stringify(report)))
+})
+
+test('the Opus PCM oracle aligns the same interleaved signal and quantifies residual error', () => {
+  const stereo = Float32Array.of(0.05, -0.25, 0.77, 0.62, -0.42, 0.21, 0.02, -0.02)
+  const reference = new Float32Array(stereo.length + 2 * 1024 * 2)
+  const start = (1024 + 120) * 2
+  reference.set(stereo, start)
+  assert.deepEqual(compareOpusProbeWindows(stereo, reference, 2), {
+    referenceFrameOffset: 120,
+    relativeRmsError: 0
+  })
+  reference[start] += 0.01
+  const changed = compareOpusProbeWindows(stereo, reference, 2)
+  assert.equal(changed.referenceFrameOffset, 120)
+  assert.ok(changed.relativeRmsError > 0 && changed.relativeRmsError < 0.01)
+  assert.equal(compareOpusProbeWindows(new Float32Array(stereo.length), reference, 2), null)
 })
