@@ -22,7 +22,7 @@ remove_package() {
 }
 trap remove_package EXIT
 sudo apt-get update -qq
-sudo apt-get install -y --no-install-recommends "$package" xvfb
+sudo apt-get install -y --no-install-recommends "$package" xvfb libglib2.0-bin
 test "$(dpkg-query -W -f='${db:Status-Status}' openlr)" = installed
 test "$(readlink -f "$launcher")" = "$payload/openlr"
 grep -Fx 'Exec=/opt/openlr/openlr %U' "$desktop"
@@ -30,6 +30,7 @@ grep -Fx 'MimeType=image/jpeg;image/png;image/x-adobe-dng;image/tiff;' "$desktop
 test -f "$mime"
 
 xvfb-run -a dbus-run-session -- node scripts/native-installed-cli-smoke.mjs "$launcher" "$payload/cli/openlr.mjs"
+xvfb-run -a dbus-run-session -- node scripts/native-file-open-smoke.mjs "$launcher" "$desktop"
 xvfb-run -a dbus-run-session -- node scripts/native-suite.mjs "$launcher"
 
 remove_package

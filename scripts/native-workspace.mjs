@@ -114,11 +114,11 @@ export async function withNativeWorkspace(
     }
   }
 
-  function launchSecondary(args, cwd) {
+  function launchSecondary(args, cwd, launcher = executable) {
     if (!host || secondary) throw Error('Expected exactly one running native workspace host')
     // Share the private instance socket. If forwarding fails and another
     // workspace starts, keep its renderer profile and agent descriptor separate.
-    secondary = spawn(path.resolve(executable), args, {
+    secondary = spawn(path.resolve(launcher), args, {
       cwd,
       env: {
         ...env,

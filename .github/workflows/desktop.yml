@@ -1,6 +1,11 @@
 name: Desktop verification
 on:
   workflow_dispatch:
+    inputs:
+      native_dialogs:
+        description: Exercise macOS folder and Save panels
+        type: boolean
+        default: false
   push:
     branches: [main]
 permissions:
@@ -38,6 +43,12 @@ jobs:
         if: ${{ !cancelled() && runner.os == 'macOS' && steps.distribution.outcome == 'success' }}
         timeout-minutes: 5
         run: bash scripts/native-dmg-smoke.sh build/release/darwin-universal/openlr-*.dmg
+      - name: Exercise native macOS folder and Save panels
+        if: ${{ !cancelled() && runner.os == 'macOS' && inputs.native_dialogs && steps.distribution.outcome == 'success' }}
+        timeout-minutes: 3
+        run: |
+          osacompile -o "$RUNNER_TEMP/OpenLRNativeDialog.scpt" scripts/drive-native-dialog.applescript
+          node scripts/native-dialog-smoke.mjs build/release/darwin-universal/OpenLR.app/Contents/MacOS/OpenLR
       - name: Probe native AudioToolbox codecs
         if: ${{ !cancelled() && runner.os == 'macOS' && steps.distribution.outcome == 'success' }}
         run: |

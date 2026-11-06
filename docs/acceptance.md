@@ -4,6 +4,8 @@
 
 ## 桌面验收与交付快照 — 2026-11-07
 
+`8a76636` 在本机 Windows Chrome 157.0.8103.38 启用独立色彩和元数据校验，完整回归 **496/496**，零失败、零跳过，319.9 秒。重建的 Windows 包通过原生主流程和文件打开专项。Apple Silicon 托管作业通过从 DMG 复制应用、系统文件打开、原生 CLI Unicode 搜索、五种格式的锐化回读、模型与视频套件。[四平台作业](https://github.com/stvlynn/OpenLR/actions/runs/42305673788) · [Apple Silicon 日志](https://github.com/stvlynn/OpenLR/actions/runs/42305673788/job/128194250258)
+
 Photos 迁移的 Windows 正式包对照使用公开的 Catalina 导出 XMP 与两张生成 PNG。修复前，一张缺少图库日期，另一张保留了与侧车不同的内嵌日期。修复后，两张都保留侧车的带时区日期，并通过实际 CLI 预览和原件逐字节检查。迁移、CLI 与同步定向回归 **19/19**，普通原生迁移套件通过。[迁移来源及验证边界](../research/catalog-migration.md#apple-export-boundary)
 
 `205cd45` 在本机 Windows Chrome 157.0.8103.38 启用独立色彩和元数据校验，完整浏览器回归 **494/494**，零失败、零跳过，305.9 秒。Windows 和两种 macOS 的托管作业通过。Ubuntu 首次在 APT 下载阶段超时，同一提交的重跑通过 Debian 安装、包内 CLI 接入、实际原生套件与清除。四平台矩阵最终通过。[四平台作业](https://github.com/stvlynn/OpenLR/actions/runs/42298650204) · [Ubuntu 重跑](https://github.com/stvlynn/OpenLR/actions/runs/42298650204/job/128184599226)
