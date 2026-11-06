@@ -4,11 +4,13 @@
 
 ## 桌面验收与交付快照 — 2026-11-07
 
+`dad42fe` 在本机 Windows Chrome 启用独立色彩和元数据校验，完整浏览器回归 **491/491，零失败、零跳过**，297.8 秒。两种 macOS 正式包对照均验证六种可播放样本的首帧缩略图和原件字节。Intel 的跳转也全部通过，Apple Silicon 在一条 BT.709 VP9 的 0.25 秒跳转收到原生解码错误。后续 `6715e0e` 的定向浏览器回归 **10/10**，覆盖旧视频缩略图重建、原件和编辑参数保留，以及 RAW 缓存和视频操作。该提交的完整四平台矩阵另行运行。[正式包专项](https://github.com/stvlynn/OpenLR/actions/runs/42289483649) · [旧缓存修复矩阵](https://github.com/stvlynn/OpenLR/actions/runs/42290137975)
+
 `d2f15aa` 的四平台托管验收全部通过。Windows 浏览器 482 项通过、零失败、8 项可选资源跳过，安装包和三项短音频也通过。Ubuntu 完成实际 Debian 安装后的原生套件，两种 macOS 完成 DMG 复制和原生验收。独立冷启动专项在两种 macOS 均由随包 CLI 启动复制件，核对会话 PID、再次接入、4×3 预览、73 字节原件和清理。[四平台结果](https://github.com/stvlynn/OpenLR/actions/runs/42281028302) · [macOS 冷启动结果](https://github.com/stvlynn/OpenLR/actions/runs/42282761330)
 
 `5710968` 在 Windows／Node 24.9.0／Chrome 157.0.8103.38 启用独立色彩和元数据校验，完整浏览器回归 **490/490，零失败、零跳过**，299.4 秒。本机日志 `.workspace/full-browser-5710968.log`。
 
-Apple Silicon 海报对照两轮共用逐字节一致的 WebM 夹具，原生海报组 13/16，独立解码组 16/16。反序轮的一次崩溃发生在第七次试验的 MP4 导出阶段，首轮试验通过。海报候选仍待更多格式的导入兼容性验证。[两轮对照证据](../research/native-video.md#packaged-application-load-comparison)
+早期 Apple Silicon 缩略图对照两轮共用逐字节一致的 WebM 夹具，原生缩略图组 13/16，独立解码组 16/16。反序轮的一次崩溃发生在第七次试验的 MP4 导出阶段，首轮试验通过。后续多格式对照发现独立解码方案会接收原生播放器无法打开的 MKV。[两轮对照证据](../research/native-video.md#packaged-application-load-comparison) · [多格式对照](../research/native-video.md#poster-format-and-color-comparison)
 
 `5599804` 的四平台托管验收已全部通过，包含 Windows NSIS 安装、随包 CLI 和卸载，Ubuntu 安装后的完整原生套件，以及两种 macOS 的 DMG 复制检查。Windows 浏览器 480 项通过、8 项可选资源跳过、零失败。[完整矩阵](https://github.com/stvlynn/OpenLR/actions/runs/42278480431)
 
