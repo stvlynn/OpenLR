@@ -31,15 +31,21 @@ jobs:
       - if: runner.os == 'Windows'
         run: npm test
       - name: Build the native distribution
+        id: distribution
         run: node scripts/desktop.mjs build -o build/release -platform ${{ runner.os == 'Windows' && 'windows/amd64' || runner.os == 'macOS' && 'darwin/universal' || 'linux/amd64' }}
-      - name: Probe video frame origin in WKWebView
+      - name: Probe native AudioToolbox codecs
         if: runner.os == 'macOS'
+        run: |
+          xcrun clang -std=c11 -Wall -Wextra -Werror scripts/fixtures/audio-probe/main.c -framework AudioToolbox -o build/audio-toolbox-probe
+          node scripts/native-audio-probe.mjs build/audio-toolbox-probe
+      - name: Probe video frame origin in WKWebView
+        if: ${{ !cancelled() && runner.os == 'macOS' && steps.distribution.outcome == 'success' }}
         run: |
           CGO_ENABLED=0 go build -tags mygo_noinspector -ldflags '-X github.com/egoist/mygo.production=1' -o build/video-origin-probe ./scripts/fixtures/video-probe
           node scripts/native-video-origin-probe.mjs build/video-origin-probe
       - if: runner.os == 'Linux'
         run: xvfb-run -a dbus-run-session -- node scripts/native-suite.mjs build/release/linux-amd64/openlr
-      - if: runner.os == 'macOS'
+      - if: ${{ !cancelled() && runner.os == 'macOS' && steps.distribution.outcome == 'success' }}
         run: node scripts/native-suite.mjs build/release/darwin-universal/OpenLR.app/Contents/MacOS/OpenLR
       - if: runner.os == 'Windows'
         run: node scripts/native-suite.mjs build/release/windows-amd64/OpenLR.exe

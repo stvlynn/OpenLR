@@ -165,7 +165,7 @@ try {
     assert.ok(advanced.playing && advanced.time >= started.time + 0.15, JSON.stringify({ started, advanced }))
     const paused = (await call('video-pause')).playback
     assert.equal(paused.playing, false)
-    assert.ok(paused.time >= advanced.time)
+    assert.ok(paused.time >= advanced.time, JSON.stringify({ started, advanced, paused }))
     assert.deepEqual((await call('state')).playback, paused)
 
     const trimmed = await call('video-trim', '--start', String(trim.start), '--end', String(trim.end))
