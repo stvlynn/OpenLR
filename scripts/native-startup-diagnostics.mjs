@@ -89,7 +89,6 @@ export async function reportNativeStartupFailure(
       requestAt === undefined ||
       !diagnostic.session?.matchesHost ||
       !diagnostic.health?.ok ||
-      diagnostic.control?.replied ||
       host.exitCode !== null ||
       host.signalCode
     )

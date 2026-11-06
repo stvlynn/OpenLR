@@ -138,10 +138,13 @@ test('startup diagnostics do not probe a descriptor owned by another process', a
   assert.equal(Object.hasOwn(result, 'health'), false)
 })
 
-async function observationFixture(t) {
+async function observationFixture(t, { controlReplies = false } = {}) {
+  let healthStatus = 200
   const { session, requests } = await fixture(t, (request, response) => {
-    if (request.url === '/health') response.end(JSON.stringify({ ok: true, version: 1 }))
+    if (request.url === '/health')
+      response.writeHead(healthStatus).end(JSON.stringify({ ok: healthStatus === 200, version: 1 }))
     if (request.url === '/diagnostics/startup-ui') response.end(JSON.stringify({ responded: true }))
+    if (controlReplies && request.url === '/command') response.end(JSON.stringify({ ok: true, result: null }))
   })
   const startedAt = performance.now() - 30_000
   const host = { pid: 123, exitCode: null, signalCode: null }
@@ -166,11 +169,22 @@ async function observationFixture(t) {
     logs
       .filter((line) => line.startsWith('Native startup passive observation: '))
       .map((line) => JSON.parse(line.slice('Native startup passive observation: '.length)))
-  return { startedAt, requests, report, observations, exit, host }
+  return {
+    startedAt,
+    requests,
+    report,
+    observations,
+    exit,
+    host,
+    logs,
+    setHealthStatus: (status) => (healthStatus = status)
+  }
 }
 
-test('Windows first-state failure observes the same host only through the absolute launch horizon', async (t) => {
-  const { startedAt, requests, report, observations } = await observationFixture(t)
+test('Windows first-state failure observes the same host through the launch horizon after control replies', async (t) => {
+  const { startedAt, requests, report, observations, logs } = await observationFixture(t, {
+    controlReplies: true
+  })
   let time = startedAt + 32_250
   const wait = t.mock.fn(async (ms, status, { ref, signal }) => {
     assert.equal(ms, 12_750)
@@ -186,6 +200,7 @@ test('Windows first-state failure observes the same host only through the absolu
   })
   await report({}, { now: () => time, wait })
   assert.equal(wait.mock.callCount(), 1)
+  assert.match(logs[0], /"control":\{"replied":true,"active":false\}/)
   assert.deepEqual(observations(), [
     { status: 'waiting', elapsedMs: 32_250, throughMs: 45_000 },
     { status: 'launch-horizon', elapsedMs: 45_000, throughMs: 45_000 }
@@ -198,12 +213,17 @@ test('Windows first-state failure observes the same host only through the absolu
 })
 
 test('passive startup observation ends on child exit and skips ineligible startup failures', async (t) => {
-  const { startedAt, report, observations, host, exit } = await observationFixture(t)
+  const { startedAt, report, observations, host, exit, setHealthStatus } = await observationFixture(t)
   const mustNotWait = () => assert.fail('This failure should not wait for late milestones')
   await report({}, { platform: 'linux', wait: mustNotWait })
   await report({ requestAt: undefined }, { wait: mustNotWait })
   await report({ observeLateStartup: false }, { wait: mustNotWait })
   await report({}, { now: () => startedAt + 45_001, wait: mustNotWait })
+  await report({ host: { ...host, pid: 456 } }, { wait: mustNotWait })
+  await report({ host: { ...host, exitCode: 7 } }, { wait: mustNotWait })
+  setHealthStatus(503)
+  await report({}, { wait: mustNotWait })
+  setHealthStatus(200)
   assert.deepEqual(observations(), [])
 
   let time = startedAt + 32_250,
