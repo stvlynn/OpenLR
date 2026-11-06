@@ -1,0 +1,5 @@
+# Raw Opus packet fixture
+
+`packets.json` contains generated Opus packets and reference PCM samples. `generate.py` synthesizes tones, a chirp and periodic pulses, encodes them with system libopus 1.4 and samples the output of that same version's raw decoder. The two 48 kHz mixed streams cover SILK, hybrid and CELT in mono and stereo. The third stream exercises CELT packet durations from 2.5 through 120 ms, including a 120 ms packet assembled with the public repacketizer. The generator verifies the actual TOC mode and packet durations. Its private force-mode control is used only for generating these fixtures. [Opus 1.4 source](https://github.com/xiph/opus/tree/v1.4) · [Opus packet specification](https://www.rfc-editor.org/rfc/rfc6716.html#section-3)
+
+Run `python3 tests/fixtures/opus/generate.py` on Linux with `libopus.so.0` reporting `libopus 1.4`. The fixture was generated with Ubuntu 24.04's `libopus0` `1.4-1build1`. The generator and synthetic packet data are distributed under the repository's AGPL-3.0-only license. libopus itself uses its upstream BSD-style license. [libopus licensing](https://www.opus-codec.org/license/)

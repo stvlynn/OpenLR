@@ -87,6 +87,10 @@ The native application menu in menu.go adapts MyGo menu construction, separators
 
 Video conversion uses MediaBunny 1.65.1 (MPL-2.0) with a source patch for audio presentation timing. The browser distribution and license are in `web/vendor/mediabunny/`. `scripts/vendor-mediabunny.mjs` applies the patch to the pinned npm source and regenerates the bundle. [Upstream source](https://github.com/Vanilagy/mediabunny/tree/v1.65.1) · [OpenLR source changes](scripts/mediabunny/audio-timing.patch)
 
+## Raw Opus packet decoder
+
+`web/vendor/opus/` retains the exact browser runtime from `libopus-wasm` 0.4.1 at `cda66b7bf9b964ba56cf3491e85b3daf51bbb2d9` (MIT, copyright 2026 openclaw). Its generated module contains Xiph.Org's libopus 1.6.1 (BSD-style license and referenced patent grants). The directory retains the wrapper license and notices, libopus `COPYING`, and Emscripten, musl and compiler-rt notices from the pinned Emscripten 6.0.10 source. Run `npm ci` and `node scripts/vendor-opus.mjs` to reproduce the runtime files. The script also retrieves pinned upstream notices if missing. OpenLR's adapter is separate from the unmodified runtime. [Wrapper release](https://github.com/openclaw/libopus-wasm/releases/tag/v0.4.1) · [libopus license](https://www.opus-codec.org/license/) · [Emscripten notices](https://github.com/emscripten-core/emscripten/blob/6.0.10/LICENSE) · [Verification record](research/native-audio-origin.md)
+
 Catalog migration reads SQLite through sql.js 1.15.2 (MIT, copyright sql.js authors). `web/vendor/sqlite/` retains its AUTHORS, MIT license, unchanged WASM, the Emscripten runtime license and a hash manifest. OpenLR appends an ES-module export to the upstream browser factory; it does not modify the compiled SQLite implementation. The underlying SQLite implementation is public domain. [Pinned wrapper source](https://github.com/sql-js/sql.js/tree/v1.15.2). `scripts/vendor-sqlite.mjs` records and reproduces these vendored files.
 
 ## Local segmentation runtime and weights
