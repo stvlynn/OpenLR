@@ -8,7 +8,11 @@
 
 较新的 `40fdeaa` 在 Windows、Linux 和 Intel macOS 通过。ARM 通过主视频流程，随后短多音轨用例在第一次裁剪时返回解码错误，发生在导出之前。原生媒体错误会立即返回给 CLI。裁剪诊断、生成输入留存和帧解码对照另行验证。[完整矩阵](https://github.com/stvlynn/OpenLR/actions/runs/42265530525) · [ARM 裁剪诊断](https://github.com/stvlynn/OpenLR/actions/runs/42267893913) · [帧解码对照](https://github.com/stvlynn/OpenLR/actions/runs/42266059363)
 
-干净 `556e8d7` Windows 归档验证了随包单文件 CLI 在源码目录外的 311 次命令和四个实时观察进程，包括实际工作区截图、图像导出、原件和目录重启。实际 GTK/X11 选目录验证了取消和授权、预览像素与原件。该 GTK 结果使用较早 Linux 包，覆盖隔离 X11 环境。[独立交付记录](delivery-review.md#windows-tracked-snapshot-556e8d7) · [系统选目录记录](local-folders.md)
+干净 `556e8d7` Windows 归档验证了随包单文件 CLI 在源码目录外的 311 次命令和四个实时观察进程，包括实际工作区截图、图像导出、原件和目录重启。`e365a88` Linux tarball 在隔离 GTK/X11 环境通过实际选目录与保存对话框，验证取消和成功路径、预览像素与原件。随包 CLI 也实际发起选目录并读回状态、预览与原件。[Windows 交付](delivery-review.md#windows-tracked-snapshot-556e8d7) · [Linux 交付](delivery-review.md#linux-tracked-snapshot-e365a88)
+
+`d7c4b8a` 托管验收的两种 macOS 均已通过。Windows 普通包在首个窗口创建前超时，独立诊断包和短音频步骤通过，普通包失败仍计入结果。Linux 在本次记录时仍在获取系统依赖。[当前矩阵](https://github.com/stvlynn/OpenLR/actions/runs/42269784749) · [Windows 启动证据](../research/native-startup.md#windows-window-creation-stall-at-d7c4b8a)
+
+`e365a88` 共享夹具解码对照完成 32 次且全部清理。Intel 默认和软件偏好各通过 8 次，ARM 分别通过 7 次和 8 次。ARM 的一次失败来自暂停读帧期间的原生解码错误，尚未开始导出。结合前一轮软件偏好组的导出崩溃，当前结果不足以切换默认解码配置。[对照结果](https://github.com/stvlynn/OpenLR/actions/runs/42271354783) · [视频阶段记录](../research/native-video.md#packaged-application-load-comparison)
 
 `a3d8057` 在 Windows／Chrome 157.0.8103.38 启用独立色彩和元数据校验，完整浏览器回归 **488/488，零失败、零跳过**，312.5 秒。ARM 裁剪专项通过了三项短多音轨验证。四份公开的真实 Lightroom Classic 测试目录也通过历史 `0900000` 结构的扫描和迁移验证。该验证使用生成的替代照片，现行 Classic 结构和 Photos 导出仍是不同的验证范围。[短音轨专项](https://github.com/stvlynn/OpenLR/actions/runs/42267893913) · [真实目录验证](catalog-migration.md#verification-and-dependency)
 
