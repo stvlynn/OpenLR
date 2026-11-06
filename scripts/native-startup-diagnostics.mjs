@@ -155,6 +155,14 @@ function summarizeMacCrash(contents, { pid, executable, startedWall, exitedWall 
   )
     return
   const frames = report.threads?.[report.faultingThread]?.frames
+  const summarizeFrames = (entries, limit) =>
+    Array.isArray(entries)
+      ? entries.slice(0, limit).map((frame) => ({
+          image: identifier(report.usedImages?.[frame?.imageIndex]?.name, /^[A-Za-z0-9_.+ -]{1,80}$/),
+          symbol: identifier(frame?.symbol, /^[A-Za-z0-9_.$:<>,()[\] +\-~*&!]{1,128}$/),
+          imageOffset: Number.isSafeInteger(frame?.imageOffset) ? frame.imageOffset : undefined
+        }))
+      : []
   return {
     status: 'matched',
     exception: {
@@ -165,11 +173,15 @@ function summarizeMacCrash(contents, { pid, executable, startedWall, exitedWall 
       namespace: identifier(report.termination?.namespace, /^[A-Z][A-Z0-9_ -]{0,40}$/),
       code: Number.isSafeInteger(report.termination?.code) ? report.termination.code : undefined
     },
-    frames: Array.isArray(frames)
-      ? frames.slice(0, 6).map((frame) => ({
-          image: identifier(report.usedImages?.[frame?.imageIndex]?.name, /^[A-Za-z0-9_.+ -]{1,80}$/),
-          symbol: identifier(frame?.symbol, /^[A-Za-z0-9_.$:<>,()[\] +\-~*&!]{1,128}$/),
-          imageOffset: Number.isSafeInteger(frame?.imageOffset) ? frame.imageOffset : undefined
+    frames: summarizeFrames(frames, 6),
+    lastExceptionBacktrace: summarizeFrames(report.lastExceptionBacktrace, 12),
+    threadCount: Array.isArray(report.threads) ? report.threads.length : 0,
+    threads: Array.isArray(report.threads)
+      ? report.threads.slice(0, 64).map((thread, index) => ({
+          index,
+          faulting: index === report.faultingThread,
+          mainQueue: thread?.queue === 'com.apple.main-thread',
+          frames: summarizeFrames(thread?.frames, 12)
         }))
       : []
   }

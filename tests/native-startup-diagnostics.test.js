@@ -328,8 +328,12 @@ test('Mac crash collection matches recent PID and image and only emits bounded c
     exception: { type: 'EXC_BAD_ACCESS', signal: 'SIGSEGV', codes: 'private exception' },
     termination: { namespace: 'SIGNAL', code: 11, indicator: 'private cause' },
     faultingThread: 0,
+    lastExceptionBacktrace: [
+      { imageIndex: 0, symbol: 'objc_exception_throw', imageOffset: 90, sourceFile: 'private.m' }
+    ],
     threads: [
       {
+        queue: 'com.apple.main-thread',
         frames: [
           { imageIndex: 0, symbol: '-[WKWebView release]', imageOffset: 12, sourceFile: 'private.m' },
           { imageIndex: 1, symbol: '/Users/private-person/private', imageOffset: 34 },
@@ -364,5 +368,24 @@ test('Mac crash collection matches recent PID and image and only emits bounded c
   assert.equal(result.frames.length, 6)
   assert.deepEqual(result.frames[0], { image: 'WebKit', symbol: '-[WKWebView release]', imageOffset: 12 })
   assert.deepEqual(result.frames[1], { imageOffset: 34 })
+  assert.equal(result.threadCount, 1)
+  assert.equal(result.threads[0].faulting, true)
+  assert.equal(result.threads[0].mainQueue, true)
+  assert.equal(result.threads[0].frames.length, 9)
+  assert.deepEqual(result.lastExceptionBacktrace, [
+    { image: 'WebKit', symbol: 'objc_exception_throw', imageOffset: 90 }
+  ])
   assert.doesNotMatch(JSON.stringify(result), /private|Users|Library/)
+
+  await write('OpenLR-5.ips', {
+    threads: Array.from({ length: 65 }, () => ({
+      frames: Array.from({ length: 14 }, () => ({ imageIndex: 0, imageOffset: 1 }))
+    })),
+    lastExceptionBacktrace: Array.from({ length: 14 }, () => ({ imageIndex: 0, imageOffset: 2 }))
+  })
+  const bounded = await findMacCrashReport(match, options)
+  assert.equal(bounded.threadCount, 65)
+  assert.equal(bounded.threads.length, 64)
+  assert.ok(bounded.threads.every(({ frames }) => frames.length === 12))
+  assert.equal(bounded.lastExceptionBacktrace.length, 12)
 })
