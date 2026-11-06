@@ -30,6 +30,24 @@ Full and summary `state` expose `clipping`, the current workspace highlight/shad
 
 Both sources sample at up to 400 pixels on the long edge, skip fully transparent pixels and count rounded luma from the sRGB byte channels. The display source samples the current preview before clipping warnings are painted, so its sample size can depend on the preview scale. Run `node --test tests/histogram-workflow.test.js` to check the actual plot and both sources through comparison, clipping, a slider preview and Grid.
 
+### Adjustment drafts
+
+In Detail, add `--draft true` to `edit` for a numeric slider adjustment, `curve-set`, or `grading-set` to try a change on the actual editor surface without saving it. Use the same arguments and optional photo or edit guards as the corresponding saved command. Crop geometry has its own draft commands. Pause a playing video before staging an adjustment on its frame.
+
+```sh
+node cli/openlr.mjs edit --key Exposure --value 0.5 --draft true
+node cli/openlr.mjs state --summary true
+node cli/openlr.mjs preview --source draft --draftId ID --output draft.png
+node cli/openlr.mjs draft-commit --id ID
+node cli/openlr.mjs draft-cancel --id ID
+```
+
+Staging returns `{id,photoId,command,args,status}`. Full and summary `state` expose the same value as `adjustmentDraft`, or `null`. The initial status is `pending`. Follow `state` or `watch` until that ID reports `ready` before reading the image. A failed render reports `failed` with an error. A new update gets a new ID and supersedes the previous draft. The GUI's adjustment sliders, point-curve graph and grading gestures use the same staging path.
+
+`preview --source draft` returns PNG bytes of the published edited pane, at its actual canvas dimensions and with any visible clipping warnings. It requires the current ready draft ID and accepts no `maxSize`. `--capture` remains a workspace screenshot. A capture taken while the draft is pending can show the previous canvas. Ordinary `preview`, `export` and `histogram --source edited` read their existing committed or comparison state. The display histogram follows the published draft.
+
+Commit saves the typed change through the existing edit command as one undoable operation, subject to its usual guards and no-op rules. A pending draft can be committed without waiting for the trial image. If rendering has failed, cancel it or stage a new update. Cancel restores the committed view without changing the recipe or history. A replaced or invalidated draft ID cannot read, commit or cancel another draft. Drafts are session state and do not survive a catalog or view change. [Design and ownership](../research/adjustment-drafts.md) · [Desktop verification](desktop.md#verification-scope)
+
 ### Workspace panels
 
 Full and summary `state` expose `panels`, a map from stable panel names to booleans. Use its keys to discover the available names. `photos` controls the Photos sidebar. The other keys use the original disclosure titles, including `Filters` when its displayed title includes a count.

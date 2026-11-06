@@ -103,13 +103,11 @@ export function mountToneCurves(run, preview = () => {}) {
   function submit(points, index, source = current) {
     if (!source) return
     return Promise.resolve(
-      run('curve-set', {
-        channel: source.channel,
-        points,
-        index,
-        photoId: source.photoId,
-        expectedPoints: source.points
-      })
+      run(
+        'curve-set',
+        { channel: source.channel, points, index, photoId: source.photoId, expectedPoints: source.points },
+        { draftSource: source }
+      )
     ).finally(() => {
       if (!gesture) draw()
     })
@@ -127,11 +125,12 @@ export function mountToneCurves(run, preview = () => {}) {
     next[index].y = clamp(y)
     return next
   }
-  function cancelGesture() {
-    const pointer = gesture?.pointer
+  function cancelGesture(notify = true) {
+    const previous = gesture,
+      pointer = previous?.pointer
     gesture = null
     if (pointer !== undefined && graph.hasPointerCapture(pointer)) graph.releasePointerCapture(pointer)
-    if (pointer !== undefined) preview(null)
+    if (previous && notify) preview(previous.source, null)
     draw()
   }
   channel.onchange = () => {
@@ -205,26 +204,32 @@ export function mountToneCurves(run, preview = () => {}) {
       if (index <= 0 || points[index].x === p.x) return
       points.splice(index, 0, p)
     } else run('curve-select', { index, photoId: source.photoId })
+    source.cancel = () => {
+      source.canceled = true
+      if (gesture?.source === source) cancelGesture(false)
+    }
     gesture = { pointer: event.pointerId, source, points, index }
     graph.setPointerCapture(event.pointerId)
     draw(points, index)
-    preview(source, points)
+    preview(source, points, index)
   }
   graph.onpointermove = (event) => {
     if (!gesture || gesture.pointer !== event.pointerId) return
     const p = position(event)
     gesture.points = move(gesture.points, gesture.index, p.x, p.y)
     draw(gesture.points, gesture.index)
-    preview(gesture.source, gesture.points)
+    preview(gesture.source, gesture.points, gesture.index)
   }
   graph.onpointerup = (event) => {
     if (!gesture || gesture.pointer !== event.pointerId) return
     const { source, points, index } = gesture
     gesture = null
     graph.releasePointerCapture(event.pointerId)
-    preview(null)
-    if (equal(points, source.points)) return draw()
-    submit(points, index, source)
+    if (equal(points, source.points)) {
+      preview(source, null)
+      return draw()
+    }
+    submit(points, index, source).finally(() => preview(source, null))
   }
   graph.onpointercancel = cancelGesture
   graph.onlostpointercapture = () => {

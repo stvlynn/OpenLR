@@ -2,6 +2,12 @@
 
 对照目标为本机 Adobe Lightroom 9.4 云桌面版。REA 证据来自可执行文件及其资源；登录后的 Windows 运行观察已核对裁剪、蒙版入口及导出设置，见 [运行记录](../research/lightroom.md#登录后的-windows-运行观察)。当前仍未建立全部功能逐屏、逐像素的 Adobe 对照。静态入口、独立实现及实际通过的测试分别记录。
 
+## 共享调整草稿 — 2026-11-06
+
+滑块、点曲线和颜色分级的 GUI／CLI 现在共用未保存预览、取消和提交。Windows／Node 24.9／Chrome 156.0.8078.80 的完整 `OPENLR_TEST_CMS=1 OPENLR_TEST_METADATA=1 npm test` 通过 **447/447，零失败、零跳过**，耗时约 301.3 秒。十项草稿专项覆盖实际画布 PNG、保存前后参数与历史、两个处理版本、真实鼠标、过期结果、存储失败回滚及已排队取消／替换先于鼠标释放的六种竞态。比较按钮的状态随退出原图预览同步。见[设计与失败先行证据](../research/adjustment-drafts.md)。
+
+重新构建的 Windows MyGo 包通过 `native-adjustment-smoke.mjs` 和既有 `native-smoke.mjs`；专项目标包括实际 CLI 图像、窗口截图、Histogram、原件字节、一次提交的历史和本地 sidecar 跨进程重启。安装包已构建，未执行安装。完整日志为忽略目录 `.workspace/adjustment-full-verified.log`，原生与构建日志见研究记录。先前两次完整回归在独立审查发现需要修改源码后主动停止，不计为通过。此处本地结果不能代替后续四平台 Actions 对该版本的验证；更早 `9c8a08a` 的四平台成功仍属于其原版本。
+
 | 流程 | 可复查的验证 |
 | --- | --- |
 | 图库导入、编辑、重启、恢复、导出 | `tests/workflow.test.js` 实际驱动 Chrome，读回 PNG 尺寸和原件字节 |

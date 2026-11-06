@@ -45,6 +45,7 @@ for (const [name, ...args] of [
   ['native-culling-smoke'],
   ['native-optics-smoke'],
   ['native-navigation-smoke'],
+  ['native-adjustment-smoke'],
   ['native-video-smoke'],
   ['native-local-smoke'],
   ['native-migration-smoke'],

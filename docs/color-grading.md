@@ -6,6 +6,8 @@ Dragging a wheel or luminance/balance/blending slider previews the current photo
 
 ## Recipe and commands
 
+`grading-set --draft true` stages the same uncommitted photo preview as the wheels and sliders. The shared [adjustment draft contract](agent-cli.md#adjustment-drafts) provides state, exact displayed PNG, cancellation and a single undoable commit. The ordinary command continues to save immediately.
+
 `colorGrading` is one optional recipe owner. Its optional `shadows`, `midtones`, `highlights` and `global` wheels contain hue [0,360], saturation [0,100] and luminance [-100,100], all defaulting to zero. Hue 360 canonicalizes to zero. Shared balance [-100,100] defaults to zero and blending [0,100] defaults to 50. Unknown fields, malformed objects and nonfinite/out-of-range numbers fail visibly. Full defaults remove the owner. Dormant hue and shared choices remain editable; without any nonzero saturation or luminance they do not mark a photo Edited.
 
 `grading-mode --mode three` chooses the view; other modes are `shadows`, `midtones`, `highlights` and `global`. Full and summary state expose `colorGrading:{mode}`. `grading-set --value '{"shadows":{"hue":220,"saturation":25},"highlights":{"hue":40,"saturation":15}}'` replaces the complete owner, filling unspecified settings with defaults. An empty object resets it. Optional `photoId` and `expectedValue` guard the selection and previous canonical grading. GUI, browser automation and CLI share these commands.

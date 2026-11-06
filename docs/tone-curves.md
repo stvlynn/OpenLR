@@ -6,6 +6,8 @@ The point dropdown and graph share the selected point. With the graph focused, a
 
 ## Shared commands and state
 
+`curve-set --draft true` stages the same uncommitted photo preview as a graph drag. The shared [adjustment draft contract](agent-cli.md#adjustment-drafts) provides state, exact displayed PNG, cancellation and a single undoable commit. The ordinary command continues to save immediately.
+
 GUI controls dispatch the same discoverable commands used by the CLI:
 
 ```sh

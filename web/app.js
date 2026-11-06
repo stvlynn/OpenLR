@@ -8,7 +8,7 @@ import {
   validateColorGradingRecipe
 } from './color-grading.js'
 import { importBatch } from './import-library.js'
-import { validateArgs } from './agent-protocol.js'
+import { ADJUSTMENT_DRAFT_MESSAGES as draftMessages, validateArgs } from './agent-protocol.js'
 import { decodeFile } from './transfer.js'
 import { decodeEditSource } from './edit-source.js'
 import {
@@ -172,8 +172,7 @@ let gradingMode = 'three',
 let playingMedia = null,
   playbackFrames = null,
   playbackGeneration = 0,
-  frameTicket = 0,
-  sliderFrame = 0
+  frameTicket = 0
 function cancelPlaybackFrames() {
   playbackGeneration++
   cancelAnimationFrame(frameTicket)
@@ -442,7 +441,109 @@ function syncTiles(container, items) {
 let paintController = null,
   paintRevision = 0,
   samplePreview = null,
-  histogramPreview = null
+  histogramPreview = null,
+  adjustmentDraft = null,
+  adjustmentFrame = 0
+
+function adjustmentDraftState() {
+  return adjustmentDraft && ownsAdjustment(adjustmentDraft) ? structuredClone(adjustmentDraft.state) : null
+}
+function syncCompareControl() {
+  $('compare').setAttribute('aria-pressed', compare)
+}
+function discardAdjustmentDraft(keepRender = false) {
+  const record = adjustmentDraft
+  if (!record) return null
+  adjustmentDraft = null
+  cancelAnimationFrame(adjustmentFrame)
+  if (!keepRender) cancelPaint()
+  return record
+}
+function stageAdjustment(command, photo, args, edit, context) {
+  const { draftSource, draftEdit } = context
+  if (draftSource && (draftSource.canceled || photo.edit !== draftEdit)) return null
+  if (
+    mode !== 'detail' ||
+    !bitmap ||
+    bitmapId !== photo.id ||
+    bitmapVersion !== processingVersion(photo.edit) ||
+    (playingMedia && !playingMedia.video.paused)
+  ) {
+    if (draftSource) return null
+    throw Error(draftMessages.detail)
+  }
+  const { draft: _, ...change } = args
+  const state = {
+    id: crypto.randomUUID(),
+    photoId: photo.id,
+    command,
+    args: structuredClone({ ...change, photoId: photo.id }),
+    status: 'pending'
+  }
+  const record = { state, source: draftSource, owner: photo.edit, image: bitmap }
+  if (adjustmentDraft?.source !== draftSource) adjustmentDraft?.source?.cancel()
+  adjustmentDraft = record
+  compare = false
+  syncCompareControl()
+  cancelAnimationFrame(adjustmentFrame)
+  adjustmentFrame = requestAnimationFrame(async () => {
+    if (!ownsAdjustment(record)) return
+    try {
+      const canvas = await paintStage(record.image, edit, () => ownsAdjustment(record))
+      if (!canvas || !ownsAdjustment(record)) return
+      state.status = 'ready'
+      record.canvas = canvas
+    } catch (error) {
+      if (!ownsAdjustment(record)) return
+      state.status = 'failed'
+      state.error = error.message
+      if (draftSource) notice(error.message)
+    }
+    notifyWorkspaceChange()
+  })
+  return adjustmentDraftState()
+}
+function ownsAdjustment(record) {
+  return (
+    adjustmentDraft === record &&
+    selected === record.state.photoId &&
+    active()?.edit === record.owner &&
+    bitmap === record.image &&
+    mode === 'detail' &&
+    !(playingMedia && !playingMedia.video.paused)
+  )
+}
+function adjustmentPanel() {
+  const draft = adjustmentDraft?.state
+  if (draft?.command === 'curve-set') return $('tone-curves')
+  if (draft?.command === 'grading-set') return $('color-grading')
+  if (draft?.command === 'edit')
+    return document.querySelector(`[data-control="${CSS.escape(draft.args.key)}"]`)?.closest('details')
+  return null
+}
+function currentAdjustment(id) {
+  const record = adjustmentDraft
+  if (!record || record.state.id !== id || !ownsAdjustment(record)) throw Error(draftMessages.changed)
+  return record
+}
+async function draftImage(id) {
+  const record = currentAdjustment(id)
+  const canvas = record.canvas
+  if (
+    record.state.status !== 'ready' ||
+    histogramPreview?.canvas !== canvas ||
+    canvas?.parentElement !== $('stage')
+  )
+    throw Error(record.state.error ?? draftMessages.pending)
+  const blob = await toBlob(canvas, 'image/png')
+  if (
+    currentAdjustment(id) !== record ||
+    histogramPreview?.canvas !== canvas ||
+    canvas.parentElement !== $('stage')
+  )
+    throw Error(draftMessages.changed)
+  return { blob, filename: 'adjustment-draft.png' }
+}
 function cancelPaint() {
   paintRevision++
   paintController?.abort()
@@ -545,6 +646,7 @@ async function paintStage(image, edit, isCurrent = () => true) {
   $('stage').classList.toggle('zoom', zoom)
   if (sourceMatchesPhoto && recipe === owner && !cropping && !compare && !pair)
     samplePreview = { canvas: preview, image, photoId, edit: owner }
+  return preview
 }
 function displayedSamplePreview(photo, clickedCanvas, messages) {
   if (clickedCanvas !== undefined && clickedCanvas !== samplePreview?.canvas)
@@ -567,6 +669,9 @@ async function draw(pausedFrame) {
   if (mode === 'grid') stopSlides()
   const p = active(),
     detail = mode === 'detail'
+  const draft = discardAdjustmentDraft()
+  if (draft && (draft.state.photoId !== selected || !detail || draft.owner === p?.edit))
+    draft.source?.cancel()
   paintRevision++
   if (!detail || bitmapId !== selected) {
     cancelPaint()
@@ -677,7 +782,7 @@ async function draw(pausedFrame) {
     ? ''
     : new Date(+captured - captured.getTimezoneOffset() * 60000).toISOString().slice(0, 19)
   $('purge').hidden = !p.deleted || Boolean(local.state())
-  $('compare').setAttribute('aria-pressed', compare)
+  syncCompareControl()
   $('pair').setAttribute('aria-pressed', pair)
   $('sample').setAttribute('aria-pressed', sampling === 'white')
   $('remove-mask').disabled = !p.edit.localTools?.masks?.length
@@ -760,6 +865,7 @@ function snapshot() {
     sampling,
     cropping,
     cropDraft: cropDraft(),
+    adjustmentDraft: adjustmentDraftState(),
     cropGuide: { ...cropSurface.guide },
     straightenTool: opticsUI?.snapshot(),
     localSelection: localToolsUI?.selection(),
@@ -882,6 +988,23 @@ const exportProgress = new ExportProgress((job) => {
 })
 async function execute(command, args, context = {}) {
   const p = active()
+  if (context.draftSource?.canceled && command !== 'draft-cancel') return null
+  if (args.draft && context.draftSource && (!p || p.edit !== context.draftEdit || p.id !== args.photoId))
+    return null
+  if (command === 'draft-commit') {
+    const record = currentAdjustment(args.id)
+    if (record.state.status === 'failed') throw Error(record.state.error)
+    record.source?.cancel()
+    discardAdjustmentDraft(true)
+    try {
+      return await execute(record.state.command, record.state.args)
+    } catch (error) {
+      if (active()?.edit === record.owner && bitmap === record.image)
+        await previewStage(record.image, record.owner)
+      notifyWorkspaceChange()
+      throw error
+    }
+  }
   if (
     [
       'view',
@@ -905,6 +1028,14 @@ async function execute(command, args, context = {}) {
     organization.selection.size === 1
   const nextId = advance ? visible()[visible().findIndex((row) => row.id === selected) + 1]?.id : null
   switch (command) {
+    case 'draft-cancel': {
+      if (context.draftSource) {
+        if (adjustmentDraft?.source !== context.draftSource) return { canceled: false }
+      } else currentAdjustment(args.id)
+      discardAdjustmentDraft()?.source?.cancel()
+      await draw()
+      return { canceled: true }
+    }
     case 'viewport': {
       if (args.photoId !== undefined && args.photoId !== p?.id) throw Error(VIEWPORT_MESSAGES.changed)
       if (mode !== 'detail' || !p) throw Error(VIEWPORT_MESSAGES.detail)
@@ -978,6 +1109,7 @@ async function execute(command, args, context = {}) {
         selectionCount: organization.selection.size,
         processing: processingState(),
         cropDraft: cropDraft(),
+        adjustmentDraft: adjustmentDraftState(),
         cropGuide: { ...cropSurface.guide },
         straightenTool: opticsUI?.snapshot(),
         localSelection: localToolsUI?.selection(),
@@ -1476,13 +1608,18 @@ async function execute(command, args, context = {}) {
         const hidden = args.open === undefined ? !panel.hidden : !args.open
         if (panel.hidden !== hidden) {
           panel.hidden = hidden
-          if (mode === 'detail' && p) await paintStage(await source(p.id), p.edit)
+          if (mode === 'detail' && p) {
+            if (adjustmentDraft) await draw()
+            else await paintStage(await source(p.id), p.edit)
+          }
         }
         return snapshot()
       }
       const open = args.open ?? !panel.open
       if (panel.open && !open && panel.parentElement === localToolContainer) localToolsUI.cancelGesture()
+      const cancelsAdjustment = panel.open && !open && adjustmentPanel() === panel
       panel.open = open
+      if (cancelsAdjustment) await draw()
       if (!context.panelSummary && panel.closest('aside')) {
         if (mode !== 'detail' || !inspector) {
           mode = 'detail'
@@ -1945,6 +2082,7 @@ async function execute(command, args, context = {}) {
             else throw Error('Unknown edit control')
             edit = { ...p.edit, [key]: value }
           } else edit = neutralRecipe(p.edit)
+          if (args.draft) return stageAdjustment(command, p, args, edit, context)
           await replace(p, { edit })
           rememberEdit(p)
           redo.length = 0
@@ -2083,10 +2221,13 @@ async function execute(command, args, context = {}) {
           localToolsUI.setRangeColor(color)
           return { color }
         }
-        case 'grading-mode':
+        case 'grading-mode': {
+          const cancelsDraft = args.mode !== gradingMode && adjustmentDraft?.state.command === 'grading-set'
           gradingMode = args.mode
-          updateColorGrading(p, { mode: gradingMode })
+          if (cancelsDraft) await draw()
+          else updateColorGrading(p, { mode: gradingMode })
           return { mode: gradingMode }
+        }
         case 'grading-set': {
           if (args.photoId !== undefined && args.photoId !== p.id) throw Error(GRADING_MESSAGES.changedPhoto)
           if (
@@ -2098,6 +2239,7 @@ async function execute(command, args, context = {}) {
           const edit = args.patch
             ? patchColorGrading(p.edit, args.patch)
             : setColorGrading(p.edit, args.value)
+          if (args.draft) return stageAdjustment(command, p, args, edit, context)
           if (JSON.stringify(edit.colorGrading) !== JSON.stringify(p.edit.colorGrading)) {
             await replace(p, { edit })
             rememberEdit(p)
@@ -2107,12 +2249,15 @@ async function execute(command, args, context = {}) {
           result = { value: colorGradingValue(edit) }
           break
         }
-        case 'curve-channel':
+        case 'curve-channel': {
+          const cancelsDraft = args.channel !== curveChannel && adjustmentDraft?.state.command === 'curve-set'
           curveChannel = args.channel
           curveIndex = 0
           curvePhoto = p.id
-          updateToneCurves(p, { channel: curveChannel, index: curveIndex })
+          if (cancelsDraft) await draw()
+          else updateToneCurves(p, { channel: curveChannel, index: curveIndex })
           return { channel: curveChannel, index: curveIndex }
+        }
         case 'curve-select':
           if (args.photoId !== undefined && args.photoId !== p.id) throw Error(CURVE_MESSAGES.changedPhoto)
           if (args.index >= curvePoints(p.edit, curveChannel).length)
@@ -2133,6 +2278,7 @@ async function execute(command, args, context = {}) {
           const edit = setToneCurve(p.edit, args.channel, args.points)
           if (args.index !== undefined && args.index >= curvePoints(edit, args.channel).length)
             throw Error(CURVE_MESSAGES.invalidPoints)
+          if (args.draft) return stageAdjustment(command, p, args, edit, context)
           if (JSON.stringify(edit.toneCurves) !== JSON.stringify(p.edit.toneCurves)) {
             await replace(p, { edit })
             rememberEdit(p)
@@ -2261,6 +2407,14 @@ const ready = Promise.all([db.all('photos'), db.all('albums'), presets.load()]).
   globalThis.openlrStartupMilestone?.('workspace-ready')
 })
 export function run(command, args = {}, observe, context) {
+  if (command === 'preview' && args?.source === 'draft')
+    return queue
+      .then(() => ready)
+      .then(async () => {
+        validateArgs(command, args)
+        const result = await draftImage(args.draftId)
+        return observe ? observe(result, snapshot()) : result
+      })
   if (command === 'export-status' || command === 'export-cancel') {
     return Promise.resolve().then(() => {
       validateArgs(command, args)
@@ -2277,6 +2431,8 @@ export function run(command, args = {}, observe, context) {
       const result = await execute(command, args, context)
       libraryHistory.record(previous, photos, albums)
       const unchangedPoll =
+        (context?.draftSource && result === null) ||
+        (command === 'draft-cancel' && !result.canceled) ||
         (command === 'repair-source' && args.point === undefined && args.picking === undefined) ||
         (command === 'viewport' && args.x === undefined && args.y === undefined) ||
         (command === 'external-check' && !result.imported?.length) ||
@@ -2313,6 +2469,17 @@ function notice(text) {
 }
 function act(cmd, args, context) {
   return run(cmd, args, undefined, context).catch((e) => notice(e.message))
+}
+function gestureAdjustment(command, source, change) {
+  if (!change) return act('draft-cancel', { id: '' }, { draftSource: source })
+  return act(
+    command,
+    { ...structuredClone(change), photoId: source.photoId, draft: true },
+    {
+      draftSource: source,
+      draftEdit: active()?.edit
+    }
+  )
 }
 const processingLabel = document.createElement('label')
 processingLabel.textContent = PROCESS_MESSAGES.label
@@ -2351,33 +2518,41 @@ for (const [group, items] of Object.entries(controls)) {
     input.value = 0
     input.dataset.control = key
     input.setAttribute('aria-label', key)
+    let gesture
+    input.onpointerdown = () => {
+      gesture = null
+    }
+    input.onkeydown = (event) => {
+      if (event.key !== 'Escape' && gesture?.canceled) gesture = null
+    }
     input.oninput = () => {
       output.value = input.value
-      const id = selected,
-        recipe = active()?.edit,
-        value = Number(input.value)
-      cancelAnimationFrame(sliderFrame)
-      sliderFrame = requestAnimationFrame(() => {
-        if (
-          bitmap &&
-          bitmapId === id &&
-          selected === id &&
-          mode === 'detail' &&
-          active()?.edit === recipe &&
-          bitmapVersion === processingVersion(recipe)
-        ) {
-          compare = false
-          try {
-            previewStage(bitmap, { ...recipe, [key]: value })
-          } catch (error) {
-            notice(error.message)
+      if (gesture?.photoId !== selected)
+        gesture = {
+          photoId: selected,
+          cancel() {
+            this.canceled = true
           }
         }
-      })
+      if (gesture.canceled) return
+      gestureAdjustment('edit', gesture, { key, value: Number(input.value) })
     }
     input.onchange = () => {
-      cancelAnimationFrame(sliderFrame)
-      act('edit', { key, value: Number(input.value), photoId: selected })
+      const source = gesture
+      gesture = null
+      if (source?.canceled) {
+        input.value = active()?.edit[key] ?? 0
+        output.value = input.value
+        return
+      }
+      act('edit', { key, value: Number(input.value), photoId: selected }, { draftSource: source }).finally(
+        () => {
+          if (source) gestureAdjustment('edit', source)
+        }
+      )
+    }
+    input.onpointercancel = () => {
+      if (gesture) gestureAdjustment('edit', gesture)
     }
     label.append(key, output, input)
     details.append(label)
@@ -2743,6 +2918,11 @@ document.onkeydown = (e) => {
     act('local-cancel')
     return
   }
+  if (e.key === 'Escape' && adjustmentDraft && !document.querySelector('dialog[open]')) {
+    e.preventDefault()
+    act('draft-cancel', { id: adjustmentDraft.state.id })
+    return
+  }
   if (document.querySelector('dialog[open]') || e.target.matches('input,select,textarea')) return
   const key = e.key.toLowerCase(),
     mod = e.ctrlKey || e.metaKey
@@ -2794,52 +2974,20 @@ document.onkeydown = (e) => {
   e.preventDefault()
 }
 updatePoints = pointPanel(act)
-function editPreview(derive) {
-  let current = null,
-    frame = 0
-  return (source, value) => {
-    cancelAnimationFrame(frame)
-    if (!source) {
-      current = null
-      const photo = active()
-      if (
-        photo &&
-        !photo.local?.sidecarError &&
-        bitmap &&
-        mode === 'detail' &&
-        bitmapId === photo.id &&
-        bitmapVersion === processingVersion(photo.edit)
-      )
-        previewStage(bitmap, photo.edit)
-      return
+updateToneCurves = mountToneCurves(act, (source, points, index) =>
+  gestureAdjustment(
+    'curve-set',
+    source,
+    points && {
+      channel: source.channel,
+      points,
+      index,
+      expectedPoints: source.points
     }
-    const photo = active()
-    if (photo?.id !== source.photoId) return
-    if (current?.source !== source) current = { source, edit: photo.edit }
-    const preview = current
-    frame = requestAnimationFrame(() => {
-      if (
-        current !== preview ||
-        selected !== source.photoId ||
-        active()?.edit !== preview.edit ||
-        mode !== 'detail' ||
-        !bitmap ||
-        bitmapId !== source.photoId ||
-        bitmapVersion !== processingVersion(preview.edit)
-      )
-        return
-      compare = false
-      previewStage(bitmap, derive(preview.edit, source, value))
-    })
-  }
-}
-updateToneCurves = mountToneCurves(
-  act,
-  editPreview((edit, source, points) => setToneCurve(edit, source.channel, points))
+  )
 )
-updateColorGrading = mountColorGrading(
-  act,
-  editPreview((edit, source, value) => setColorGrading(edit, value))
+updateColorGrading = mountColorGrading(act, (source, value) =>
+  gestureAdjustment('grading-set', source, value && { value, expectedValue: source.value })
 )
 $('clip-indicator').onclick = () => act('clipping')
 mountPreferences(act)

@@ -35,6 +35,14 @@ const entry = (summary, properties = {}, required = [], extra = {}) => ({
   ...extra
 })
 const edits = Object.assign({}, ...Object.values(controls))
+const draftMode = { type: 'boolean', description: 'Stage a temporary adjustment without saving it' }
+export const ADJUSTMENT_DRAFT_MESSAGES = Object.freeze({
+  numericOnly: 'Choose a numeric adjustment for the draft',
+  previewArguments: 'Draft preview requires its ID and uses the displayed size',
+  detail: 'Open a photo in Detail or pause the video before previewing an adjustment',
+  changed: 'The adjustment draft changed',
+  pending: 'The adjustment draft is not ready'
+})
 const pointRule = {
   type: 'object',
   description: 'Normalized original-image point, before crop/rotate/flip',
@@ -798,6 +806,7 @@ export const definitions = {
     'Change one non-destructive adjustment, crop, rotation or flip',
     {
       photoId: string('Optional current-photo guard'),
+      draft: draftMode,
       key: string('Case-sensitive adjustment key', {
         enum: [...Object.keys(edits), 'turn', 'flip', 'aspect', 'crop']
       }),
@@ -934,6 +943,7 @@ export const definitions = {
     ['mode']
   ),
   'grading-set': entry('Replace color grading or patch one field; an empty value resets grading', {
+    draft: draftMode,
     value: {
       type: 'object',
       description:
@@ -985,10 +995,21 @@ export const definitions = {
         description: 'Ordered normalized points, including x=0 and x=1 endpoints'
       },
       photoId: string('Optional selected-photo guard'),
+      draft: draftMode,
       expectedPoints: { type: 'array', description: 'Optional previous channel points; reject if changed' },
       index: { type: 'integer', minimum: 0, description: 'Point to select after replacement' }
     },
     ['channel', 'points']
+  ),
+  'draft-commit': entry(
+    'Save the current adjustment draft as one edit',
+    { id: string('Current adjustment draft ID') },
+    ['id']
+  ),
+  'draft-cancel': entry(
+    'Discard the current adjustment draft and restore the committed preview',
+    { id: string('Current adjustment draft ID') },
+    ['id']
   ),
   reset: entry('Reset all selected-photo edits, retaining its processing version'),
   undo: entry('Undo an edit on the selected photo in the current GUI session'),
@@ -1003,7 +1024,11 @@ export const definitions = {
   }),
   preview: entry(
     'Read the current edited or comparison image as PNG',
-    { maxSize: { type: 'integer', minimum: 1, description: 'Maximum image edge in pixels' } },
+    {
+      maxSize: { type: 'integer', minimum: 1, description: 'Maximum image edge in pixels' },
+      source: string('Read the published adjustment draft canvas', { enum: ['draft'] }),
+      draftId: string('Current adjustment draft ID; required for source draft')
+    },
     [],
     { returns: 'image/png' }
   ),
@@ -1183,8 +1208,13 @@ export function validateArgs(command, args) {
       throw Error('Provide media and options together')
     if (args.options !== undefined) validateArgs('export', args.options)
   }
+  if (command === 'preview' && (args.source !== undefined || args.draftId !== undefined)) {
+    if (!args.draftId || args.source !== 'draft' || args.maxSize !== undefined)
+      throw Error(ADJUSTMENT_DRAFT_MESSAGES.previewArguments)
+  }
   if (command === 'edit') {
     const { key, value } = args
+    if (args.draft && !Object.hasOwn(edits, key)) throw Error(ADJUSTMENT_DRAFT_MESSAGES.numericOnly)
     if (Object.hasOwn(edits, key)) {
       const [minimum, maximum] = edits[key]
       if (typeof value !== 'number' || !Number.isFinite(value) || value < minimum || value > maximum)

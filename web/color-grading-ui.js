@@ -75,27 +75,32 @@ export function mountColorGrading(run, preview = () => {}) {
       if (control.value !== text) control.value = text
     }
   }
-  function cancel() {
+  function cancel(notify = true) {
     const previous = gesture
     gesture = null
     if (previous?.pointer !== undefined && previous.control.hasPointerCapture(previous.pointer))
       previous.control.releasePointerCapture(previous.pointer)
-    if (previous) preview(null)
+    if (previous && notify) preview(previous.source, null)
     draw()
   }
-  function commit(args, settle) {
-    return Promise.resolve(run('grading-set', args)).finally(() => {
+  function commit(args, settle, draftSource) {
+    return Promise.resolve(run('grading-set', args, { draftSource })).finally(() => {
       settle?.()
       if (!gesture) draw()
     })
   }
   function submit(value, source = current) {
-    if (source) return commit({ value, photoId: source.photoId, expectedValue: source.value })
+    if (source)
+      return commit({ value, photoId: source.photoId, expectedValue: source.value }, undefined, source)
   }
   function begin(control, pointer) {
     if (!current) return false
     cancel()
     const source = { photoId: current.photoId, value: structuredClone(current.value) }
+    source.cancel = () => {
+      source.canceled = true
+      if (gesture?.source === source) cancel(false)
+    }
     gesture = {
       control,
       pointer,
@@ -112,9 +117,12 @@ export function mountColorGrading(run, preview = () => {}) {
     gesture = null
     if (previous.pointer !== undefined && previous.control.hasPointerCapture(previous.pointer))
       previous.control.releasePointerCapture(previous.pointer)
-    preview(null)
-    if (!equal(previous.value, previous.source.value)) submit(previous.value, previous.source)
-    else draw()
+    if (!equal(previous.value, previous.source.value))
+      submit(previous.value, previous.source).finally(() => preview(previous.source, null))
+    else {
+      preview(previous.source, null)
+      draw()
+    }
   }
   function field(parent, key, wheel, low, high, range = false) {
     const id = `grading-${wheel ? `${wheel}-` : ''}${key}`
