@@ -10,8 +10,10 @@ on run argv
         if (count of windows of targetProcess) is 0 then error "Photos has no accessible windows"
         set frontmost of targetProcess to true
         set createButton to missing value
-        repeat with ownerWindow in windows of targetProcess
-            repeat with axNode in entire contents of ownerWindow
+        set ownerWindows to get windows of targetProcess
+        repeat with ownerWindow in ownerWindows
+            set axNodes to get entire contents of (contents of ownerWindow)
+            repeat with axNode in axNodes
                 if role of axNode is "AXButton" then
                     set labelText to name of axNode
                     if labelText is not missing value and labelText begins with "Create New" then
@@ -25,9 +27,10 @@ on run argv
         log ("Photos library chooser: " & name of createButton)
         click createButton
         delay 0.8
-        repeat with ownerWindow in windows of targetProcess
+        set ownerWindows to get windows of targetProcess
+        repeat with ownerWindow in ownerWindows
             log ("window: " & name of ownerWindow)
-            set axNodes to entire contents of ownerWindow
+            set axNodes to get entire contents of (contents of ownerWindow)
             repeat with elementIndex from 1 to (count axNodes)
                 if elementIndex > 100 then exit repeat
                 set axNode to item elementIndex of axNodes
