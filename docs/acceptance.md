@@ -10,6 +10,8 @@
 
 干净 `556e8d7` Windows 归档验证了随包单文件 CLI 在源码目录外的 311 次命令和四个实时观察进程，包括实际工作区截图、图像导出、原件和目录重启。实际 GTK/X11 选目录验证了取消和授权、预览像素与原件。该 GTK 结果使用较早 Linux 包，覆盖隔离 X11 环境。[独立交付记录](delivery-review.md#windows-tracked-snapshot-556e8d7) · [系统选目录记录](local-folders.md)
 
+`a3d8057` 在 Windows／Chrome 157.0.8103.38 启用独立色彩和元数据校验，完整浏览器回归 **488/488，零失败、零跳过**，312.5 秒。ARM 裁剪专项通过了三项短多音轨验证。四份公开的真实 Lightroom Classic 测试目录也通过历史 `0900000` 结构的扫描和迁移验证。该验证使用生成的替代照片，现行 Classic 结构和 Photos 导出仍是不同的验证范围。[短音轨专项](https://github.com/stvlynn/OpenLR/actions/runs/42267893913) · [真实目录验证](catalog-migration.md#verification-and-dependency)
+
 ## 自动堆栈视图保护 — 2026-11-06
 
 `2d0f448` 的最终矩阵结果为 Windows、Linux、Intel macOS 成功，ARM macOS 视频导入失败；没有重试覆盖该失败。下方记录中的 Windows 等待状态现已结束，完整终态日志保留于忽略目录 `.workspace/2d0-ci.log`。
