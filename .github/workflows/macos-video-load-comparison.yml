@@ -1,6 +1,12 @@
 name: macOS packaged video load comparison
 on:
   workflow_dispatch:
+    inputs:
+      comparison:
+        description: Video behavior to compare
+        type: choice
+        options: [load, pause]
+        default: load
 permissions:
   contents: read
 jobs:
@@ -11,6 +17,10 @@ jobs:
         os: [macos-15-intel, macos-15]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
+    env:
+      VIDEO_COMPARISON: ${{ inputs.comparison || 'load' }}
+      VIDEO_CONTROL: ${{ inputs.comparison == 'pause' && 'frame-first' || 'automatic' }}
+      VIDEO_CANDIDATE: ${{ inputs.comparison == 'pause' && 'anchor-first' || 'explicit' }}
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -27,28 +37,47 @@ jobs:
           curl --fail --location "https://storage.googleapis.com/chrome-for-testing-public/157.0.8103.38/$chrome_platform/chrome-$chrome_platform.zip" -o build/video-oracle/chrome.zip
           ditto -xk build/video-oracle/chrome.zip build/video-oracle
           echo "OPENLR_VIDEO_PROBE_CHROME=$PWD/build/video-oracle/chrome-$chrome_platform/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing" >> "$GITHUB_ENV"
-      - name: Build the automatic-load control
-        run: node scripts/desktop.mjs build -o build/video-automatic -platform darwin/universal
-      - name: Build the explicit initial-load candidate
+      - name: Build the comparison control
+        run: node scripts/desktop.mjs build -o "build/video-$VIDEO_CONTROL" -platform darwin/universal
+      - name: Build the comparison candidate
         run: |
           python3 - <<'PY'
+          import os
           from pathlib import Path
           import subprocess
           source = Path('web/video.js')
           original = source.read_bytes()
-          marker = b'      video.src = url\n'
+          if os.environ['VIDEO_COMPARISON'] == 'pause':
+              frame = (
+                  b"          markVideoSeek(trace, 'pause-frame', video)\n"
+                  b'          const image = await frameAt(time)\n'
+                  b"          markVideoSeek(trace, 'pause-frame-read', video)\n"
+              )
+              anchor = (
+                  b'          // Anchor a paused clock before it can fall back to the previous seek.\n'
+                  b'          if (!closed && isCurrent() && video.paused) await seek(time, true, trace)\n'
+              )
+              marker, replacement = frame + anchor, anchor + frame
+          else:
+              marker = b'\n          video.src = url\n'
+              replacement = marker + b'          video.load()\n'
           if original.count(marker) != 1:
-              raise RuntimeError('Expected one initial source assignment')
+              raise RuntimeError('Expected one occurrence of the comparison source block')
           try:
-              source.write_bytes(original.replace(marker, marker + b'      video.load()\n'))
-              subprocess.run(['node', 'scripts/desktop.mjs', 'build', '-o', 'build/video-explicit', '-platform', 'darwin/universal'], check=True)
+              source.write_bytes(original.replace(marker, replacement))
+              output = 'build/video-' + os.environ['VIDEO_CANDIDATE']
+              subprocess.run(['node', 'scripts/desktop.mjs', 'build', '-o', output, '-platform', 'darwin/universal'], check=True)
           finally:
               source.write_bytes(original)
           PY
       - name: Compare actual import, seek, playback, frames and audio export
-        run: node scripts/native-video-load-comparison.mjs build/video-automatic/darwin-universal/OpenLR.app/Contents/MacOS/OpenLR build/video-explicit/darwin-universal/OpenLR.app/Contents/MacOS/OpenLR build/video-load-trials
+        run: >-
+          node scripts/native-video-load-comparison.mjs
+          "build/video-$VIDEO_CONTROL/darwin-universal/OpenLR.app/Contents/MacOS/OpenLR"
+          "build/video-$VIDEO_CANDIDATE/darwin-universal/OpenLR.app/Contents/MacOS/OpenLR"
+          "build/video-$VIDEO_COMPARISON-trials" "$VIDEO_COMPARISON"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: video-load-${{ matrix.os }}
-          path: build/video-load-trials
+          name: video-${{ env.VIDEO_COMPARISON }}-${{ matrix.os }}
+          path: build/video-${{ env.VIDEO_COMPARISON }}-trials

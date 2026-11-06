@@ -1,6 +1,22 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { videoLoadOrder, videoTrialOutcome } from '../scripts/native-video-load-comparison.mjs'
+import {
+  videoLoadOrder,
+  videoPauseOrder,
+  videoTrialOutcome
+} from '../scripts/native-video-load-comparison.mjs'
+
+test('load and pause comparisons each schedule four fixed ABBA blocks', () => {
+  for (const [order, control, candidate] of [
+    [videoLoadOrder, 'automatic', 'explicit'],
+    [videoPauseOrder, 'frame-first', 'anchor-first']
+  ]) {
+    assert.equal(order.length, 16)
+    for (let offset = 0; offset < order.length; offset += 4) {
+      assert.deepEqual(order.slice(offset, offset + 4), [control, candidate, candidate, control])
+    }
+  }
+})
 
 test('packaged video comparison retains a failed trial and refuses another host without cleanup', () => {
   const passed = JSON.stringify({ nativeVideo: 'passed', preservedOriginalBytes: 27479 })
@@ -15,6 +31,4 @@ test('packaged video comparison retains a failed trial and refuses another host 
   assert.equal(videoTrialOutcome(0, null, passed).continueTrials, false)
   assert.equal(videoTrialOutcome(null, 'SIGTERM', `${passed}\n${cleaned}`).continueTrials, false)
   assert.equal(videoTrialOutcome(0, null, cleaned).verified, false)
-  assert.equal(videoLoadOrder.filter((candidate) => candidate === 'automatic').length, 8)
-  assert.equal(videoLoadOrder.filter((candidate) => candidate === 'explicit').length, 8)
 })

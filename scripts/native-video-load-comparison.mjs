@@ -3,17 +3,21 @@ import { fileURLToPath } from 'node:url'
 import { runVideoTrials } from './native-video-trials.mjs'
 
 export { videoTrialOutcome } from './native-video-trials.mjs'
-export const videoLoadOrder = Array.from({ length: 4 }, () => [
-  'automatic',
-  'explicit',
-  'explicit',
-  'automatic'
-]).flat()
+const abbaOrder = (control, candidate) =>
+  Array.from({ length: 4 }, () => [control, candidate, candidate, control]).flat()
+export const videoLoadOrder = abbaOrder('automatic', 'explicit')
+export const videoPauseOrder = abbaOrder('frame-first', 'anchor-first')
 
-async function main(automatic, explicit, destination) {
-  if (!automatic || !explicit || !destination)
-    throw Error('Pass automatic app, explicit-load app and report directory')
-  await runVideoTrials({ apps: { automatic, explicit }, order: videoLoadOrder, destination })
+async function main(control, candidate, destination, comparison = 'load') {
+  if (!control || !candidate || !destination)
+    throw Error('Pass control app, candidate app and report directory')
+  const order = new Map([
+    ['load', videoLoadOrder],
+    ['pause', videoPauseOrder]
+  ]).get(comparison)
+  if (!order) throw Error('Choose the load or pause comparison')
+  const [controlLabel, candidateLabel] = order
+  await runVideoTrials({ apps: { [controlLabel]: control, [candidateLabel]: candidate }, order, destination })
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url))
