@@ -10,7 +10,7 @@
 
 干净 `556e8d7` Windows 归档验证了随包单文件 CLI 在源码目录外的 311 次命令和四个实时观察进程，包括实际工作区截图、图像导出、原件和目录重启。`e365a88` Linux tarball 在隔离 GTK/X11 环境通过实际选目录与保存对话框，验证取消和成功路径、预览像素与原件。随包 CLI 也实际发起选目录并读回状态、预览与原件。[Windows 交付](delivery-review.md#windows-tracked-snapshot-556e8d7) · [Linux 交付](delivery-review.md#linux-tracked-snapshot-e365a88)
 
-`d7c4b8a` 托管验收的两种 macOS 均已通过。Windows 普通包在首个窗口创建前超时，独立诊断包和短音频步骤通过，普通包失败仍计入结果。Linux 在本次记录时仍在获取系统依赖。[当前矩阵](https://github.com/stvlynn/OpenLR/actions/runs/42269784749) · [Windows 启动证据](../research/native-startup.md#windows-window-creation-stall-at-d7c4b8a)
+`d7c4b8a` 托管验收的两种 macOS 均已通过。Windows 普通包在首个窗口创建前超时，独立诊断包和短音频步骤通过，普通包失败仍计入结果。Linux 在下载系统依赖时耗尽任务时限，尚未执行 Go 检查、构建或原生流程。下一轮包含经过本机受控阻塞验证的 Windows Go 调用栈取样。[已结束的矩阵](https://github.com/stvlynn/OpenLR/actions/runs/42269784749) · [Linux 下载日志](../research/linux-dependencies.md#acquisition-timeout-at-d7c4b8a) · [Windows 启动证据](../research/native-startup.md#windows-window-creation-stall-at-d7c4b8a) · [下一轮矩阵](https://github.com/stvlynn/OpenLR/actions/runs/42274368178)
 
 `e365a88` 共享夹具解码对照完成 32 次且全部清理。Intel 默认和软件偏好各通过 8 次，ARM 分别通过 7 次和 8 次。ARM 的一次失败来自暂停读帧期间的原生解码错误，尚未开始导出。结合前一轮软件偏好组的导出崩溃，当前结果不足以切换默认解码配置。[对照结果](https://github.com/stvlynn/OpenLR/actions/runs/42271354783) · [视频阶段记录](../research/native-video.md#packaged-application-load-comparison)
 
