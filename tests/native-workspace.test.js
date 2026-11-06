@@ -252,3 +252,59 @@ test('native workspace cleans its prepared files when pre-start setup fails', as
   await assert.rejects(access(preparedRoot), { code: 'ENOENT' })
   assert.deepEqual(errors, [])
 })
+
+test('a system launcher must identify the application and confirm its shutdown', async (t) => {
+  const roots = []
+  t.after(async () => {
+    for (const root of roots) {
+      assert.equal(path.dirname(root), await realpath(tmpdir()))
+      assert.ok(path.basename(root).startsWith('olr-w-'))
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+  t.mock.method(globalThis, 'fetch', async () => Response.json({ ok: true, result: { photos: [] } }))
+  t.mock.method(console, 'error', () => {})
+  for (const [descriptorPid, closeCode] of [
+    [7744, 0],
+    [7745, 0],
+    [7744, 2]
+  ]) {
+    let calls = 0
+    const run = withNativeWorkspace(
+      process.execPath,
+      ({ pid }) => {
+        assert.equal(pid, 7744)
+        calls++
+      },
+      {
+        launch({ env }) {
+          roots.push(env.XDG_RUNTIME_DIR)
+          const child = Object.assign(new EventEmitter(), { pid: 7700, exitCode: null, signalCode: null })
+          writeFileSync(
+            env.OPENLR_AGENT_FILE,
+            JSON.stringify({
+              url: 'http://127.0.0.1:1',
+              token: 'private-test',
+              version: 1,
+              pid: descriptorPid
+            })
+          )
+          return {
+            child,
+            ready: Promise.resolve(7744),
+            stop() {
+              child.emit('exit', closeCode, null)
+              child.emit('close', closeCode, null)
+            }
+          }
+        }
+      }
+    )
+    if (descriptorPid !== 7744) await assert.rejects(run, /7745/)
+    else if (closeCode === 2) await assert.rejects(run, /Native workspace cleanup failed/)
+    else await run
+    assert.equal(calls, descriptorPid === 7744 ? 1 : 0)
+    if (closeCode === 2) await access(path.join(roots.at(-1), 'agent.json'))
+    else await assert.rejects(access(roots.at(-1)), { code: 'ENOENT' })
+  }
+})

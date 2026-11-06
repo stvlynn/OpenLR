@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict'
-import { execFile } from 'node:child_process'
+import { execFile, spawn } from 'node:child_process'
 import { once } from 'node:events'
 import { access, mkdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
+import { createInterface } from 'node:readline'
 import { setTimeout as delay } from 'node:timers/promises'
 import { pathToFileURL } from 'node:url'
 import { promisify } from 'node:util'
@@ -14,8 +15,11 @@ const executable = process.argv[2]
 const mac = process.platform === 'darwin'
 const linux = process.platform === 'linux'
 const desktopEntry = process.argv[3]
+const coldLauncher = mac && process.argv[3] === '--macos-cold' && process.argv[4]
 if (!executable || (linux ? !desktopEntry : !mac && process.platform !== 'win32'))
   throw Error('Pass a packaged executable and, on Linux, the desktop entry')
+if (mac && process.argv[3] === '--macos-cold' && !coldLauncher)
+  throw Error('Pass the compiled Launch Services helper')
 const exec = promisify(execFile)
 const bundle = mac && path.resolve(path.dirname(executable), '../..')
 if (mac) {
@@ -29,6 +33,30 @@ if (mac) {
     path.join(bundle, 'Contents/Info.plist')
   ])
   assert.ok(JSON.parse(stdout).some((type) => type.CFBundleTypeExtensions?.includes('png')))
+}
+
+function launchCold({ executable, args, env }) {
+  assert.equal(args.length, 1)
+  const child = spawn(path.resolve(coldLauncher), [executable, args[0]], {
+    env,
+    stdio: ['pipe', 'pipe', 'inherit']
+  })
+  child.stdin.on('error', () => {})
+  const output = createInterface({ input: child.stdout })
+  const ready = Promise.race([
+    once(output, 'line').then(([line]) => {
+      output.close()
+      assert.match(line, /^[1-9][0-9]*$/)
+      return Number(line)
+    }),
+    once(child, 'close').then(([code]) => {
+      throw Error('Launch Services exited before reporting the application PID (code ' + code + ')')
+    }),
+    delay(40_000, null, { ref: false }).then(() => {
+      throw Error('Launch Services did not report the application PID')
+    })
+  ])
+  return { child, ready, stop: () => child.stdin.end() }
 }
 
 const fixtures = [
@@ -55,7 +83,7 @@ async function prepare({ root }) {
     )
     await writeFile(fixture.file, fixture.bytes)
   }
-  return mac || linux ? [] : [fixtures[0].file]
+  return (mac || linux) && !coldLauncher ? [] : [fixtures[0].file]
 }
 
 await withNativeWorkspace(
@@ -132,7 +160,7 @@ await withNativeWorkspace(
       }
       assert.equal(await readPid(), pid)
     }
-    if (mac || linux) {
+    if ((mac || linux) && !coldLauncher) {
       assert.deepEqual(initial.photos, [])
       await forward(first)
     }
@@ -169,7 +197,9 @@ await withNativeWorkspace(
         delivery: linux
           ? 'GIO desktop entry to a running app'
           : mac
-            ? 'Launch Services to a running app'
+            ? coldLauncher
+              ? 'Launch Services cold then warm'
+              : 'Launch Services to a running app'
             : 'executable arguments',
         first: {
           input: 'absolute path with spaces',
@@ -194,5 +224,10 @@ await withNativeWorkspace(
       })
     )
   },
-  { persistent: !mac && !linux, prepare, env: { OPENLR_DIAGNOSTICS: '1' } }
+  {
+    persistent: !mac && !linux,
+    prepare,
+    env: { OPENLR_DIAGNOSTICS: '1' },
+    launch: coldLauncher ? launchCold : undefined
+  }
 )

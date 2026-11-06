@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
-import { access, mkdtemp, realpath, rm } from 'node:fs/promises'
+import { access, mkdtemp, readFile, realpath, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
@@ -11,7 +11,7 @@ import { inspectNativeRuntime, reportNativeStartupFailure } from './native-start
 export async function withNativeWorkspace(
   executable,
   workflow,
-  { persistent = false, env: extraEnv = {}, prepare, onCleanup } = {}
+  { persistent = false, env: extraEnv = {}, prepare, onCleanup, launch } = {}
 ) {
   if (!executable) throw Error('Pass the path to a built OpenLR executable')
   const temp = await realpath(tmpdir()),
@@ -41,7 +41,7 @@ export async function withNativeWorkspace(
   if (process.platform === 'linux' && runtime && display && !path.isAbsolute(display))
     env.WAYLAND_DISPLAY = path.join(runtime, display)
 
-  let host, exited, lifecycle, secondary, secondaryExited
+  let host, exited, lifecycle, ownedApplication, applicationPid, secondary, secondaryExited
   async function start(args = []) {
     if (host || secondary) throw Error('Native workspace host is already started or its exit is unconfirmed')
     const startedAt = performance.now()
@@ -52,7 +52,8 @@ export async function withNativeWorkspace(
       Buffer.byteLength(socket) < 100,
       'Use a shorter temporary directory for the private MyGo socket'
     )
-    host = spawn(path.resolve(executable), args, { env, stdio: 'inherit' })
+    ownedApplication = launch?.({ executable: path.resolve(executable), args, env })
+    host = ownedApplication?.child ?? spawn(path.resolve(executable), args, { env, stdio: 'inherit' })
     const observed = (lifecycle = { startedAt, startedWall: Date.now() })
     observed.exitEvent = new Promise((resolve) =>
       host.once('exit', (code, signal) => {
@@ -63,9 +64,10 @@ export async function withNativeWorkspace(
     host.once('error', (error) => {
       launchError = error
     })
-    exited = new Promise((resolve) => host.once('close', resolve))
+    exited = new Promise((resolve) => host.once('close', (code, signal) => resolve({ code, signal })))
     try {
       const deadline = Date.now() + 45000
+      applicationPid = ownedApplication ? await ownedApplication.ready : host.pid
       for (;;) {
         if (launchError) throw launchError
         if (host.exitCode !== null || host.signalCode) throw Error('Host exited before agent connected')
@@ -76,20 +78,22 @@ export async function withNativeWorkspace(
         if (Date.now() > deadline) throw Error('No agent session after 45 seconds')
         await delay(120)
       }
+      if (ownedApplication) assert.equal(JSON.parse(await readFile(session, 'utf8')).pid, applicationPid)
       sessionAt = requestAt = performance.now()
       const initial = await call('state')
       observed.readyAt = performance.now()
       return initial
     } catch (error) {
-      await reportNativeStartupFailure({
-        session,
-        host,
-        exited: observed.exitEvent,
-        startedAt,
-        sessionAt,
-        requestAt,
-        observeLateStartup: env.OPENLR_DIAGNOSTICS === '1'
-      })
+      if (!ownedApplication)
+        await reportNativeStartupFailure({
+          session,
+          host,
+          exited: observed.exitEvent,
+          startedAt,
+          sessionAt,
+          requestAt,
+          observeLateStartup: env.OPENLR_DIAGNOSTICS === '1'
+        })
       throw error
     }
   }
@@ -105,11 +109,19 @@ export async function withNativeWorkspace(
   async function stop() {
     if (!host) return
     lifecycle.stopRequested = true
-    await killAndWait(host, exited)
+    if (ownedApplication) {
+      ownedApplication.stop()
+      const result = await Promise.race([exited, delay(10_000, null, { ref: false })])
+      assert.ok(
+        result?.signal === null && [0, 1].includes(result.code),
+        'Application launcher could not confirm cleanup'
+      )
+    } else await killAndWait(host, exited)
     try {
       await rm(session, { force: true })
     } finally {
       host = null
+      ownedApplication = null
       lifecycle = null
     }
   }
@@ -145,7 +157,7 @@ export async function withNativeWorkspace(
       call,
       initial,
       profile: path.join(root, 'webview2'),
-      pid: host.pid,
+      pid: applicationPid,
       launchSecondary,
       start,
       stop,
@@ -156,7 +168,7 @@ export async function withNativeWorkspace(
     })
   } catch (error) {
     primaryFailure = true
-    if (lifecycle?.readyAt !== undefined && !lifecycle.stopRequested) {
+    if (!ownedApplication && lifecycle?.readyAt !== undefined && !lifecycle.stopRequested) {
       try {
         const diagnostic = await inspectNativeRuntime({ session, host, lifecycle })
         console.error('Native workflow failure diagnostics: ' + JSON.stringify(diagnostic))

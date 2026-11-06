@@ -23,5 +23,7 @@ hdiutil detach "$volume"
 attached=false
 
 node scripts/native-installed-cli-smoke.mjs "$bundle/Contents/MacOS/OpenLR" "$bundle/Contents/Resources/cli/openlr.mjs"
-node scripts/native-file-open-smoke.mjs "$bundle/Contents/MacOS/OpenLR"
+launcher="$scratch/cold-document-launch"
+xcrun swiftc -parse-as-library scripts/fixtures/cold-document-launch.swift -o "$launcher"
+node scripts/native-file-open-smoke.mjs "$bundle/Contents/MacOS/OpenLR" --macos-cold "$launcher"
 echo "Disk image detached and copied app verified on $(uname -m)."
