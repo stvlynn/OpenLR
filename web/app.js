@@ -1031,7 +1031,10 @@ async function execute(command, args, context = {}) {
       )
       break
     case 'grid-layout':
-      gridLayout = enumValue(args.layout, ['square', 'mosaic'])
+      gridLayout = enumValue(args.layout ?? (gridLayout === 'square' ? 'mosaic' : 'square'), [
+        'square',
+        'mosaic'
+      ])
       localStorage.setItem('grid-layout', gridLayout)
       mode = 'grid'
       break
@@ -1906,10 +1909,18 @@ async function execute(command, args, context = {}) {
           compare = false
           break
         }
+        case 'rotate':
+        case 'flip':
         case 'edit':
         case 'reset': {
-          let edit = neutralRecipe(p.edit)
-          if (command === 'edit') {
+          if (args.photoId !== undefined && args.photoId !== p.id) throw Error('The selected photo changed')
+          let edit
+          if (command === 'rotate' || command === 'flip') {
+            edit =
+              command === 'rotate'
+                ? { ...p.edit, turn: ((p.edit.turn ?? 0) + (args.direction === 'left' ? 3 : 1)) % 4 }
+                : { ...p.edit, flip: !p.edit.flip }
+          } else if (command === 'edit') {
             const { key, value } = args
             if (Object.hasOwn(groups, key)) number(value, ...groups[key])
             else if (key === 'crop') {
@@ -1921,7 +1932,7 @@ async function execute(command, args, context = {}) {
             else if (key === 'aspect') enumValue(value, ['', '1', '1.5', '1.7777777778', '0.8'])
             else throw Error('Unknown edit control')
             edit = { ...p.edit, [key]: value }
-          }
+          } else edit = neutralRecipe(p.edit)
           await replace(p, { edit })
           rememberEdit(p)
           redo.length = 0
@@ -2140,11 +2151,13 @@ async function execute(command, args, context = {}) {
         case 'point-add':
         case 'point-update':
         case 'point-remove': {
+          const { id, photoId, ...changes } = args
+          if (photoId !== undefined && photoId !== p.id) throw Error(POINT_COLOR_MESSAGES.changedPhoto)
           const points = [...(p.edit.pointColors || [])]
           if (command === 'point-add') {
             const point = validatePoint({
               id: crypto.randomUUID(),
-              color: args.color,
+              color: changes.color,
               hue: 0,
               saturation: 0,
               luminance: 0,
@@ -2153,10 +2166,10 @@ async function execute(command, args, context = {}) {
             points.push(point)
             result = point
           } else {
-            const index = points.findIndex((v) => v.id === args.id)
+            const index = points.findIndex((v) => v.id === id)
             if (index < 0) throw Error('Color sample not found')
             if (command === 'point-remove') points.splice(index, 1)
-            else points[index] = validatePoint({ ...points[index], ...args })
+            else points[index] = validatePoint({ ...points[index], ...changes })
           }
           await replace(p, { edit: { ...p.edit, pointColors: points } })
           if (command === 'point-add') {
@@ -2348,7 +2361,7 @@ for (const [group, items] of Object.entries(controls)) {
     }
     input.onchange = () => {
       cancelAnimationFrame(sliderFrame)
-      act('edit', { key, value: Number(input.value) })
+      act('edit', { key, value: Number(input.value), photoId: selected })
     }
     label.append(key, output, input)
     details.append(label)
@@ -2374,7 +2387,7 @@ $('xmp-file').onchange = async (e) => {
   }
 }
 $('crop-tool').onclick = () => act('crop-tool')
-$('clear-crop').onclick = () => act('edit', { key: 'crop', value: null })
+$('clear-crop').onclick = () => act('edit', { key: 'crop', value: null, photoId: selected })
 function notifyWorkspaceChange() {
   window.dispatchEvent(new Event('openlr-change'))
 }
@@ -2502,13 +2515,10 @@ $('histogram-panel').ontoggle = () => {
   if (bins) drawHistogram($('histogram'), bins)
 }
 $('reset').onclick = () => act('reset')
-for (const [id, delta] of [
-  ['left', 3],
-  ['right', 1]
-])
-  $(id).onclick = () => act('edit', { key: 'turn', value: ((active().edit.turn || 0) + delta) % 4 })
-$('flip').onclick = () => act('edit', { key: 'flip', value: !active().edit.flip })
-$('aspect').onchange = (e) => act('edit', { key: 'aspect', value: e.target.value })
+for (const direction of ['left', 'right'])
+  $(direction).onclick = () => act('rotate', { direction, photoId: selected })
+$('flip').onclick = () => act('flip', { photoId: selected })
+$('aspect').onchange = (e) => act('edit', { key: 'aspect', value: e.target.value, photoId: selected })
 $('new-album').onclick = () => {
   $('album-name').value = ''
   $('album-dialog').showModal()
@@ -2832,7 +2842,7 @@ ready.catch((e) => {
 })
 updateOrganization = mountOrganization(act)
 updateStacks = stackMenu(act)
-$('layout').onclick = () => act('grid-layout', { layout: gridLayout === 'square' ? 'mosaic' : 'square' })
+$('layout').onclick = () => act('grid-layout')
 $('end-slides').onclick = () => act('slideshow', { stop: true })
 updateMerge = mountMerge(run, notice)
 updateEnhance = mountEnhance(run, notice)

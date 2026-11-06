@@ -296,11 +296,16 @@ export const definitions = {
       hue: number('Hue shift in degrees', -180, 180),
       saturation: number('Saturation shift', -100, 100),
       luminance: number('Luminance shift', -100, 100),
-      range: number('Selection range', 0, 100)
+      range: number('Selection range', 0, 100),
+      photoId: string('Optional current-photo guard')
     },
     ['id']
   ),
-  'point-remove': entry('Remove a color sample', { id: string('Sample ID') }, ['id']),
+  'point-remove': entry(
+    'Remove a color sample',
+    { id: string('Sample ID'), photoId: string('Optional current-photo guard') },
+    ['id']
+  ),
   'depth-estimate': entry(
     'Estimate and persist real local relative inverse depth; downloads fixed 27 MB Apache-2.0 model once',
     { photoId: string('Optional selected-photo guard') }
@@ -418,11 +423,9 @@ export const definitions = {
     },
     ['id', 'path', 'changes']
   ),
-  'grid-layout': entry(
-    'Set the library grid layout',
-    { layout: string('Layout', { enum: ['square', 'mosaic'] }) },
-    ['layout']
-  ),
+  'grid-layout': entry('Set or toggle the library grid layout', {
+    layout: string('Layout. Omit to toggle the current value', { enum: ['square', 'mosaic'] })
+  }),
   'select-inverse': entry('Invert selection in the current view'),
   'virtual-copy': entry('Create a separate edit recipe sharing the original library file'),
   'save-frame': entry('Save the current edited video frame as a library photo'),
@@ -764,9 +767,21 @@ export const definitions = {
     { id: string('Version ID') },
     ['id']
   ),
+  rotate: entry(
+    'Rotate the active photo by one quarter-turn',
+    {
+      direction: string('Quarter-turn direction', { enum: ['left', 'right'] }),
+      photoId: string('Optional current-photo guard')
+    },
+    ['direction']
+  ),
+  flip: entry('Toggle horizontal reflection on the active photo', {
+    photoId: string('Optional current-photo guard')
+  }),
   edit: entry(
     'Change one non-destructive adjustment, crop, rotation or flip',
     {
+      photoId: string('Optional current-photo guard'),
       key: string('Case-sensitive adjustment key', {
         enum: [...Object.keys(edits), 'turn', 'flip', 'aspect', 'crop']
       }),

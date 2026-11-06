@@ -76,12 +76,12 @@ export function pointPanel(run) {
     label.append(key[0].toUpperCase() + key.slice(1), output, input)
     panel.append(label)
     input.oninput = () => (output.value = input.value)
-    input.onchange = () => run('point-update', { id: select.value, [key]: Number(input.value) })
+    input.onchange = () => run('point-update', { id: select.value, [key]: Number(input.value), photoId })
     inputs[key] = { input, output }
   }
   const remove = document.createElement('button')
   remove.textContent = 'Delete sample'
-  remove.onclick = () => run('point-remove', { id: select.value })
+  remove.onclick = () => run('point-remove', { id: select.value, photoId })
   panel.append(remove)
   document.getElementById('adjustments').after(panel)
   let points = [],

@@ -146,6 +146,22 @@ await withNativeWorkspace(process.argv[2], async ({ root, call, initial }) => {
   const baseline = row(await edit('crop', null)).edit
   const uncorrected = await exported('uncorrected')
   assert.deepEqual(dims(uncorrected), [width, height])
+  await assert.rejects(geometry('rotate', { direction: 'right', photoId: 'stale' }), /selected photo changed/)
+  assert.deepEqual(row(await geometry('rotate', { direction: 'right' })).edit, { ...baseline, turn: 1 })
+  const turned = await exported('rotated')
+  assert.deepEqual(dims(turned), [height, width])
+  const marker = pixel(uncorrected, 28, 21)
+  assert.notDeepEqual(marker, pixel(uncorrected, width - 1 - 28, 21))
+  assert.deepEqual(pixel(turned, height - 1 - 21, 28), marker)
+  assert.deepEqual(row(await geometry('flip')).edit, { ...baseline, turn: 1, flip: true })
+  const reflected = await exported('rotated-and-reflected')
+  assert.deepEqual(dims(reflected), [height, width])
+  assert.deepEqual(pixel(reflected, height - 1 - 21, width - 1 - 28), marker)
+  assert.notDeepEqual(pixel(reflected, height - 1 - 21, 28), marker)
+  assert.deepEqual(row(await call('undo')).edit, { ...baseline, turn: 1 })
+  assertSameImage(await exported('undone-flip'), turned)
+  assert.deepEqual(row(await call('undo')).edit, baseline)
+  assertSameImage(await exported('undone-rotate'), uncorrected)
   const match = await call('lens-match')
   assert.deepEqual(row(await state()).edit, baseline)
   assert.equal(match.cameras.length, 1)
@@ -231,6 +247,11 @@ await withNativeWorkspace(process.argv[2], async ({ root, call, initial }) => {
       profileEdge,
       profileCornerAlpha,
       shiftPixels: 16,
+      orientationMarker: {
+        source: [28, 21],
+        rotated: [height - 1 - 21, 28],
+        reflected: [height - 1 - 21, width - 1 - 28]
+      },
       straightenDegrees: straightEdit.optics.rotate,
       referenceTilt,
       preservedOriginals: 1
