@@ -17,6 +17,16 @@
 
 ## 补充验证
 
+- **`db34e33` 远程终态与视频定位**。[Actions 42115637990](https://github.com/stvlynn/OpenLR/actions/runs/42115637990) 的 Windows、Linux 构建和十二组原生流程成功；macOS Intel 在视频导入失败。新增诊断实际报告 `thumbnail-encode`／`SecurityError`，媒体 readyState 4、96×64、无媒体错误，说明媒体加载和 poster 创建已完成。MIME 修正没有消除此错误。该 WKWebView 有视频 WebCodecs，却没有 AudioDecoder／AudioEncoder；音轨导出尚未执行，不能据此声称通过。原始诊断和候选路径研究见[原生视频](../research/native-video.md)。
+
+- **新增原生图像验收**。四项独立 Windows WebView2 检查使用 `db34e33` 安装包和隔离会话：`native-local-tools-smoke` 验证布尔蒙版、组件选择、真实覆盖层、克隆／修复及撤销；`native-depth-smoke` 首次下载模型并推理，深度范围内改变 117,880 像素、范围外保持，焦内 98,401 像素保持，远景纹理下降；`native-enhance-smoke` 的降噪 MSE 从 205.42 降至 93.08，实际 72×48 编辑源生成 216×144 超分 PNG，独立插值对照证明不是普通放大；`native-culling-smoke` 实际 YuNet 检出双眼，清晰／模糊对照分数 886.97／7.79，红眼红通道 245→26，187 个变化像素全部位于检测区域。各脚本核对实际输出和原件字节。持久性重启目前仅 Windows 执行；其他平台与合并后的全套结果另记。
+
+  合并后的十六组 Windows 原生套件随后全部通过，日志 `.workspace/native-expanded-suite.log`，其中视频夹具抽取后仍通过实际 VP9／Opus 导出和音调检查。相机仍为明确标注的模拟器，迁移仍使用合成 schema，外部审阅为本地独立服务。此轮生产代码未变，没有把此前 358 项浏览器结果重述为新运行。
+
+  审查后加强的局部、深度、选片三组再次通过（`.workspace/native-oracle-refinement.log`）：独立验证复合蒙版曝光值与未覆盖像素、原生合并参数拒绝且图像／深度保持、正曝光不变暗，以及每个红眼变化像素仅降低红通道。深度的非法部分更新确实到达原生 dispatcher，而不是只验证 CLI 参数解析。
+
+  系统导入／保存对话框的 Computer Use 应用访问等待超时，没有执行点击或取得验收结果；独立宿主已清理。此项不能由 CLI 文件读写代替，也不计为通过。
+
 - **原生视频失败诊断**。同一 `retouch-order` Windows 包对生成的截断 WebM 保留原始 demuxer 错误，目录仍为空；随后有效 PNG 导入及原件导出成功。真实 stderr 仅一条允许字段报告，阶段 `media-load`、readyState 0、networkState 3、mediaErrorCode 4，无文件名／路径／令牌／异常消息。日志 `.workspace/retouch-order-video-diagnostic.log`；这是诊断通道验证，不是 macOS 可播放夹具失败的根因结论。
 
 - **有序移除与光学原生验收（2026-11-06）**。新移除保存独立补丁，后续 Clone/Heal 记录对应补丁位置；支持“克隆→移除→再克隆→再移除”，保留历史填充位置、已有修复可编辑性以及选区外 Linear 精度。40 次真实 Chrome 方案比较拒绝移动全部旧填充；固定顶层方案再细化为稳定引用，避免遮住后来画的新克隆。[决策 020](decisions/020-ordered-removal.md)及[实验](../research/removal-order.md)记录顺序、透明度、独立复制和兼容边界。当前实际 Chrome 回归覆盖软／不透明修复、两种处理版本、顺序、撤销／重做、XMP、版本、复制、缺失引用、浮点外部样本和重启。完整 Windows／Node 24.9／Chrome 156.0.8078.80 **358/358 通过、零失败、零跳过**，约 271.9 秒，保留被动视频诊断；Go test／vet 与格式检查通过。

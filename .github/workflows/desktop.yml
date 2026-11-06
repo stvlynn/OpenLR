@@ -32,6 +32,11 @@ jobs:
         run: npm test
       - name: Build the native distribution
         run: node scripts/desktop.mjs build -o build/release -platform ${{ runner.os == 'Windows' && 'windows/amd64' || runner.os == 'macOS' && 'darwin/universal' || 'linux/amd64' }}
+      - name: Probe video frame origin in WKWebView
+        if: runner.os == 'macOS'
+        run: |
+          go build -o build/video-origin-probe ./scripts/fixtures/video-probe
+          node scripts/native-video-origin-probe.mjs build/video-origin-probe
       - if: runner.os == 'Linux'
         run: xvfb-run -a dbus-run-session -- node scripts/native-suite.mjs build/release/linux-amd64/openlr
       - if: runner.os == 'macOS'
@@ -54,4 +59,3 @@ jobs:
             .workspace/native-final/*report.json
             .workspace/native-final/workspace.png
           if-no-files-found: ignore
-

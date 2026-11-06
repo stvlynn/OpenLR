@@ -4,50 +4,17 @@ import path from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import { chromium } from 'playwright-core'
 import { serveWorkspace } from '../tests/browser-server.mjs'
+import {
+  makeVideoFixture,
+  videoFixtureSize as sourceSize,
+  videoFixtureFrequencies as frequencies
+} from '../tests/fixtures/video.mjs'
 import { withNativeWorkspace } from './native-workspace.mjs'
 
 const executable = process.argv[2]
 if (!executable) throw Error('Pass the path to a built OpenLR executable')
-const sourceSize = [96, 64],
-  turnedSize = [64, 96],
-  colors = ['#b42e2e', '#29a549', '#2b3dc6'],
-  frequencies = [330, 660, 990],
+const turnedSize = [64, 96],
   trim = { start: 1.2, end: 2.7 }
-async function makeClip(page) {
-  const encoded = await page.evaluate(
-    async ({ sourceSize, colors, frequencies }) => {
-      const m = await import('/vendor/mediabunny/mediabunny.mjs')
-      const canvas = new OffscreenCanvas(...sourceSize),
-        context = canvas.getContext('2d'),
-        target = new m.BufferTarget(),
-        output = new m.Output({ target, format: new m.WebMOutputFormat() }),
-        video = new m.CanvasSource(canvas, { codec: 'vp9', bitrate: 300000 }),
-        audio = new m.AudioBufferSource({ codec: 'opus', bitrate: 64000 })
-      output.addVideoTrack(video)
-      output.addAudioTrack(audio)
-      await output.start()
-      const sampleRate = 48000
-      const tone = new AudioBuffer({ numberOfChannels: 1, length: sampleRate * colors.length, sampleRate })
-      const samples = tone.getChannelData(0)
-      for (let i = 0; i < samples.length; i++) {
-        const time = i / sampleRate
-        samples[i] = 0.2 * Math.sin(2 * Math.PI * frequencies[Math.floor(time)] * time)
-      }
-      const audioDone = audio.add(tone)
-      for (let i = 0; i < 10 * colors.length; i++) {
-        context.fillStyle = colors[Math.floor(i / 10)]
-        context.fillRect(0, 0, canvas.width, canvas.height)
-        await video.add(i / 10, 0.1)
-      }
-      await audioDone
-      await output.finalize()
-      return Array.from(new Uint8Array(target.buffer))
-    },
-    { sourceSize, colors, frequencies }
-  )
-  return Buffer.from(encoded)
-}
-
 async function decodeStill(page, result) {
   assert.equal(result.mimeType, 'image/png')
   return page.evaluate(
@@ -167,7 +134,7 @@ try {
     route.fulfill({ contentType: 'text/html', body: '<title>Video oracle</title>' })
   )
   await page.goto(server.url)
-  const bytes = await makeClip(page)
+  const bytes = await makeVideoFixture(page)
   await withNativeWorkspace(executable, async ({ root, call, initial }) => {
     const clip = path.join(root, 'clip.webm')
     await writeFile(clip, bytes)
