@@ -38,6 +38,12 @@ jobs:
         run: |
           xcrun clang -std=c11 -Wall -Wextra -Werror scripts/fixtures/audio-probe/main.c -framework AudioToolbox -o build/audio-toolbox-probe
           node scripts/native-audio-probe.mjs build/audio-toolbox-probe
+      - name: Verify the native audio stream adapter
+        if: ${{ !cancelled() && runner.os == 'macOS' && steps.distribution.outcome == 'success' }}
+        timeout-minutes: 2
+        run: |
+          CGO_ENABLED=0 go build -o build/audio-stream-probe ./scripts/fixtures/audio-stream-probe
+          build/audio-stream-probe build/audio-toolbox-probe
       - name: Probe video frame origin in WKWebView
         if: ${{ !cancelled() && runner.os == 'macOS' && steps.distribution.outcome == 'success' }}
         run: |
@@ -50,8 +56,17 @@ jobs:
         run: xvfb-run -a dbus-run-session -- node scripts/native-suite.mjs build/release/linux-amd64/openlr
       - if: ${{ !cancelled() && runner.os == 'macOS' && steps.distribution.outcome == 'success' }}
         run: node scripts/native-suite.mjs build/release/darwin-universal/OpenLR.app/Contents/MacOS/OpenLR
-      - if: runner.os == 'Windows'
+      - name: Verify the Windows native distribution
+        id: windows-native
+        if: runner.os == 'Windows'
         run: node scripts/native-suite.mjs build/release/windows-amd64/OpenLR.exe
+      - name: Build the Windows startup diagnostic after a native failure
+        id: startup-diagnostic
+        if: ${{ failure() && runner.os == 'Windows' && steps.windows-native.outcome == 'failure' }}
+        run: node scripts/native-startup-build.mjs
+      - name: Observe the instrumented Windows startup
+        if: ${{ !cancelled() && runner.os == 'Windows' && steps.startup-diagnostic.outcome == 'success' }}
+        run: node scripts/native-suite.mjs build/startup-diagnostic/windows-amd64/OpenLR.exe
       - uses: actions/upload-artifact@v4
         with:
           name: OpenLR-${{ matrix.os }}

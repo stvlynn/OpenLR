@@ -190,16 +190,18 @@ async function refreshPlayback() {
   const { video, duration } = media,
     time = video.currentTime,
     end = video.paused || time >= clipRange(photo.edit.trim, duration).end
-  if (end) stopPlayback()
+  if (end) cancelPlaybackFrames()
   const generation = playbackGeneration,
     cursor = playbackFrames
   const ownsPlayback = () =>
     playingMedia === media && playbackGeneration === generation && selected === photo.id && mode === 'detail'
   const ownsFrame = () => ownsPlayback() && active() === photo
-  $('play-video').textContent = video.paused ? 'Play' : 'Pause'
-  $('video-position').value = time
   try {
-    const image = cursor ? await cursor.at(time) : await media.frameAt(time)
+    const pending = end ? media.pauseFrame(ownsPlayback) : cursor ? cursor.at(time) : media.frameAt(time)
+    $('play-video').textContent = video.paused ? 'Play' : 'Pause'
+    $('video-position').value = time
+    const image = await pending
+    if (end && ownsPlayback()) $('video-position').value = video.currentTime
     if (image && ownsFrame()) {
       bitmap = image
       await previewStage(image, photo.edit, ownsFrame)
@@ -556,7 +558,7 @@ function displayedSamplePreview(photo, clickedCanvas, messages) {
     throw Error(messages.preview)
   return samplePreview
 }
-async function draw() {
+async function draw(pausedFrame) {
   local.drawNavigation()
   const list = visible()
   selected = organization.reconcile(list, selected)
@@ -687,8 +689,11 @@ async function draw() {
     input.previousElementSibling.value = input.value
   }
   if (detail) {
-    const image =
-      playingMedia && bitmapId === p.id && !playingMedia.video.paused ? bitmap : await source(p.id)
+    const currentMedia = playingMedia && bitmapId === p.id
+    let image
+    if (currentMedia && pausedFrame?.media === playingMedia && pausedFrame.image) {
+      image = bitmap = pausedFrame.image
+    } else image = currentMedia && !playingMedia.video.paused ? bitmap : await source(p.id)
     await paintStage(image, p.edit)
   }
   const precision = inputPrecisionDescription(processingState(p)?.input)
@@ -892,7 +897,7 @@ async function execute(command, args, context = {}) {
     ].includes(command)
   )
     opticsUI?.deactivate()
-  let result
+  let result, pausedFrame
   const advance =
     (command === 'rate' || command === 'flag') &&
     (args.advance ?? preferences.autoAdvance) &&
@@ -1963,8 +1968,14 @@ async function execute(command, args, context = {}) {
             await media.video.play()
             playbackFrames = await media.playbackFrames()
             frameTicket = requestAnimationFrame(refreshPlayback)
-          } else if (command === 'video-pause') stopPlayback()
-          else if (command === 'video-seek') {
+          } else if (command === 'video-pause') {
+            cancelPlaybackFrames()
+            const generation = playbackGeneration
+            const image = await media.pauseFrame(
+              () => playingMedia === media && playbackGeneration === generation && selected === p.id
+            )
+            pausedFrame = { media, image }
+          } else if (command === 'video-seek') {
             stopPlayback()
             await media.seek(args.time)
           } else {
@@ -2212,7 +2223,7 @@ async function execute(command, args, context = {}) {
   }
   if (nextId && visible().some((row) => row.id === nextId))
     selected = organization.chooseMany(visible(), [nextId])
-  await draw()
+  await draw(pausedFrame)
   return result ?? snapshot()
 }
 globalThis.openlrStartupMilestone?.('catalog-read-started')

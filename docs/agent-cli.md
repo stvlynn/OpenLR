@@ -62,7 +62,7 @@ Use named options, or supply a JSON object with `--args` (`--body` is an alias).
 
 Video imports declare a media type from the case-insensitive suffix for WebM, MOV, MP4, M4V and MKV. The running desktop still determines whether its codecs can open the file.
 
-Video playback and audio use the native media element. When its pixels are origin-restricted, OpenLR decodes visual frames from the original file for thumbnails, the live editor, previews and still exports. A saved frame uses the playback time captured for that command. Batch still export uses its own decoded frame at the saved trim start. Video-container exports require the selected format to retain every source track.
+Video playback and audio use the native media element. When its pixels are origin-restricted, OpenLR decodes visual frames from the original file for thumbnails, the live editor, previews and still exports. Pause and automatic trim-end stop retain the captured playback position if the native clock rolls back while the paused frame is being prepared. A saved frame uses the playback time captured for that command. Batch still export uses its own decoded frame at the saved trim start. Video-container exports require the selected format to retain every source track.
 
 ```powershell
 node cli/openlr.mjs schema export

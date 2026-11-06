@@ -14,6 +14,7 @@ test('video pause probe requires post-seek and post-frame observations when a re
     stage: 'complete',
     frameSource: 'decoded',
     playedDuration: 0,
+    observationMs: 14,
     reads: {
       started: { time: 0.35, paused: false },
       advanced: playing,
@@ -31,6 +32,30 @@ test('video pause probe requires post-seek and post-frame observations when a re
   assert.throws(() => reportClock(result, 'clock-restore'), /Missing playback read restoredAfterFrame/)
   delete result.reads.pauseEvent
   assert.throws(() => reportClock(result, 'clock-restore'), /Missing playback read pauseEvent/)
+})
+
+test('the elapsed playback control requires a clock read after the paired delay', () => {
+  const playing = { time: 0.54, paused: false },
+    paused = { time: 0.54, paused: true }
+  const result = {
+    stage: 'complete',
+    frameSource: 'decoded',
+    playedDuration: 0.19,
+    observationMs: 15,
+    requestedDelayMs: 14,
+    reads: {
+      started: { time: 0.35, paused: false },
+      advanced: playing,
+      beforePause: playing,
+      immediate: paused,
+      pauseEvent: paused,
+      animationFrame: paused,
+      afterDelay: paused
+    }
+  }
+  assert.equal(reportClock(result, 'clock-delay').requestedDelayMs, 14)
+  delete result.reads.afterDelay
+  assert.throws(() => reportClock(result, 'clock-delay'), /Missing playback read afterDelay/)
 })
 
 test('video probe host distinguishes clean exit and nonzero exit', async () => {

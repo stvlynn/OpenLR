@@ -113,14 +113,24 @@ export async function openVideo(file, diagnostic) {
           video.currentTime = time
         })
     }
+    async function frameAt(time = video.currentTime) {
+      const source = await frames()
+      return source ? source.at(time) : video
+    }
     return {
       video,
       duration,
       seek,
       close,
-      async frameAt(time = video.currentTime) {
-        const source = await frames()
-        return source ? source.at(time) : video
+      frameAt,
+      async pauseFrame(isCurrent) {
+        const beforePause = video.currentTime
+        video.pause()
+        const time = Math.max(beforePause, video.currentTime)
+        const image = await frameAt(time)
+        // The native clock can return to its previous seek after a decoded frame read.
+        if (!closed && isCurrent() && video.paused && video.currentTime < time) await seek(time)
+        return !closed && isCurrent() ? image : null
       },
       async snapshot() {
         const source = await frames()

@@ -126,20 +126,20 @@ const candidates = {
   anonymous: { times, stages: elementStages },
   decoded: { times, stages: ['complete', 'demux', 'decode', 'draw'] }
 }
-const clockCandidates = ['clock-detached', 'clock-attached', 'clock-frame-stream', 'clock-restore']
-const clockPhases = [
-  'started',
-  'advanced',
-  'beforePause',
-  'immediate',
-  'pauseEvent',
-  'animationFrame',
-  'afterFrame'
+const clockCandidates = [
+  'clock-detached',
+  'clock-delay',
+  'clock-attached',
+  'clock-frame-stream',
+  'clock-restore'
 ]
+const clockPhases = ['started', 'advanced', 'beforePause', 'immediate', 'pauseEvent', 'animationFrame']
 const restorePhases = ['restored', 'restoredAfterFrame']
 
 export function reportClock(result, candidate) {
-  const { stage, errorName, frameSource, playedDuration } = result
+  const { stage, errorName, frameSource, playedDuration, observationMs, requestedDelayMs } = result
+  const isDelay = candidate === 'clock-delay'
+  const requiredPhases = [...clockPhases, isDelay ? 'afterDelay' : 'afterFrame']
   const stages = [
     'complete',
     'media-load',
@@ -152,24 +152,34 @@ export function reportClock(result, candidate) {
     'pause',
     'restore'
   ]
+  if (isDelay) stages.push('delay')
   assert.ok(stages.includes(stage), 'Invalid playback probe stage')
   if (stage === 'complete') assert.equal(errorName, undefined)
   else checkError(errorName)
   const reads = {}
   for (const [phase, read] of Object.entries(result.reads)) {
-    assert.ok(clockPhases.includes(phase) || (candidate === 'clock-restore' && restorePhases.includes(phase)))
+    assert.ok(
+      requiredPhases.includes(phase) || (candidate === 'clock-restore' && restorePhases.includes(phase))
+    )
     assert.ok(Number.isFinite(read.time) && read.time >= 0)
     assert.equal(typeof read.paused, 'boolean')
     reads[phase] = { time: read.time, paused: read.paused }
   }
+  if (stage === 'complete' || observationMs !== undefined)
+    assert.ok(Number.isFinite(observationMs) && observationMs >= 0, 'Missing playback observation interval')
+  if ((isDelay && stage === 'complete') || requestedDelayMs !== undefined)
+    assert.ok(
+      isDelay && Number.isFinite(requestedDelayMs) && requestedDelayMs >= 0,
+      'Missing paired delay interval'
+    )
   if (stage === 'complete') {
-    for (const phase of clockPhases) assert.ok(reads[phase], `Missing playback read ${phase}`)
+    for (const phase of requiredPhases) assert.ok(reads[phase], `Missing playback read ${phase}`)
     assert.ok(['element', 'decoded'].includes(frameSource))
     assert.ok(Number.isFinite(playedDuration) && playedDuration >= 0)
     if (candidate === 'clock-restore' && reads.afterFrame.time < reads.beforePause.time)
       for (const phase of restorePhases) assert.ok(reads[phase], `Missing playback read ${phase}`)
   }
-  return { stage, errorName, frameSource, playedDuration, reads }
+  return { stage, errorName, frameSource, playedDuration, observationMs, requestedDelayMs, reads }
 }
 
 function sanitize(report, candidate) {
@@ -264,6 +274,7 @@ async function main(executable, mode) {
     await writeFile(fixture, await generatedVideo())
     const deadline = performance.now() + 75000
     const failed = []
+    let frameReadMs
     for (const candidate of names) {
       const profilePrefix = `${candidate}-`
       const profile = await mkdtemp(path.join(root, profilePrefix))
@@ -272,7 +283,13 @@ async function main(executable, mode) {
         const timeout = Math.min(15000, Math.floor(deadline - performance.now()))
         if (timeout <= 0) throw Error('Aggregate video origin probe deadline expired before launch')
         console.error(`Video origin probe candidate: ${candidate}`)
-        await runProbeHost(path.resolve(executable), [frontend, fixture, report, candidate], {
+        const args = [frontend, fixture, report, candidate]
+        if (candidate === 'clock-delay') {
+          if (frameReadMs === undefined)
+            throw Error('Detached frame-read interval unavailable for the paired delay')
+          args.push(String(frameReadMs))
+        }
+        await runProbeHost(path.resolve(executable), args, {
           env: profileEnvironment(profile),
           timeout
         })
@@ -280,7 +297,17 @@ async function main(executable, mode) {
           if (error.code === 'ENOENT') throw Error('Video origin probe host exited without a report')
           throw error
         })
-        console.log(JSON.stringify(sanitize(JSON.parse(contents), candidate)))
+        const sanitized = sanitize(JSON.parse(contents), candidate)
+        if (sanitized.result.stage === 'complete') {
+          if (candidate === 'clock-detached') frameReadMs = sanitized.result.observationMs
+          if (candidate === 'clock-delay')
+            assert.equal(
+              sanitized.result.requestedDelayMs,
+              frameReadMs,
+              'Delay does not match detached frame read'
+            )
+        }
+        console.log(JSON.stringify(sanitized))
       } catch (error) {
         console.error(`Video origin probe ${candidate} incomplete: ${error.message}`)
         if (error instanceof ProbeHostUnconfirmedError) {

@@ -139,7 +139,7 @@ function elementPath(name, file, open) {
 
 const animationFrame = () => new Promise((resolve) => requestAnimationFrame(resolve))
 
-function playbackPath(name, file, { attach, stream, restore } = {}) {
+function playbackPath(name, file, { attach, stream, restore, delayMs } = {}) {
   return candidate(name, async (report) => {
     const reads = (report.reads = {})
     report.stage = 'media-load'
@@ -152,7 +152,7 @@ function playbackPath(name, file, { attach, stream, restore } = {}) {
       report.stage = 'seek'
       await media.seek(0.35)
       report.stage = 'frame-access'
-      await media.frameAt()
+      report.frameSource = (await media.frameAt()) === video ? 'element' : 'decoded'
       report.stage = 'play'
       video.muted = false
       await video.play()
@@ -179,10 +179,19 @@ function playbackPath(name, file, { attach, stream, restore } = {}) {
       await animationFrame()
       read('animationFrame')
 
-      report.stage = 'frame-access'
-      const frame = await media.frameAt()
-      report.frameSource = frame === video ? 'element' : 'decoded'
-      const stopped = read('afterFrame').time
+      const observationStart = performance.now()
+      let stopped
+      if (delayMs !== undefined) {
+        report.stage = 'delay'
+        report.requestedDelayMs = delayMs
+        await new Promise((resolve) => setTimeout(resolve, delayMs))
+        stopped = read('afterDelay').time
+      } else {
+        report.stage = 'frame-access'
+        await media.frameAt()
+        stopped = read('afterFrame').time
+      }
+      report.observationMs = performance.now() - observationStart
       report.playedDuration = Array.from(
         { length: video.played.length },
         (_, index) => video.played.end(index) - video.played.start(index)
@@ -203,7 +212,7 @@ function playbackPath(name, file, { attach, stream, restore } = {}) {
 }
 
 await stage('renderer-start')
-const { candidate: name, encoded } = await globalThis.mygo.call('VideoProbe.Fixture')
+const { candidate: name, encoded, delayMs } = await globalThis.mygo.call('VideoProbe.Fixture')
 const file = new File(
   [Uint8Array.from(atob(encoded), (character) => character.charCodeAt(0))],
   'fixture.webm',
@@ -222,6 +231,7 @@ const context = {
 }
 const paths = {
   'clock-detached': () => playbackPath(name, file),
+  'clock-delay': () => playbackPath(name, file, { delayMs }),
   'clock-attached': () => playbackPath(name, file, { attach: true }),
   'clock-frame-stream': () => playbackPath(name, file, { stream: true }),
   'clock-restore': () => playbackPath(name, file, { restore: true }),

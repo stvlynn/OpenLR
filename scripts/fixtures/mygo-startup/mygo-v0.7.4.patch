@@ -1,0 +1,452 @@
+diff --git a/internal/windows/webview2.go b/internal/windows/webview2.go
+--- a/internal/windows/webview2.go
++++ b/internal/windows/webview2.go
+@@ -251,6 +251,7 @@ func createEnvironment(userData, language, args string, done func(env uintptr, w
+ // of language and args, or none when both are "".
+ func createEnvironmentWith(loader *syscall.LazyProc, userData, language, args string, done func(env uintptr, err error)) error {
+ 	completed := func(hr, env uintptr) {
++		openLRStartupTrace("environment-callback", hr, openLRTraceBool(env != 0))
+ 		if failed(hr) || env == 0 {
+ 			done(0, hresultError("creating the WebView2 environment", hr))
+ 			return
+@@ -267,10 +268,12 @@ func createEnvironmentWith(loader *syscall.LazyProc, userData, language, args st
+ 
+ 	// An official loader next to the executable wins.
+ 	if loader != nil {
++		openLRStartupTrace("environment-call", 0, 1)
+ 		hr := withHandler(completed, func(h uintptr) uintptr {
+ 			r, _, _ := loader.Call(0, uintptr(unsafe.Pointer(dataDir)), options, h)
+ 			return r
+ 		})
++		openLRStartupTrace("environment-return", hr, 1)
+ 		if failed(hr) {
+ 			return hresultError("CreateCoreWebView2EnvironmentWithOptions", hr)
+ 		}
+@@ -282,6 +285,7 @@ func createEnvironmentWith(loader *syscall.LazyProc, userData, language, args st
+ 	// Evergreen runtime.
+ 	dir, fixed, err := webview2.Find()
+ 	if err != nil {
++		openLRStartupTrace("environment-runtime-not-found", 0, 0)
+ 		return fmt.Errorf("mygo: %w", err)
+ 	}
+ 	client, runtimeType := webview2.ClientDLL(dir), uintptr(0)
+@@ -291,12 +295,15 @@ func createEnvironmentWith(loader *syscall.LazyProc, userData, language, args st
+ 	dll := syscall.NewLazyDLL(client)
+ 	proc := dll.NewProc("CreateWebViewEnvironmentWithOptionsInternal")
+ 	if err := proc.Find(); err != nil {
++		openLRStartupTrace("environment-runtime-entry-missing", 0, 0)
+ 		return fmt.Errorf("mygo: unsupported WebView2 Runtime at %s: %w", client, err)
+ 	}
++	openLRStartupTrace("environment-call", 0, 2)
+ 	hr := withHandler(completed, func(h uintptr) uintptr {
+ 		r, _, _ := proc.Call(1, runtimeType, uintptr(unsafe.Pointer(dataDir)), options, h)
+ 		return r
+ 	})
++	openLRStartupTrace("environment-return", hr, 2)
+ 	if failed(hr) {
+ 		return hresultError("creating the WebView2 environment", hr)
+ 	}
+diff --git a/internal/windows/webview.go b/internal/windows/webview.go
+--- a/internal/windows/webview.go
++++ b/internal/windows/webview.go
+@@ -134,7 +134,10 @@ func (w *window) createWebView() {
+ 	if fail {
+ 		testFailWebViews--
+ 	}
++	attempt := w.webViewFails + 1
++	openLRStartupTrace("controller-call", 0, attempt)
+ 	hr := withHandler(func(hr, controller uintptr) {
++		openLRStartupTrace("controller-callback", hr, openLRTraceBool(controller != 0))
+ 		// A web view in a window of native UI gets a composition
+ 		// controller, whose controller closes it.
+ 		closeController := func() {
+@@ -169,6 +172,7 @@ func (w *window) createWebView() {
+ 		}
+ 		return w.b.createController(storeOf(w.opts.DataStore), w.hwnd, false, h)
+ 	})
++	openLRStartupTrace("controller-return", hr, attempt)
+ 	if failed(hr) {
+ 		w.creationFailed(hr)
+ 	}
+@@ -193,8 +197,10 @@ func (w *window) creationFailed(hr uintptr) {
+ 
+ func (w *window) setUp(controller uintptr) {
+ 	w.controller = controller
+-	comCall(controller, ctlGetCoreWebView2, uintptr(unsafe.Pointer(&w.webview)))
+-	comCall(w.webview, wvGetSettings, uintptr(unsafe.Pointer(&w.settings)))
++	hr := comCall(controller, ctlGetCoreWebView2, uintptr(unsafe.Pointer(&w.webview)))
++	openLRStartupTrace("get-core-webview", hr, openLRTraceBool(w.webview != 0))
++	hr = comCall(w.webview, wvGetSettings, uintptr(unsafe.Pointer(&w.settings)))
++	openLRStartupTrace("get-settings", hr, openLRTraceBool(w.settings != 0))
+ 	o := w.opts
+ 	s := w.settings
+ 	comCall(s, setPutIsScriptEnabled, 1)
+@@ -235,7 +241,15 @@ func (w *window) setUp(controller uintptr) {
+ 	// when the goroutine stack moves.
+ 	var tok int64
+ 	add := func(index int, fn func(sender, args uintptr)) {
+-		withHandler(fn, func(h uintptr) uintptr { return comCall(w.webview, index, h, uintptr(unsafe.Pointer(&tok))) })
++		hr := withHandler(fn, func(h uintptr) uintptr { return comCall(w.webview, index, h, uintptr(unsafe.Pointer(&tok))) })
++		switch index {
++		case wvAddNavigationStarting:
++			openLRStartupTrace("add-navigation-starting", hr, 0)
++		case wvAddNavigationCompleted:
++			openLRStartupTrace("add-navigation-completed", hr, 0)
++		case wvAddWebResourceRequested:
++			openLRStartupTrace("add-resource-requested", hr, 0)
++		}
+ 	}
+ 	add(wvAddNavigationStarting, w.navigationStarting)
+ 	add(wvAddContentLoading, func(_, _ uintptr) { w.h.NavigationCommitted(w.URL()) })
+@@ -278,7 +292,8 @@ func (w *window) setUp(controller uintptr) {
+ 	add(wvAddWindowCloseRequested, func(_, _ uintptr) { w.h.ClosedByPage() })
+ 	add(wvAddProcessFailed, func(_, args uintptr) {
+ 		var kind int32
+-		comCall(args, procFailedGetKind, uintptr(unsafe.Pointer(&kind)))
++		hr := comCall(args, procFailedGetKind, uintptr(unsafe.Pointer(&kind)))
++		openLRStartupTrace("process-failed", hr, int(kind))
+ 		switch kind {
+ 		case 0:
+ 			w.h.RenderProcessGone("browser-exited")
+@@ -316,7 +331,9 @@ func (w *window) setUp(controller uintptr) {
+ 		w.focusWebView()
+ 	}
+ 
+-	if !w.b.holdForCookies(w) {
++	held := w.b.holdForCookies(w)
++	openLRStartupTrace("controller-setup-complete", 0, openLRTraceBool(held))
++	if !held {
+ 		w.becomeReady()
+ 	}
+ }
+@@ -327,10 +344,12 @@ func (w *window) becomeReady() {
+ 	if w.closed {
+ 		return
+ 	}
++	openLRStartupTrace("ready-entered", 0, len(w.pending))
+ 	w.ready = true
+ 	w.b.closeCookieView(w.b.cookiesOf(w.opts.DataStore))
+ 	pending := w.pending
+ 	w.pending = nil
++	openLRStartupTrace("pending-release", 0, len(pending))
+ 	for i, c := range pending {
+ 		if w.closed {
+ 			// A call closed the window: the others never run.
+@@ -343,7 +362,10 @@ func (w *window) becomeReady() {
+ }
+ 
+ func (w *window) addFilter(pattern string) {
+-	comCall(w.webview, wvAddWebResourceRequestedFilter, uintptr(unsafe.Pointer(u16(pattern))), 0) // COREWEBVIEW2_WEB_RESOURCE_CONTEXT_ALL
++	hr := comCall(w.webview, wvAddWebResourceRequestedFilter, uintptr(unsafe.Pointer(u16(pattern))), 0) // COREWEBVIEW2_WEB_RESOURCE_CONTEXT_ALL
++	if pattern == "http://mygo.localhost/*" {
++		openLRStartupTrace("add-embedded-resource-filter", hr, 0)
++	}
+ }
+ 
+ func (w *window) resizeWebView() {
+@@ -362,6 +384,11 @@ func (w *window) focusWebView() {
+ }
+ 
+ func (w *window) navigationStarting(_, args uintptr) {
++	trace := openLRTraceEnabled && !w.openLRNavigationStart
++	if trace {
++		w.openLRNavigationStart = true
++		openLRStartupTrace("navigation-starting", 0, 0)
++	}
+ 	var p uintptr
+ 	comCall(args, navStartingGetURI, uintptr(unsafe.Pointer(&p)))
+ 	uri := w.appURL(takeWstr(p))
+@@ -374,7 +401,10 @@ func (w *window) navigationStarting(_, args uintptr) {
+ 		nav.Unasked = true
+ 	}
+ 	if !w.h.WillNavigate(nav) {
+-		comCall(args, navStartingPutCancel, 1)
++		hr := comCall(args, navStartingPutCancel, 1)
++		if trace {
++			openLRStartupTrace("navigation-canceled", hr, 0)
++		}
+ 		return
+ 	}
+ 	// LoadHTML serves its document to its navigation, which may request
+@@ -412,7 +442,12 @@ func navigationKind(args uintptr) int32 {
+ func (w *window) navigationCompleted(_, args uintptr) {
+ 	w.loading = false
+ 	var ok int32
+-	comCall(args, navCompletedGetIsSuccess, uintptr(unsafe.Pointer(&ok)))
++	hr := comCall(args, navCompletedGetIsSuccess, uintptr(unsafe.Pointer(&ok)))
++	trace := openLRTraceEnabled && !w.openLRNavigationComplete
++	if trace {
++		w.openLRNavigationComplete = true
++		openLRStartupTrace("navigation-completed", hr, int(ok))
++	}
+ 	if ok != 0 {
+ 		if w.reloadAdopted {
+ 			w.reloadAdopted = false
+@@ -426,7 +461,10 @@ func (w *window) navigationCompleted(_, args uintptr) {
+ 		return
+ 	}
+ 	var status int32
+-	comCall(args, navCompletedGetWebErrorStatus, uintptr(unsafe.Pointer(&status)))
++	hr = comCall(args, navCompletedGetWebErrorStatus, uintptr(unsafe.Pointer(&status)))
++	if trace {
++		openLRStartupTrace("navigation-error-status", hr, int(status))
++	}
+ 	if status == 14 { // COREWEBVIEW2_WEB_ERROR_STATUS_OPERATION_CANCELED: another navigation
+ 		return
+ 	}
+@@ -658,9 +696,25 @@ func pageEditKey(key accelKey) bool {
+ }
+ 
+ func (w *window) LoadURL(raw string) {
++	trace := openLRTraceEnabled && !w.openLRLoadURL
++	if trace {
++		w.openLRLoadURL = true
++		// 0 = pending, 1 = ready, 2 = rejected by withWebViewOr.
++		state := openLRTraceBool(w.ready)
++		if w.closed || w.surface != nil || w.webViewErr != nil {
++			state = 2
++		}
++		openLRStartupTrace("load-url", 0, state)
++	}
+ 	w.withWebView(func() {
+ 		w.programmatic = true
+-		comCall(w.webview, wvNavigate, uintptr(unsafe.Pointer(u16(w.webURL(raw)))))
++		if trace {
++			openLRStartupTrace("navigate-call", 0, 0)
++		}
++		hr := comCall(w.webview, wvNavigate, uintptr(unsafe.Pointer(u16(w.webURL(raw)))))
++		if trace {
++			openLRStartupTrace("navigate-return", hr, 0)
++		}
+ 	})
+ }
+ 
+@@ -1173,8 +1227,17 @@ func (w *window) PrintToPDF(o platform.PDFOptions, cb func([]byte, error)) {
+ // Custom scheme requests.
+ 
+ func (w *window) resourceRequested(_, args uintptr) {
++	firstEvent := openLRTraceEnabled && !w.openLRResourceEvent
++	if firstEvent {
++		w.openLRResourceEvent = true
++		openLRStartupTrace("resource-requested", 0, 0)
++	}
+ 	var req uintptr
+-	if comCall(args, resReqGetRequest, uintptr(unsafe.Pointer(&req))) != sOK || req == 0 {
++	hr := comCall(args, resReqGetRequest, uintptr(unsafe.Pointer(&req)))
++	if firstEvent {
++		openLRStartupTrace("resource-request-interface", hr, openLRTraceBool(req != 0))
++	}
++	if hr != sOK || req == 0 {
+ 		return
+ 	}
+ 	defer release(req)
+@@ -1196,6 +1259,11 @@ func (w *window) resourceRequested(_, args uintptr) {
+ 	if target == uri {
+ 		return // not ours
+ 	}
++	trace := openLRTraceEnabled && resource == document && strings.HasPrefix(target, "mygo://") && !w.openLREmbeddedDocument
++	if trace {
++		w.openLREmbeddedDocument = true
++		openLRStartupTrace("embedded-document-request", 0, 0)
++	}
+ 	comCall(req, reqGetMethod, uintptr(unsafe.Pointer(&p)))
+ 	sreq := &platform.SchemeRequest{Method: takeWstr(p), URL: target, Header: requestHeaders(req)}
+ 	var content uintptr
+@@ -1204,13 +1272,17 @@ func (w *window) resourceRequested(_, args uintptr) {
+ 		release(content)
+ 	}
+ 	var deferral uintptr
+-	if comCall(args, resReqGetDeferral, uintptr(unsafe.Pointer(&deferral))) != sOK {
++	hr = comCall(args, resReqGetDeferral, uintptr(unsafe.Pointer(&deferral)))
++	if trace {
++		openLRStartupTrace("embedded-document-deferral", hr, openLRTraceBool(deferral != 0))
++	}
++	if hr != sOK {
+ 		return
+ 	}
+ 	addRef(args)
+ 	ctx, cancel := context.WithCancel(context.Background())
+ 	sreq.Context = ctx
+-	sreq.Responder = &schemeResponse{w: w, args: args, deferral: deferral, cancel: cancel, url: target, document: resource == document}
++	sreq.Responder = &schemeResponse{w: w, args: args, deferral: deferral, cancel: cancel, url: target, document: resource == document, openLRTrace: trace}
+ 	w.h.SchemeRequest(sreq)
+ }
+ 
+@@ -1245,6 +1317,13 @@ func requestHeaders(req uintptr) http.Header {
+ // respond answers a WebResourceRequested event; deferral is 0 for a
+ // synchronous answer.
+ func (w *window) respond(args, deferral uintptr, status int, header http.Header, body []byte) {
++	w.respondTraced(args, deferral, status, header, body, false)
++}
++
++func (w *window) respondTraced(args, deferral uintptr, status int, header http.Header, body []byte, trace bool) {
++	if trace {
++		openLRStartupTrace("embedded-response-call", 0, status)
++	}
+ 	var raw strings.Builder
+ 	for k, vs := range header {
+ 		for _, v := range vs {
+@@ -1255,28 +1334,38 @@ func (w *window) respond(args, deferral uintptr, status int, header http.Header,
+ 	var resp uintptr
+ 	hr := comCall(w.b.env, envCreateWebResourceResponse, stream, uintptr(status),
+ 		uintptr(unsafe.Pointer(u16(http.StatusText(status)))), uintptr(unsafe.Pointer(u16(raw.String()))), uintptr(unsafe.Pointer(&resp)))
++	if trace {
++		openLRStartupTrace("embedded-response-created", hr, openLRTraceBool(resp != 0))
++	}
+ 	release(stream)
+ 	if !failed(hr) && resp != 0 {
+-		comCall(args, resReqPutResponse, resp)
++		hr := comCall(args, resReqPutResponse, resp)
++		if trace {
++			openLRStartupTrace("embedded-response-set", hr, 0)
++		}
+ 		release(resp)
+ 	}
+ 	if deferral != 0 {
+-		comCall(deferral, deferralComplete)
++		hr := comCall(deferral, deferralComplete)
++		if trace {
++			openLRStartupTrace("embedded-response-complete", hr, 0)
++		}
+ 	}
+ }
+ 
+ // schemeResponse buffers a response: WebView2 wants it whole.
+ type schemeResponse struct {
+-	w        *window
+-	args     uintptr
+-	deferral uintptr
+-	cancel   context.CancelFunc
+-	url      string
+-	document bool // a page loads, rather than a resource of one
+-	status   int
+-	header   http.Header
+-	body     bytes.Buffer
+-	done     bool
++	w           *window
++	args        uintptr
++	deferral    uintptr
++	cancel      context.CancelFunc
++	url         string
++	document    bool // a page loads, rather than a resource of one
++	openLRTrace bool
++	status      int
++	header      http.Header
++	body        bytes.Buffer
++	done        bool
+ }
+ 
+ func (r *schemeResponse) Respond(status int, header map[string][]string) {
+@@ -1303,13 +1392,13 @@ func (r *schemeResponse) Finish() {
+ 	if r.document && r.status < 300 && isDownload(r.header) && !r.w.closed {
+ 		// WebView2 does not download what it gets from here: the page
+ 		// stays, and the app serves the URL again into a download.
+-		r.w.respond(r.args, r.deferral, http.StatusNoContent, nil, nil)
++		r.w.respondTraced(r.args, r.deferral, http.StatusNoContent, nil, nil, r.openLRTrace)
+ 		r.w.h.SchemeDownload(r.url)
+ 		r.release()
+ 		return
+ 	}
+ 	if !r.w.closed {
+-		r.w.respond(r.args, r.deferral, r.status, r.header, r.body.Bytes())
++		r.w.respondTraced(r.args, r.deferral, r.status, r.header, r.body.Bytes(), r.openLRTrace)
+ 	} else {
+ 		comCall(r.deferral, deferralComplete)
+ 	}
+@@ -1322,7 +1411,7 @@ func (r *schemeResponse) Fail(err error) {
+ 	}
+ 	r.done = true
+ 	if !r.w.closed {
+-		r.w.respond(r.args, r.deferral, http.StatusBadGateway, http.Header{"Content-Type": {"text/plain; charset=utf-8"}}, []byte(err.Error()))
++		r.w.respondTraced(r.args, r.deferral, http.StatusBadGateway, http.Header{"Content-Type": {"text/plain; charset=utf-8"}}, []byte(err.Error()), r.openLRTrace)
+ 	} else {
+ 		comCall(r.deferral, deferralComplete)
+ 	}
+diff --git a/internal/windows/window.go b/internal/windows/window.go
+--- a/internal/windows/window.go
++++ b/internal/windows/window.go
+@@ -26,13 +26,15 @@ type window struct {
+ 	// The WebView2 controller is created asynchronously; calls that need
+ 	// it wait in pending until it exists, or fail with webViewErr, why it
+ 	// could not be created.
+-	controller   uintptr // ICoreWebView2Controller
+-	webview      uintptr // ICoreWebView2
+-	settings     uintptr // ICoreWebView2Settings
+-	ready        bool
+-	pending      []pendingCall
+-	webViewErr   error
+-	webViewFails int // creations that failed
++	controller                                                     uintptr // ICoreWebView2Controller
++	webview                                                        uintptr // ICoreWebView2
++	settings                                                       uintptr // ICoreWebView2Settings
++	ready                                                          bool
++	pending                                                        []pendingCall
++	webViewErr                                                     error
++	webViewFails                                                   int // creations that failed
++	openLRLoadURL, openLRNavigationStart, openLRNavigationComplete bool
++	openLRResourceEvent, openLREmbeddedDocument                    bool
+ 	// scriptIDs are the ids of the scripts added to every document, which
+ 	// SetUserScripts removes; scriptGen counts the replacements, so an id
+ 	// that arrives after one is removed at once.
+diff --git a/internal/windows/openlr_startup_trace.go b/internal/windows/openlr_startup_trace.go
+new file mode 100644
+--- /dev/null
++++ b/internal/windows/openlr_startup_trace.go
+@@ -0,0 +1,57 @@
++//go:build windows && (amd64 || arm64)
++
++package windows
++
++import (
++	"fmt"
++	"os"
++	"sync/atomic"
++	"time"
++)
++
++var (
++	openLRTraceEnabled = os.Getenv("OPENLR_DIAGNOSTICS") == "1"
++	openLRTraceStarted = time.Now()
++	openLRTraceQueue   = make(chan openLRTraceEntry, 64)
++	openLRTraceDropped atomic.Uint64
++)
++
++type openLRTraceEntry struct {
++	stage   string
++	elapsed int64
++	hr      uint32
++	detail  int
++}
++
++func init() {
++	if !openLRTraceEnabled {
++		return
++	}
++	go func() {
++		for entry := range openLRTraceQueue {
++			fmt.Fprintf(os.Stderr, "OpenLR WebView2 startup stage=%s elapsed_ms=%d hr=0x%08x detail=%d dropped=%d\n",
++				entry.stage, entry.elapsed, entry.hr, entry.detail, openLRTraceDropped.Load())
++		}
++	}()
++}
++
++// Callers use fixed stage names and numbers only. Never wait for diagnostic
++// output on the UI thread or make a COM call solely to enrich a trace.
++func openLRStartupTrace(stage string, hr uintptr, detail int) {
++	if !openLRTraceEnabled {
++		return
++	}
++	entry := openLRTraceEntry{stage, time.Since(openLRTraceStarted).Milliseconds(), uint32(hr), detail}
++	select {
++	case openLRTraceQueue <- entry:
++	default:
++		openLRTraceDropped.Add(1)
++	}
++}
++
++func openLRTraceBool(value bool) int {
++	if value {
++		return 1
++	}
++	return 0
++}

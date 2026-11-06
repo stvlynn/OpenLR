@@ -7,9 +7,11 @@ import (
 	"errors"
 	"io/fs"
 	"log"
+	"math"
 	"mime"
 	"os"
 	"path/filepath"
+	"strconv"
 	"sync/atomic"
 
 	"github.com/egoist/mygo"
@@ -38,8 +40,9 @@ type VideoProbe struct {
 }
 
 type probeFixture struct {
-	Candidate string `json:"candidate"`
-	Encoded   string `json:"encoded"`
+	Candidate string   `json:"candidate"`
+	Encoded   string   `json:"encoded"`
+	DelayMS   *float64 `json:"delayMs,omitempty"`
 }
 
 func probeStage(stage string) { log.Print("Video origin probe: ", stage) }
@@ -75,15 +78,28 @@ func (p *VideoProbe) Finish(report string) error {
 func main() {
 	log.SetFlags(0)
 	probeStage("host-start")
-	if len(os.Args) != 5 {
+	if len(os.Args) < 5 || len(os.Args) > 6 {
 		log.Fatal("Pass the frontend directory, generated video, private report destination, and candidate")
 	}
 	candidate := os.Args[4]
 	switch candidate {
 	case "direct", "poster", "anonymous", "decoded",
-		"clock-detached", "clock-attached", "clock-frame-stream", "clock-restore":
+		"clock-detached", "clock-attached", "clock-frame-stream", "clock-restore", "clock-delay":
 	default:
 		log.Fatal("Invalid video origin probe candidate")
+	}
+	var delay *float64
+	if candidate == "clock-delay" {
+		if len(os.Args) != 6 {
+			log.Fatal("The clock-delay candidate needs a measured frame-read interval")
+		}
+		milliseconds, err := strconv.ParseFloat(os.Args[5], 64)
+		if err != nil || math.IsNaN(milliseconds) || milliseconds < 0 || milliseconds > 15000 {
+			log.Fatal("Invalid frame-read interval")
+		}
+		delay = &milliseconds
+	} else if len(os.Args) != 5 {
+		log.Fatal("Only the clock-delay candidate accepts a frame-read interval")
 	}
 	bytes, err := os.ReadFile(os.Args[2])
 	if err != nil {
@@ -96,7 +112,7 @@ func main() {
 	}
 	mygo.SetFrontend(probeFrontend{workspace: os.DirFS(os.Args[1])})
 	probe := &VideoProbe{
-		fixture: probeFixture{Candidate: candidate, Encoded: base64.StdEncoding.EncodeToString(bytes)},
+		fixture: probeFixture{Candidate: candidate, Encoded: base64.StdEncoding.EncodeToString(bytes), DelayMS: delay},
 		report:  os.Args[3],
 	}
 	profile := filepath.Dir(probe.report)
