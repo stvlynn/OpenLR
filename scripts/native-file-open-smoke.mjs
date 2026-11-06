@@ -63,7 +63,8 @@ await withNativeWorkspace(
       for (;;) {
         const state = await call('state')
         const photo = state.photos.find(({ id }) => id === state.selected)
-        if (state.mode === 'detail' && photo?.name === name && state.photos.length === count) return photo
+        const sameName = mac ? photo?.name.normalize() === name.normalize() : photo?.name === name
+        if (state.mode === 'detail' && sameName && state.photos.length === count) return photo
         if (Date.now() > deadline)
           assert.fail(
             `Expected ${name} in Detail with ${count} photos, saw ${state.mode} and ${state.photos.map(({ name }) => name).join(', ')}`
