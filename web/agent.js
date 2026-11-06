@@ -2,6 +2,7 @@ import { run, commands } from './app.js'
 import { schema, searchCommands, validateArgs } from './agent-protocol.js'
 
 import { decodeFile, encodeBlob } from './transfer.js'
+import { beginNativeVideoImportTrace, markNativeVideoImport } from './video-import-diagnostics.js'
 
 // All GUI and agent mutations use app.run's same serialized, persisted command queue.
 export async function dispatch(command, args = {}, capture = false) {
@@ -72,9 +73,12 @@ async function serveNative(pollMethod, lane) {
       const request = await call(pollMethod)
       if (!request) continue
       globalThis.openlrStartupMilestone?.(lane + '-renderer-received')
+      const videoImportStarted = beginNativeVideoImportTrace(request)
       const reply = await dispatch(request.command, request.args ?? {}, request.capture)
       globalThis.openlrStartupMilestone?.(lane + '-dispatch-finished')
+      markNativeVideoImport(videoImportStarted, 'renderer-dispatched')
       await call('Desktop.AgentReply', request.id, JSON.stringify(reply))
+      markNativeVideoImport(videoImportStarted, 'renderer-replied')
     } catch (error) {
       document.documentElement.dataset.agent = 'disconnected'
       console.error('OpenLR agent bridge:', error)

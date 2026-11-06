@@ -2,6 +2,11 @@ import { renderPrepared as render } from './render.js'
 import { geometry } from './geometry.js'
 import { applyWatermark } from './export-options.js'
 import { executeAudioExport, planAudioExport } from './audio-export.js'
+import {
+  markVideoImport,
+  observeVideoImportMedia,
+  recordVideoImportState
+} from './video-import-diagnostics.js'
 export const isVideo = (asset) =>
   Boolean(
     asset &&
@@ -28,15 +33,6 @@ function waitForMedia(video, event, action) {
     action()
   })
 }
-function recordMediaState(diagnostic, video) {
-  if (!diagnostic) return
-  diagnostic.readyState = video.readyState
-  diagnostic.networkState = video.networkState
-  diagnostic.width = video.videoWidth
-  diagnostic.height = video.videoHeight
-  diagnostic.mediaErrorCode = video.error?.code ?? null
-}
-
 function nativeVideoPixelsReadable(video) {
   const canvas = document.createElement('canvas')
   canvas.width = canvas.height = 1
@@ -52,13 +48,10 @@ function nativeVideoPixelsReadable(video) {
 }
 
 export async function openVideo(file, diagnostic) {
-  if (diagnostic) diagnostic.stage = 'media-load'
+  markVideoImport(diagnostic, 'media-load')
   const url = URL.createObjectURL(file),
     video = document.createElement('video')
-  if (diagnostic) {
-    const origin = new URL(url).origin
-    diagnostic.blobOrigin = origin === 'null' ? 'opaque' : origin === location.origin ? 'same' : 'different'
-  }
+  const stopObserving = observeVideoImportMedia(diagnostic, video, url)
   video.preload = 'auto'
   video.playsInline = true
   video.muted = true
@@ -67,6 +60,7 @@ export async function openVideo(file, diagnostic) {
   const close = () => {
     if (closed) return
     closed = true
+    stopObserving?.()
     frameSource?.then(
       (source) => source?.close(),
       () => {}
@@ -80,7 +74,7 @@ export async function openVideo(file, diagnostic) {
     await waitForMedia(video, 'loadeddata', () => {
       video.src = url
     })
-    if (diagnostic) diagnostic.stage = 'media-duration'
+    markVideoImport(diagnostic, 'media-duration', video)
     video.width = video.videoWidth
     video.height = video.videoHeight
     let duration = video.duration
@@ -97,9 +91,9 @@ export async function openVideo(file, diagnostic) {
     async function frames() {
       if (closed) throw new DOMException('The video is closed', 'AbortError')
       frameSource ??= (async () => {
-        if (diagnostic) diagnostic.stage = 'frame-access'
+        markVideoImport(diagnostic, 'frame-access', video)
         if (nativeVideoPixelsReadable(video)) return null
-        if (diagnostic) diagnostic.stage = 'frame-decode'
+        markVideoImport(diagnostic, 'frame-decode')
         const { decodeVideoFrames } = await import('./video-frames.js')
         return decodeVideoFrames(file)
       })()
@@ -116,6 +110,7 @@ export async function openVideo(file, diagnostic) {
     }
     async function frameAt(time = video.currentTime) {
       const source = await frames()
+      markVideoImport(diagnostic, 'frame-read', video)
       return source ? source.at(time) : video
     }
     return {
@@ -144,7 +139,7 @@ export async function openVideo(file, diagnostic) {
       }
     }
   } catch (err) {
-    recordMediaState(diagnostic, video)
+    recordVideoImportState(diagnostic, video)
     close()
     throw err
   }
@@ -152,9 +147,8 @@ export async function openVideo(file, diagnostic) {
 export async function poster(file, diagnostic) {
   const media = await openVideo(file, diagnostic)
   try {
-    recordMediaState(diagnostic, media.video)
     const frame = await media.frameAt()
-    if (diagnostic) diagnostic.stage = 'poster-bitmap'
+    markVideoImport(diagnostic, 'poster-bitmap', media.video)
     return { bitmap: await createImageBitmap(frame), duration: media.duration }
   } finally {
     media.close()

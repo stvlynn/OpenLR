@@ -2,6 +2,14 @@
 
 对照目标为本机 Adobe Lightroom 9.4 云桌面版。REA 证据来自可执行文件及其资源；登录后的 Windows 运行观察已核对裁剪、蒙版入口及导出设置，见 [运行记录](../research/lightroom.md#登录后的-windows-运行观察)。当前仍未建立全部功能逐屏、逐像素的 Adobe 对照。静态入口、独立实现及实际通过的测试分别记录。
 
+## 局部草稿与拉直参考点 — 2026-11-06
+
+Brush、Linear、Radial、Clone、Heal 的临时覆盖层，以及拉直工具的第一参考点，现在由 GUI／CLI 共用命令处理。完整 Windows／Node 24.9／Chrome 156.0.8078.80 `OPENLR_TEST_CMS=1 OPENLR_TEST_METADATA=1 npm test` **453/453，零失败、零跳过**，约 295.3 秒。局部测试覆盖实际透明 PNG、原图／配方不变、提交与一次撤销、两个队列顺序、五种工具及裁剪／旋转／翻转。拉直测试覆盖首次观察、过期参考、正确坐标和第二点提交。见[局部草稿研究](../research/local-stroke-drafts.md)与[拉直命令](optics-geometry.md)。
+
+新 Windows 包通过 `native-local-tools-smoke.mjs`、`native-optics-smoke.mjs`、`native-video-smoke.mjs`。局部覆盖层在 Original／Linear 两种处理版本均核对实际样本和透明外部；拉直首次点通过 `watch` 实际观察，第二点形成 -14.0362434679° 校正；视频实际导入、播放、暂停、保存帧、旋转剪辑 VP9／Opus 输出及原件保持通过。安装包已生成、未执行安装。日志为忽略目录 `.workspace/local-drafts-{full,build,native-tools,native-optics,native-video}.log`。
+
+前一版本 `ffb5bff` 的 [Actions 42183466413](https://github.com/stvlynn/OpenLR/actions/runs/42183466413) 中，Windows 和 Intel macOS 作业成功，Windows 浏览器为 439/447、8 项可选资源跳过；ARM macOS 已通过调整草稿和深度工具，却在视频导入等待 30 秒后失败，宿主和控制／UI 通道仍响应。本轮新增仅在诊断模式启用的阶段与媒体事件记录，没有改动超时、重试或导入结果。三个诊断相关 Chrome 测试通过，包括故意保留真实 loadeddata 回调和永不完成的诊断通道。ARM 根因仍待新的运行证据；Linux 的同次作业在最后核查时仍停留于依赖安装。见[原生视频调查](../research/native-video.md)。
+
 ## 共享调整草稿 — 2026-11-06
 
 滑块、点曲线和颜色分级的 GUI／CLI 现在共用未保存预览、取消和提交。Windows／Node 24.9／Chrome 156.0.8078.80 的完整 `OPENLR_TEST_CMS=1 OPENLR_TEST_METADATA=1 npm test` 通过 **447/447，零失败、零跳过**，耗时约 301.3 秒。十项草稿专项覆盖实际画布 PNG、保存前后参数与历史、两个处理版本、真实鼠标、过期结果、存储失败回滚及已排队取消／替换先于鼠标释放的六种竞态。比较按钮的状态随退出原图预览同步。见[设计与失败先行证据](../research/adjustment-drafts.md)。

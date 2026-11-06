@@ -2,6 +2,8 @@
 
 ## Current requirement audit — 2026-11-06
 
+Subsequent bounded transient-interaction review identified new local-stroke coverage/path previews and the first straighten reference point. Both now use shared commands, live state and existing render/save owners. The final local suite passed 453/453 with zero skips; the rebuilt Windows local-tools, optics and video smokes passed. The `ffb5bff` hosted matrix passed Windows and Intel macOS, but ARM video import timed out while the host/control/UI remained responsive. Added opt-in phase diagnostics are not a root-cause fix. Current completion work is final-revision hosted acceptance and investigation of that failure, not the already-closed command gaps. [Latest acceptance](../docs/acceptance.md#局部草稿与拉直参考点--2026-11-06) · [Local draft evidence](local-stroke-drafts.md) · [Video investigation](native-video.md)
+
 The user changed delivery to a **public** repository, confirmed from repository metadata. The `9c8a08a` production matrix finished successfully on Windows, Linux, ARM macOS and Intel macOS. The earlier ordinary ARM suite at `07ce383` lost its depth host to `SIGTRAP`. Both debugger-assisted depth runs completed, and the trap did not recur in the later ordinary ARM run. Its cause remains unresolved. [Terminal production matrix](https://github.com/stvlynn/OpenLR/actions/runs/42176496339) · [ARM exit and debugger evidence](native-startup.md#post-readiness-disconnect-during-macos-depth-verification)
 
 | Requirement | Current evidence | Remaining completion work |

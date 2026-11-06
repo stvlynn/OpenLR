@@ -175,7 +175,7 @@ test('video trim, grading, playback and export preserve the audio track and sele
   assert.ok(Math.abs(result.playback.time - 0.4) < 0.025)
 })
 
-test('opt-in video import diagnostics distinguish bitmap and thumbnail failures without changing the result', async (t) => {
+test('opt-in video import diagnostics report pending media and preserve success or the original failure', async (t) => {
   const server = await serveWorkspace()
   t.after(server.close)
   const browser = await chromium.launch({ channel: process.env.CHROME_CHANNEL || 'chrome' })
@@ -203,11 +203,13 @@ test('opt-in video import diagnostics distinguish bitmap and thumbnail failures 
       diagnosticCalls = [],
       bitmap = globalThis.createImageBitmap,
       toDataURL = HTMLCanvasElement.prototype.toDataURL
-    let diagnosticBehavior
+    let diagnosticBehavior, onLoadedData
     globalThis.mygo = {
       call(method, value) {
         if (method !== 'Desktop.VideoImportDiagnostic') return Promise.resolve()
-        diagnosticCalls.push(JSON.parse(value))
+        const record = JSON.parse(value)
+        diagnosticCalls.push(record)
+        if (record.event === 'loadeddata') onLoadedData?.(record.sequence)
         if (diagnosticBehavior === 'throw') throw Error('Diagnostic call threw')
         if (diagnosticBehavior === 'reject') return Promise.reject(Error('Diagnostic call rejected'))
         if (diagnosticBehavior === 'pending') return new Promise(() => {})
@@ -244,14 +246,70 @@ test('opt-in video import diagnostics distinguish bitmap and thumbnail failures 
           clearTimeout(timeout)
         }
       }
+      const photos = (await window.openlr.run('state')).photos
+      HTMLCanvasElement.prototype.toDataURL = toDataURL
+      const addEventListener = HTMLMediaElement.prototype.addEventListener
+      let release,
+        settled = false,
+        deadline
+      // Hold the application's awaited callback while the real loadeddata event
+      // still reaches the independent diagnostic listener.
+      HTMLMediaElement.prototype.addEventListener = function (event, listener, options) {
+        if (event === 'loadeddata' && options === undefined) {
+          release = () => listener.call(this)
+          return
+        }
+        return addEventListener.call(this, event, listener, options)
+      }
+      let suspended, successful
+      try {
+        const observed = new Promise((resolve) => (onLoadedData = resolve))
+        const loading = imported().then((value) => {
+          settled = true
+          return value
+        })
+        const timeout = new Promise((_, reject) => {
+          deadline = setTimeout(
+            () => reject(Error('Expected actual Chrome loadeddata and completed import')),
+            3000
+          )
+        })
+        const sequence = await Promise.race([observed, timeout])
+        suspended = {
+          settled,
+          records: diagnosticCalls.filter((record) => record.sequence === sequence)
+        }
+        release()
+        successful = await Promise.race([loading, timeout])
+      } finally {
+        clearTimeout(deadline)
+        onLoadedData = undefined
+        delete HTMLMediaElement.prototype.addEventListener
+      }
+      const offset = diagnosticCalls.length
+      const { beginNativeVideoImportTrace, markNativeVideoImport } =
+        await import('./video-import-diagnostics.js')
+      for (const [command, files] of [
+        ['import', []],
+        ['import', [{ type: 'image/png' }, null, { type: 42 }]],
+        ['state', [{ type: 'video/webm' }]],
+        ['import', [{ type: 'video/webm', name: 'private-clip.webm', base64: 'private-bytes' }]]
+      ]) {
+        const started = beginNativeVideoImportTrace({ command, args: { files } })
+        markNativeVideoImport(started, 'renderer-dispatched')
+        markNativeVideoImport(started, 'renderer-replied')
+      }
       return {
         optedOut,
         optedOutCalls,
         bitmapFailure,
         thumbnailFailure,
         reportFailures,
-        diagnosticCalls,
-        photos: (await window.openlr.run('state')).photos
+        diagnosticCalls: diagnosticCalls.slice(0, offset),
+        bridgeRecords: diagnosticCalls.slice(offset),
+        photos,
+        suspended,
+        successful
       }
     } finally {
       delete globalThis.openlrDiagnostics
@@ -270,11 +328,25 @@ test('opt-in video import diagnostics distinguish bitmap and thumbnail failures 
   ])
   assert.deepEqual(result.reportFailures, Array(3).fill(result.thumbnailFailure))
   assert.deepEqual(result.photos, [])
+  assert.deepEqual(result.successful.failed, [])
+  assert.equal(result.successful.added.length, 1)
+  assert.equal(result.suspended.settled, false)
+  const pendingPhases = result.suspended.records.filter(({ event }) => !event).map(({ stage }) => stage)
+  assert.deepEqual(pendingPhases, ['input', 'media-load'])
+  assert.ok(
+    result.suspended.records.some(({ event, readyState }) => event === 'loadeddata' && readyState >= 2)
+  )
   assert.deepEqual(
-    result.diagnosticCalls.map(({ stage }) => stage),
+    result.bridgeRecords.map(({ stage }) => stage),
+    ['renderer-received', 'renderer-dispatched', 'renderer-replied']
+  )
+  assert.ok(result.bridgeRecords.every((record) => Object.keys(record).sort().join() === 'elapsedMs,stage'))
+  const failures = result.diagnosticCalls.filter(({ errorName }) => errorName)
+  assert.deepEqual(
+    failures.map(({ stage }) => stage),
     ['poster-bitmap', ...Array(4).fill('thumbnail-encode')]
   )
-  for (const diagnostic of result.diagnosticCalls) {
+  for (const diagnostic of failures) {
     assert.equal(diagnostic.errorName, 'SecurityError')
     assert.equal(diagnostic.declaredVideoType, true)
     assert.equal(diagnostic.secureContext, true)
@@ -285,5 +357,40 @@ test('opt-in video import diagnostics distinguish bitmap and thumbnail failures 
     assert.equal(typeof diagnostic.videoDecoder, 'boolean')
     assert.equal(typeof diagnostic.audioEncoder, 'boolean')
   }
-  assert.doesNotMatch(JSON.stringify(result.diagnosticCalls), /private|https?:|blob:/i)
+  const groups = Map.groupBy(result.diagnosticCalls, ({ sequence }) => sequence)
+  assert.equal(groups.size, 6)
+  for (const records of groups.values()) {
+    const phases = records.filter(({ event, errorName }) => !event && !errorName).map(({ stage }) => stage)
+    const events = records.flatMap(({ event }) => (event ? [event] : []))
+    assert.equal(new Set(phases).size, phases.length)
+    assert.equal(new Set(events).size, events.length)
+    assert.ok(
+      events.every((event) =>
+        ['loadstart', 'loadedmetadata', 'loadeddata', 'stalled', 'suspend', 'error'].includes(event)
+      )
+    )
+    assert.ok(records.every(({ elapsedMs }) => Number.isSafeInteger(elapsedMs) && elapsedMs >= 0))
+    assert.ok(records.length <= 19)
+  }
+  const last = [...groups.values()]
+    .at(-1)
+    .filter(({ event }) => !event)
+    .map(({ stage }) => stage)
+  assert.deepEqual(last, [
+    'input',
+    'media-load',
+    'media-duration',
+    'frame-access',
+    'frame-read',
+    'poster-bitmap',
+    'photo-record',
+    'thumbnail-render',
+    'thumbnail-encode',
+    'catalog-write',
+    'catalog-written'
+  ])
+  assert.doesNotMatch(
+    JSON.stringify([result.diagnosticCalls, result.bridgeRecords]),
+    /private|https?:|blob:/i
+  )
 })
