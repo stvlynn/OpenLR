@@ -1,4 +1,4 @@
-name: Apple Silicon VP9 player lifecycle comparison
+name: Apple Silicon production VP9 seek verification
 on:
   workflow_dispatch:
     inputs:
@@ -19,7 +19,7 @@ jobs:
       - name: Retrieve the production revision
         uses: actions/checkout@v5
         with:
-          ref: 6715e0e25e4ab57bc5430fa983f18035019eec8d
+          ref: 77412e50525b2a4bd5199248c15885a32372372c
           path: production
       - uses: actions/setup-node@v5
         with:
@@ -32,36 +32,6 @@ jobs:
         run: |
           npm ci
           node scripts/desktop.mjs build -o build/video-poster -platform darwin/universal
-      - name: Build the player handoff candidate
-        working-directory: production
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          import subprocess
-
-          source = Path('web/app.js')
-          original = source.read_bytes()
-          marker = b'      if (video) {\n        media = await openVideo(data.file, undefined, seekTrace)\n'
-          replacement = b'''      if (video) {
-                  if (playingMedia) {
-                    stopPlayback()
-                    playingMedia.close()
-                    playingMedia = null
-                    bitmap?.close?.()
-                    bitmap = null
-                    bitmapId = ''
-                    markVideoSeek(seekTrace, 'source-previous-closed')
-                  }
-                  media = await openVideo(data.file, undefined, seekTrace)
-          '''
-          if original.count(marker) != 1:
-              raise RuntimeError('Expected one video source handoff')
-          try:
-              source.write_bytes(original.replace(marker, replacement))
-              subprocess.run(['node', 'scripts/desktop.mjs', 'build', '-o', 'build/video-handoff', '-platform', 'darwin/universal'], check=True)
-          finally:
-              source.write_bytes(original)
-          PY
       - name: Provision independent fixture tools
         run: command -v ffmpeg && command -v ffprobe || brew install ffmpeg
       - name: Retrieve the exact previous media samples
@@ -71,17 +41,16 @@ jobs:
           path: build/prior-poster-formats
           run-id: 42291957159
           github-token: ${{ github.token }}
-      - name: Compare native seeks under both player handoff orders
+      - name: Verify production handoffs and repeat failed seeks
         shell: bash
         run: |
           mkdir -p build/video-poster-trials
           cp build/prior-poster-formats/{vp9,vp9-709,vp9-remux,vp9-remux-709}.webm build/video-poster-trials/
           node scripts/native-video-poster-formats.mjs \
             production/build/video-poster/darwin-universal/OpenLR.app/Contents/MacOS/OpenLR \
-            production/build/video-handoff/darwin-universal/OpenLR.app/Contents/MacOS/OpenLR \
             build/video-poster-trials 2>&1 | tee build/video-poster-trials/workflow.log
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: video-vp9-handoff-macos-15
+          name: video-vp9-production-macos-15
           path: build/video-poster-trials

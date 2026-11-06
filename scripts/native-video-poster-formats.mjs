@@ -6,9 +6,8 @@ import { setTimeout as delay } from 'node:timers/promises'
 import { readPng } from '../web/png.js'
 import { withNativeWorkspace } from './native-workspace.mjs'
 
-const [control, candidate, directory] = process.argv.slice(2)
-if (!control || !candidate || !directory)
-  throw Error('Pass both packaged applications and the report directory')
+const [app, directory] = process.argv.slice(2)
+if (!app || !directory) throw Error('Pass the packaged application and report directory')
 const destination = path.resolve(directory)
 const ff = (tool, ...args) => execFileSync(tool, args, { stdio: ['ignore', 'pipe', 'inherit'] })
 const variants = [
@@ -160,17 +159,35 @@ async function verify(label, app, order) {
         const bytes = await readFile(file)
         assert.deepEqual(await readFile(original.path), bytes)
         record.originalBytes = bytes.length
-        try {
-          const { playback } = await call('video-seek', '--time', '0.25')
-          record.firstSeek = playback?.time
-          const preview = await call('preview', '--output', path.join(root, 'preview-' + name + '.png'))
-          const display = readPng(await readFile(preview.path))
-          const center = (Math.floor(display.height / 2) * display.width + Math.floor(display.width / 2)) * 4
-          record.detailColor = Array.from(display.data.subarray(center, center + 3), (value) =>
-            Math.round(value * 255)
-          )
-        } catch (error) {
-          record.seekError = error.message
+        record.attempts = []
+        for (const attempt of ['first', 'repeat']) {
+          const outcome = { attempt }
+          record.attempts.push(outcome)
+          const seekStarted = performance.now()
+          try {
+            const { playback } = await call('video-seek', '--time', '0.25')
+            outcome.time = playback?.time
+          } catch (error) {
+            outcome.seekError = error.message
+          }
+          outcome.elapsedMs = Math.round(performance.now() - seekStarted)
+          if (outcome.seekError) {
+            const { selected, playback } = await call('state')
+            outcome.state = { selected: selected === id, playback }
+            continue
+          }
+          try {
+            const preview = await call('preview', '--output', path.join(root, 'preview-' + name + '.png'))
+            const display = readPng(await readFile(preview.path))
+            const center =
+              (Math.floor(display.height / 2) * display.width + Math.floor(display.width / 2)) * 4
+            outcome.detailColor = Array.from(display.data.subarray(center, center + 3), (value) =>
+              Math.round(value * 255)
+            )
+          } catch (error) {
+            outcome.previewError = error.message
+          }
+          break
         }
       }
     },
@@ -184,19 +201,13 @@ const results = {
   arch: process.arch,
   sweeps: []
 }
-// Keep both arms balanced across run order and each source's position in a fresh workspace.
-for (const [arm, app, start] of [
-  ['release-first', candidate, 0],
-  ['control', control, 0],
-  ['control', control, 2],
-  ['release-first', candidate, 2]
-]) {
-  for (let index = start; index < start + 2; index++) {
-    const order = fixtures.slice(index).concat(fixtures.slice(0, index))
-    const records = await verify(`${arm}-${index + 1}`, app, order)
-    results.sweeps.push({ arm, index, records })
-    await writeFile(path.join(destination, 'report.json'), JSON.stringify(results, null, 2))
-  }
+// Give each source each position twice, with an empty catalog for every sweep.
+for (let index = 0; index < fixtures.length * 2; index++) {
+  const start = index % fixtures.length
+  const order = fixtures.slice(start).concat(fixtures.slice(0, start))
+  const records = await verify(`production-${index + 1}`, app, order)
+  results.sweeps.push({ index, records })
+  await writeFile(path.join(destination, 'report.json'), JSON.stringify(results, null, 2))
 }
 console.log(JSON.stringify(results))
 for (const record of results.sweeps.flatMap(({ records }) => records)) {
@@ -205,5 +216,7 @@ for (const record of results.sweeps.flatMap(({ records }) => records)) {
   assert.ok(Math.abs(record.catalogDuration - record.duration) < 0.06, record.name + ' duration')
   assert.ok(record.posterPixels >= 700, record.name + ' first frame thumbnail')
   assert.ok(record.laterColorPixels < 200, record.name + ' later frame in thumbnail')
-  assert.ok(Math.abs(record.firstSeek - 0.25) < 0.03, record.name + ' native seek')
+  const first = record.attempts[0]
+  assert.ok(Math.abs(first.time - 0.25) < 0.03, record.name + ' native seek')
+  assert.ok(first.detailColor?.[0] > 130, record.name + ' Detail frame')
 }
