@@ -74,6 +74,57 @@ export async function inspectNativeStartup({
   return result
 }
 
+// Keep inherited startup milestones visible on the same host after the
+// initial request has already failed. This observation never sends a command.
+export async function reportNativeStartupFailure(
+  { host, exited, startedAt, requestAt, observeLateStartup, ...probe },
+  { platform = process.platform, now = () => performance.now(), wait = delay } = {}
+) {
+  try {
+    const diagnostic = await inspectNativeStartup({ host, startedAt, requestAt, ...probe })
+    console.error('Native startup diagnostics: ' + JSON.stringify(diagnostic))
+    if (
+      !observeLateStartup ||
+      platform !== 'win32' ||
+      requestAt === undefined ||
+      !diagnostic.session?.matchesHost ||
+      !diagnostic.health?.ok ||
+      diagnostic.control?.replied ||
+      host.exitCode !== null ||
+      host.signalCode
+    )
+      return
+
+    const throughMs = 45_000
+    const elapsedMs = () => Math.round(now() - startedAt)
+    const remaining = throughMs - (now() - startedAt)
+    if (remaining <= 0) return
+    const observation = (status) =>
+      console.error(
+        'Native startup passive observation: ' +
+          JSON.stringify({
+            status,
+            elapsedMs: elapsedMs(),
+            throughMs,
+            ...(status === 'child-exit' && { exitCode: host.exitCode, signal: host.signalCode })
+          })
+      )
+    const timer = new AbortController()
+    try {
+      observation('waiting')
+      const status = await Promise.race([
+        exited.then(() => 'child-exit'),
+        wait(remaining, 'launch-horizon', { ref: false, signal: timer.signal })
+      ])
+      observation(status)
+    } finally {
+      timer.abort()
+    }
+  } catch {
+    console.error('Native startup diagnostics unavailable')
+  }
+}
+
 function identifier(value, pattern) {
   return typeof value === 'string' && pattern.test(value) ? value : undefined
 }

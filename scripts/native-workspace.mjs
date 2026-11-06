@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import { execute, parse } from '../cli/openlr.mjs'
-import { inspectNativeRuntime, inspectNativeStartup } from './native-startup-diagnostics.mjs'
+import { inspectNativeRuntime, reportNativeStartupFailure } from './native-startup-diagnostics.mjs'
 
 // Isolated native test lifecycle, shared by workflows that need their own GUI.
 export async function withNativeWorkspace(
@@ -81,12 +81,15 @@ export async function withNativeWorkspace(
       observed.readyAt = performance.now()
       return initial
     } catch (error) {
-      try {
-        const diagnostic = await inspectNativeStartup({ session, host, startedAt, sessionAt, requestAt })
-        console.error('Native startup diagnostics: ' + JSON.stringify(diagnostic))
-      } catch {
-        console.error('Native startup diagnostics unavailable')
-      }
+      await reportNativeStartupFailure({
+        session,
+        host,
+        exited: observed.exitEvent,
+        startedAt,
+        sessionAt,
+        requestAt,
+        observeLateStartup: env.OPENLR_DIAGNOSTICS === '1'
+      })
       throw error
     }
   }

@@ -17,7 +17,7 @@ import { makeColorProfile, encodeSrgb } from '../web/color-spaces.js'
 import { readPng } from '../web/png.js'
 import { defaultOptions as avifOptions } from '../web/vendor/codecs/avif/meta.js'
 import { readExifTool } from '../tests/exiftool.mjs'
-import { inspectNativeStartup } from './native-startup-diagnostics.mjs'
+import { inspectNativeStartup, reportNativeStartupFailure } from './native-startup-diagnostics.mjs'
 import { startDavFixture } from './native-dav-fixture.mjs'
 
 const executable = process.argv[2]
@@ -42,6 +42,7 @@ host.once('error', (error) => {
   launchError = error
 })
 const exited = new Promise((resolve) => host.once('close', (code, signal) => resolve({ code, signal })))
+const hostExit = new Promise((resolve) => host.once('exit', resolve))
 const call = (...args) => execute(parse([...args, '--session', session]))
 function hasImageSignature(bytes, format) {
   if (format === 'image/png')
@@ -534,32 +535,25 @@ async function verifyWorkspaceDisclosures() {
   )
 }
 
+let sessionAt,
+  requestAt,
+  ready = false
 try {
-  let sessionAt, requestAt
-  try {
-    const end = Date.now() + 45000
-    for (;;) {
-      if (launchError) throw launchError
-      if (host.exitCode !== null || host.signalCode) throw Error('Host exited before agent connected')
-      try {
-        await access(session)
-        break
-      } catch {}
-      if (Date.now() > end) throw Error('No agent session after 45 seconds')
-      await delay(120)
-    }
-    sessionAt = performance.now()
-    requestAt = performance.now()
-    await call('state', '--summary', 'true', '--timeout', '30')
-  } catch (error) {
+  const end = Date.now() + 45000
+  for (;;) {
+    if (launchError) throw launchError
+    if (host.exitCode !== null || host.signalCode) throw Error('Host exited before agent connected')
     try {
-      const diagnostic = await inspectNativeStartup({ session, host, startedAt, sessionAt, requestAt })
-      console.error('Native startup diagnostics: ' + JSON.stringify(diagnostic))
-    } catch {
-      console.error('Native startup diagnostics unavailable')
-    }
-    throw error
+      await access(session)
+      break
+    } catch {}
+    if (Date.now() > end) throw Error('No agent session after 45 seconds')
+    await delay(120)
   }
+  sessionAt = performance.now()
+  requestAt = performance.now()
+  await call('state', '--summary', 'true', '--timeout', '30')
+  ready = true
   await verifyPhotosPanel()
   const file = path.join(root, 'sensor.dng'),
     data = Buffer.from(makeDng())
@@ -2263,11 +2257,23 @@ try {
   )
 } catch (error) {
   primaryError = error
-  try {
-    const diagnostic = await inspectNativeStartup({ session, host, startedAt })
-    console.error('Native workflow failure diagnostics: ' + JSON.stringify(diagnostic))
-  } catch {
-    console.error('Native workflow failure diagnostics unavailable')
+  if (!ready) {
+    await reportNativeStartupFailure({
+      session,
+      host,
+      exited: hostExit,
+      startedAt,
+      sessionAt,
+      requestAt,
+      observeLateStartup: process.env.OPENLR_DIAGNOSTICS === '1'
+    })
+  } else {
+    try {
+      const diagnostic = await inspectNativeStartup({ session, host, startedAt })
+      console.error('Native workflow failure diagnostics: ' + JSON.stringify(diagnostic))
+    } catch {
+      console.error('Native workflow failure diagnostics unavailable')
+    }
   }
   throw error
 } finally {

@@ -4,7 +4,11 @@ import { createServer } from 'node:http'
 import { mkdtemp, realpath, writeFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { findMacCrashReport, inspectNativeStartup } from '../scripts/native-startup-diagnostics.mjs'
+import {
+  findMacCrashReport,
+  inspectNativeStartup,
+  reportNativeStartupFailure
+} from '../scripts/native-startup-diagnostics.mjs'
 import { withNativeWorkspace } from '../scripts/native-workspace.mjs'
 
 async function fixture(t, respond) {
@@ -132,6 +136,100 @@ test('startup diagnostics do not probe a descriptor owned by another process', a
   assert.deepEqual(result.session, { valid: true, matchesHost: false })
   assert.deepEqual(requests, [])
   assert.equal(Object.hasOwn(result, 'health'), false)
+})
+
+async function observationFixture(t) {
+  const { session, requests } = await fixture(t, (request, response) => {
+    if (request.url === '/health') response.end(JSON.stringify({ ok: true, version: 1 }))
+    if (request.url === '/diagnostics/startup-ui') response.end(JSON.stringify({ responded: true }))
+  })
+  const startedAt = performance.now() - 30_000
+  const host = { pid: 123, exitCode: null, signalCode: null }
+  const { promise: exited, resolve: exit } = Promise.withResolvers()
+  const logs = []
+  t.mock.method(console, 'error', (line) => logs.push(line))
+  const report = (overrides, timing) =>
+    reportNativeStartupFailure(
+      {
+        session,
+        host,
+        exited,
+        startedAt,
+        requestAt: startedAt + 133,
+        timeoutMs: 200,
+        observeLateStartup: true,
+        ...overrides
+      },
+      { platform: 'win32', ...timing }
+    )
+  const observations = () =>
+    logs
+      .filter((line) => line.startsWith('Native startup passive observation: '))
+      .map((line) => JSON.parse(line.slice('Native startup passive observation: '.length)))
+  return { startedAt, requests, report, observations, exit, host }
+}
+
+test('Windows first-state failure observes the same host only through the absolute launch horizon', async (t) => {
+  const { startedAt, requests, report, observations } = await observationFixture(t)
+  let time = startedAt + 32_250
+  const wait = t.mock.fn(async (ms, status, { ref, signal }) => {
+    assert.equal(ms, 12_750)
+    assert.equal(ref, false)
+    assert.equal(signal.aborted, false)
+    assert.deepEqual(requests.map(({ path }) => path).sort(), [
+      '/command',
+      '/diagnostics/startup-ui',
+      '/health'
+    ])
+    time += ms
+    return status
+  })
+  await report({}, { now: () => time, wait })
+  assert.equal(wait.mock.callCount(), 1)
+  assert.deepEqual(observations(), [
+    { status: 'waiting', elapsedMs: 32_250, throughMs: 45_000 },
+    { status: 'launch-horizon', elapsedMs: 45_000, throughMs: 45_000 }
+  ])
+  assert.deepEqual(
+    requests.flatMap(({ body }) => (body ? [body.command] : [])),
+    ['export-status']
+  )
+  assert.equal(requests.length, 3)
+})
+
+test('passive startup observation ends on child exit and skips ineligible startup failures', async (t) => {
+  const { startedAt, report, observations, host, exit } = await observationFixture(t)
+  const mustNotWait = () => assert.fail('This failure should not wait for late milestones')
+  await report({}, { platform: 'linux', wait: mustNotWait })
+  await report({ requestAt: undefined }, { wait: mustNotWait })
+  await report({ observeLateStartup: false }, { wait: mustNotWait })
+  await report({}, { now: () => startedAt + 45_001, wait: mustNotWait })
+  assert.deepEqual(observations(), [])
+
+  let time = startedAt + 32_250,
+    canceled = false
+  const wait = t.mock.fn((_, _status, { signal }) => {
+    time += 120
+    host.exitCode = 7
+    exit()
+    return new Promise((_, reject) => {
+      signal.addEventListener(
+        'abort',
+        () => {
+          canceled = true
+          reject(signal.reason)
+        },
+        { once: true }
+      )
+    })
+  })
+  await report({}, { now: () => time, wait })
+  assert.equal(wait.mock.callCount(), 1)
+  assert.equal(canceled, true)
+  assert.deepEqual(observations(), [
+    { status: 'waiting', elapsedMs: 32_250, throughMs: 45_000 },
+    { status: 'child-exit', elapsedMs: 32_370, throughMs: 45_000, exitCode: 7, signal: null }
+  ])
 })
 
 test('native workspace records an unexpected runtime exit before cleanup and preserves the command failure', async (t) => {

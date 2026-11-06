@@ -406,7 +406,7 @@ try {
       return [...(await createMultitrackVideoFixture())]
     })
   )
-  await withNativeWorkspace(executable, async ({ root, call, initial }) => {
+  const smoke = async ({ root, call, initial }) => {
     assert.deepEqual(initial.photos, [])
     const failures = []
     async function verify(testCase, work) {
@@ -507,7 +507,8 @@ try {
       )
     })
     if (failures.length) throw new AggregateError(failures, 'Packaged audio export verification failed')
-  })
+  }
+  await withNativeWorkspace(executable, smoke, { env: { OPENLR_DIAGNOSTICS: '1' } })
 } finally {
   try {
     await browser?.close()
