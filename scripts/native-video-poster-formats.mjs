@@ -161,11 +161,13 @@ async function verify(label, app) {
   return records
 }
 
+const candidateResults = await verify('presented', candidate)
 const results = {
   platform: process.platform,
   arch: process.arch,
+  order: ['presented', 'native'],
   control: await verify('native', control),
-  candidate: await verify('presented', candidate)
+  candidate: candidateResults
 }
 await writeFile(path.join(destination, 'report.json'), JSON.stringify(results, null, 2))
 console.log(JSON.stringify(results))
