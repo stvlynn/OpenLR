@@ -98,6 +98,7 @@ import { mountEnhance } from './enhance-ui.js'
 
 const $ = (id) => document.getElementById(id)
 const option = (value, label) => new Option(label, value)
+const scrollports = { detail: 'stage', grid: 'gallery', filmstrip: 'film' }
 let photos = [],
   albums = [],
   selected = '',
@@ -834,6 +835,23 @@ function panelSnapshot() {
     ])
   )
 }
+function viewportElement(target, photo) {
+  const visible =
+    target === 'grid'
+      ? mode === 'grid'
+      : mode === 'detail' && photo && (target === 'detail' || (film && slideTimer === null))
+  return visible ? $(scrollports[target]) : null
+}
+function viewportSnapshot(photo) {
+  const read = (target) => {
+    const element = viewportElement(target, photo)
+    return element && readViewport(element)
+  }
+  return {
+    viewport: read('detail'),
+    catalogViewports: { grid: read('grid'), filmstrip: read('filmstrip') }
+  }
+}
 function snapshot() {
   const items = visible().map(({ thumbnail, ...p }) => p)
   // Retain expansion choices for history, but report only stacks in the current catalog.
@@ -878,7 +896,7 @@ function snapshot() {
     colorGrading: { mode: gradingMode },
     film,
     zoom,
-    viewport: mode === 'detail' && active() ? readViewport($('stage')) : null,
+    ...viewportSnapshot(active()),
     albums,
     photos: items,
     local: local.state(),
@@ -1052,9 +1070,11 @@ async function execute(command, args, context = {}) {
     }
     case 'viewport': {
       if (args.photoId !== undefined && args.photoId !== p?.id) throw Error(VIEWPORT_MESSAGES.changed)
-      if (mode !== 'detail' || !p) throw Error(VIEWPORT_MESSAGES.detail)
-      if (args.x === undefined && args.y === undefined) return readViewport($('stage'))
-      return moveViewport($('stage'), args)
+      const target = args.target ?? 'detail'
+      const element = viewportElement(target, p)
+      if (!element) throw Error(VIEWPORT_MESSAGES[target])
+      if (args.x === undefined && args.y === undefined) return readViewport(element)
+      return moveViewport(element, args)
     }
     case 'export-selection':
       return exportSelection({
@@ -1119,7 +1139,7 @@ async function execute(command, args, context = {}) {
         panels: panelSnapshot(),
         visibleCount: visible().length,
         clipping,
-        viewport: mode === 'detail' && photo ? readViewport($('stage')) : null,
+        ...viewportSnapshot(photo),
         selectionCount: organization.selection.size,
         processing: processingState(),
         cropDraft: cropDraft(),
@@ -2465,7 +2485,6 @@ export function run(command, args = {}, observe, context) {
         ((context?.draftSource || context?.localGesture) && result === null) ||
         (command === 'draft-cancel' && !result.canceled) ||
         (command === 'repair-source' && args.point === undefined && args.picking === undefined) ||
-        (command === 'viewport' && args.x === undefined && args.y === undefined) ||
         (command === 'external-check' && !result.imported?.length) ||
         (command === 'export-settings' && args.options === undefined) ||
         (command === 'select-relative' && selected === previousSelection)
@@ -2475,6 +2494,7 @@ export function run(command, args = {}, observe, context) {
         ![
           'state',
           'photos',
+          'viewport',
           'presets',
           'histogram',
           'local-folders',
@@ -2619,7 +2639,14 @@ $('clear-crop').onclick = () => act('edit', { key: 'crop', value: null, photoId:
 function notifyWorkspaceChange() {
   window.dispatchEvent(new Event('openlr-change'))
 }
-$('stage').addEventListener('scroll', notifyWorkspaceChange, { passive: true })
+for (const [target, id] of Object.entries(scrollports))
+  $(id).addEventListener(
+    'scroll',
+    () => {
+      if (viewportElement(target, active())) notifyWorkspaceChange()
+    },
+    { passive: true }
+  )
 const cropSurface = new CropSurface($('stage'), () => act('crop-tool'), notifyWorkspaceChange)
 function updateCropGuideControls() {
   $('crop-guide').value = cropSurface.guide.type

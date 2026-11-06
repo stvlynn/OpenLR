@@ -2,6 +2,14 @@
 
 对照目标为本机 Adobe Lightroom 9.4 云桌面版。REA 证据来自可执行文件及其资源；登录后的 Windows 运行观察已核对裁剪、蒙版入口及导出设置，见 [运行记录](../research/lightroom.md#登录后的-windows-运行观察)。当前仍未建立全部功能逐屏、逐像素的 Adobe 对照。静态入口、独立实现及实际通过的测试分别记录。
 
+## 图库与胶片条 viewport — 2026-11-06
+
+`viewport` 增加 `grid`／`filmstrip` 目标，沿用真实滚动区域和现有 dispatcher；默认 Detail 兼容。完整 Windows／Chrome 156.0.8078.80 回归 **457/457，零失败、零跳过**，约 304.2 秒。定向测试比较真实鼠标与 CLI 的实际偏移和截图像素，并覆盖只读／无变化通知、隐藏目标、排队 scope 变化、过期照片保护和原件。日志 `.workspace/catalog-viewport-full.log`。
+
+新 Windows MyGo 包通过扩展的原生导航流程。图库实际从 0 移至 3007.199951 CSS px，胶片条从 0 移至 1881.599976；CLI 截图独立解码出不同位置的缩略图色块，`watch` 正确观察变化。选择、编辑、三十六个生成源文件及两个既有原件保持；原有偏好重启、全屏和可信键盘检查继续通过。日志 `.workspace/catalog-viewport-{build,native-navigation}.log`。该改动的 Linux／macOS 原生结果尚待后续提交验证。见[契约](agent-cli.md)和[调查与消融](../research/catalog-viewport.md)。
+
+前一版本 `78efe71` 的 [Actions 42190243615](https://github.com/stvlynn/OpenLR/actions/runs/42190243615) 已有 Linux 全套成功。ARM macOS 的十种局部草稿全部通过，证明覆盖层读回修复在该平台生效；视频导入也已完成，但紧接着第一次 `video-seek` 超时，普通套件仍失败。它后续的独立短音频三项通过。Windows 和 Intel macOS 在此记录时仍运行，不能据此宣称该版本四平台通过。该次运行不包含图库 viewport 扩展。
+
 ## 局部草稿与拉直参考点 — 2026-11-06
 
 覆盖层读回修复后，完整 Windows Chrome 回归 **454/454，零失败、零跳过**，约 312.7 秒；新增回归验证嵌套图像缺失时仍返回真实覆盖层，并区分等价重绘和实际可见性变化。新 Windows MyGo 包通过十种局部草稿组合，蒙版样本 `[255,0,0,77]`、修复路径 `[255,177,91,115]`、外部透明，原件保持。日志 `.workspace/local-readback-{full,build,native-tools}.log`。该完整运行先于随后启动诊断测试的修改；后者另行通过十五项启动／清理测试。

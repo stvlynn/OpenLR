@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict'
 import { readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
+import { setTimeout as delay } from 'node:timers/promises'
 import { chromium } from 'playwright-core'
+import { watch } from '../cli/openlr.mjs'
 import { makePng } from '../tests/fixtures/png.mjs'
 import { readPng } from '../web/png.js'
 import { withNativeWorkspace } from './native-workspace.mjs'
@@ -101,7 +103,7 @@ async function pressFilmShortcut(page) {
 
 await withNativeWorkspace(
   process.argv[2],
-  async ({ root, call, restart, initial, profile }) => {
+  async ({ root, call, restart, initial, profile, session }) => {
     const capture = async (name, ...args) => {
       const output = path.join(root, name + '.png')
       const response = args.length
@@ -284,6 +286,152 @@ await withNativeWorkspace(
       assert.deepEqual(await prefs(defaults), defaults)
     }
     assert.deepEqual(photo(await state()).edit, edit)
+
+    // Wide mosaic tiles provide real vertical overflow. Two bands wider than
+    // the window also provide distinct first/last visible Filmstrip thumbnails.
+    const catalogColors = [
+      [232, 156, 39],
+      [37, 170, 133]
+    ]
+    const catalogSources = catalogColors.map((rgb) =>
+      Buffer.from(
+        makePng({
+          width: 120,
+          height: 40,
+          bits: 8,
+          data: Array(120 * 40)
+            .fill(rgb)
+            .flat()
+        })
+      )
+    )
+    const catalogViewport = (target, ...args) => call('viewport', '--target', target, ...args)
+    await view('detail')
+    if (!(await state()).film) await call('film')
+    const filmWidth = (await catalogViewport('filmstrip')).width
+    await view('grid')
+    await call('grid-layout', '--layout', 'mosaic')
+    const gridSize = await catalogViewport('grid')
+    // Each 3:1 source makes a 420px mosaic tile and the film tile is at
+    // least 78px wide. Size the bands to the actual disposable window.
+    const bandSize = Math.max(
+      18,
+      Math.ceil(filmWidth / 78) + 1,
+      Math.floor(gridSize.width / 420) * Math.ceil(gridSize.height / 152) + 1
+    )
+    const catalogFiles = Array.from({ length: 2 * bandSize }, (_, i) => ({
+      file: path.join(root, `viewport-${String(i).padStart(2, '0')}.png`),
+      bytes: catalogSources[Math.floor(i / bandSize)]
+    }))
+    await Promise.all(catalogFiles.map(({ file, bytes }) => writeFile(file, bytes)))
+    const catalogImport = await call('import', ...catalogFiles.map(({ file }) => file))
+    assert.deepEqual(catalogImport.failed, [])
+    assert.equal(catalogImport.added.length, catalogFiles.length)
+    await call('sort', '--order', 'name', '--direction', 'asc')
+    await select(first)
+    const catalogPatch = (image, color) => colorPatchBounds(image, color, [24, 12])
+    async function visibleBand(name, color, initialCapture) {
+      // Lazy thumbnails may decode just after the command's ordered capture.
+      // Wait for the expected visible pixels without moving the viewport again.
+      const deadline = performance.now() + 5000
+      let image = initialCapture,
+        attempt = 0
+      do {
+        image ??= (await capture(`${name}-${attempt++}`)).image
+        const patch = catalogPatch(image, color)
+        if (patch) return { image, patch }
+        image = undefined
+        await delay(50)
+      } while (performance.now() < deadline)
+      assert.fail(`Expected the visible ${name} thumbnail band`)
+    }
+    async function verifyCatalogScroll(target, axis, extent) {
+      const otherAxis = axis === 'y' ? 'x' : 'y'
+      const top = await catalogViewport(target, '--' + axis, '0', '--photoId', first)
+      assert.equal(top[axis], 0)
+      assert.ok(top[extent] > 0, `Expected the ${target} fixture to overflow`)
+      const start = await visibleBand(`${target}-start`, catalogColors[0])
+      assert.equal(catalogPatch(start.image, catalogColors[1]), null)
+      const before = await state()
+      assert.deepEqual(before.catalogViewports[target], top)
+      assert.equal(before.selected, first)
+      let scrolled, revision
+      await Promise.race([
+        watch({ session, count: 2 }, async (update) => {
+          assert.equal(update.selected, first)
+          if (revision !== undefined) {
+            assert.equal(update.revision, revision + 1, 'Only the actual scroll publishes a revision')
+            assert.deepEqual(update.catalogViewports[target], scrolled.result)
+            return
+          }
+          revision = update.revision
+          assert.deepEqual(update.catalogViewports[target], top)
+          assert.deepEqual(await catalogViewport(target), top)
+          assert.deepEqual(await catalogViewport(target, '--' + axis, '0'), top)
+          await assert.rejects(
+            catalogViewport(target, '--' + axis, '10', '--photoId', second),
+            /selected photo changed/
+          )
+          scrolled = await capture(
+            `${target}-end-command`,
+            'viewport',
+            '--target',
+            target,
+            '--' + axis,
+            String(top[extent] + 1000),
+            '--photoId',
+            first
+          )
+          assert.ok(Math.abs(scrolled.result[axis] - top[extent]) <= 1, 'Move clamps to the browser endpoint')
+          assert.equal(scrolled.result[otherAxis], top[otherAxis])
+        }),
+        delay(15_000, undefined, { ref: false }).then(() => {
+          throw Error(`No observed ${target} scroll`)
+        })
+      ])
+      const end = await visibleBand(`${target}-end`, catalogColors[1], scrolled.image)
+      assert.equal(catalogPatch(end.image, catalogColors[0]), null)
+      assert.deepEqual(dimensions(end.image), dimensions(start.image))
+      if (target === 'filmstrip') {
+        assert.ok(start.patch.top > start.image.height * 0.65)
+        assert.ok(end.patch.top > end.image.height * 0.65)
+      }
+      const after = await state()
+      assert.deepEqual(after.catalogViewports[target], scrolled.result)
+      assert.deepEqual(await catalogViewport(target), scrolled.result)
+      assert.deepEqual(after.viewport, before.viewport)
+      assert.deepEqual(after.photos, before.photos)
+      assert.deepEqual(after.selection, before.selection)
+      return {
+        start: top[axis],
+        end: scrolled.result[axis],
+        extent: top[extent],
+        capturedBands: [start.patch, end.patch]
+      }
+    }
+    async function rejectHiddenViewport(target, axis, error) {
+      const before = await state()
+      assert.equal(before.catalogViewports[target], null)
+      await assert.rejects(catalogViewport(target, '--' + axis, '10'), error)
+      const after = await state()
+      assert.deepEqual(after.catalogViewports, before.catalogViewports)
+      assert.deepEqual(after.viewport, before.viewport)
+    }
+
+    await view('grid')
+    await rejectHiddenViewport('filmstrip', 'x', /Show the filmstrip in detail view/)
+    const gridScroll = await verifyCatalogScroll('grid', 'y', 'maxY')
+    await view('detail')
+    assert.deepEqual(await call('viewport'), await catalogViewport('detail'))
+    await rejectHiddenViewport('grid', 'y', /Open Grid view/)
+    if (!(await state()).film) await call('film')
+    const filmScroll = await verifyCatalogScroll('filmstrip', 'x', 'maxX')
+    await call('film')
+    await rejectHiddenViewport('filmstrip', 'x', /Show the filmstrip in detail view/)
+    assert.equal((await state()).selected, first)
+    assert.deepEqual(photo(await state()).edit, edit)
+    for (const { file, bytes } of catalogFiles) assert.deepEqual(await readFile(file), bytes)
+
     for (const [index, id] of [first, second].entries()) {
       const { file, bytes } = fixtures[index]
       await select(id)
@@ -309,6 +457,11 @@ await withNativeWorkspace(
           displayPair: pairCount
         },
         fullscreen: fullScreen || null,
+        catalogScroll: {
+          grid: gridScroll,
+          filmstrip: filmScroll,
+          unchangedFixtureFiles: catalogFiles.length
+        },
         preferenceRestart: persistent,
         trustedKeyboard: windows,
         preservedOriginals: fixtures.length

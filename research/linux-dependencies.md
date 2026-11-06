@@ -19,3 +19,13 @@ The November 6 probe passed on amd64 runner image `20261101.360.1`, the image ve
 | Azure HTTPS     |     0.424001 s |      9,892,203 |     0.457647 s |      9,164,932 |
 
 Azure HTTP delivered the fastest sample in both orders. The probe did not reproduce the earlier slow transfer or establish its cause. This measurement gives no basis for replacing the production mirror order.
+
+## Second dependency timeout
+
+The stock Linux job for `ac03eb9` was also canceled during APT acquisition on image `20261101.360.1`. The index refresh took about seven seconds, and APT requested the same 150 packages and 92.6 MB. The first 127 Azure requests again represented 45.7 MB of advertised payload. The interval before the WebKitGTK request was 1,457 seconds, compared with 1,218 seconds in the earlier failure. It included ignored transfers for the 5.4 MB soundfont and 2.1 MB librsvg2 package, so the advertised sizes cannot establish the actual byte throughput. APT began requesting the same WebKitGTK version at 08:45:01 UTC. That was the last package line before cancellation at 08:50:31 UTC. Go checks, build and native verification were skipped. [Second canceled job](https://github.com/stvlynn/OpenLR/actions/runs/42186933533/job/127789398477)
+
+## Successful stock run
+
+The `78efe71` job used the same runner image revision on a different VM and kept the stock APT configuration. It requested the same 150 packages and 92.6 MB, including the same WebKitGTK and Flite versions from Azure HTTP. APT reported 92.6 MB fetched in three seconds at 28.6 MB/s. The entire dependency step took about 27.5 seconds before Go tests began. The race checks, package build and Linux native suite all passed. [Successful stock job](https://github.com/stvlynn/OpenLR/actions/runs/42190243615/job/127800179081)
+
+The two slow installs, the fast range comparison and the fast full install show different outcomes on the same image revision. They do not identify what degraded the affected transfers. A repeat during a required build would be better diagnosed on the affected VM by recording completed and partial archive byte counts and comparing the same package range against both mirrors while that runner is still available.

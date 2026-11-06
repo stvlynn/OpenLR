@@ -1,6 +1,8 @@
 // Viewport coordinates belong to the display adapter, not the photo recipe.
 export const VIEWPORT_MESSAGES = {
   detail: 'Open a photo in detail view',
+  grid: 'Open Grid view',
+  filmstrip: 'Show the filmstrip in detail view',
   changed: 'The selected photo changed'
 }
 
