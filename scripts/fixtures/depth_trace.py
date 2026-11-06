@@ -64,7 +64,9 @@ def trace_host(debugger, command, _context, _result, _internal):
     debugger.SetAsync(False)
     listener = lldb.SBListener("openlr-depth-trace")
     error = lldb.SBError()
-    process = debugger.CreateTarget("").AttachToProcessWithID(listener, pid, error)
+    target = debugger.CreateTarget("")
+    emit(pid, "attach-started")
+    process = target.AttachToProcessWithID(listener, pid, error)
     if not error.Success() or not process.IsValid() or process.GetProcessID() != pid:
         emit(pid, "attach-failed", code=error.GetError())
         return

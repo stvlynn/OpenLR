@@ -39,7 +39,11 @@ function traceRecord(line, pid) {
   if (!line.startsWith(prefix)) return
   try {
     const record = JSON.parse(line.slice(prefix.length))
-    if (record.pid === pid && (record.phase === 'running' || stopPhases.has(record.phase))) return record
+    if (
+      record.pid === pid &&
+      (record.phase === 'attach-started' || record.phase === 'running' || stopPhases.has(record.phase))
+    )
+      return record
   } catch {}
 }
 
@@ -48,10 +52,14 @@ function traceRecord(line, pid) {
 export async function withDepthCrashTrace(
   { root, pid },
   run,
-  { launch = launchDebugger, log = console.log, attachMs = 10_000, closeMs = 5_000 } = {}
+  { launch = launchDebugger, log = console.log, attachMs = 25_000, closeMs = 5_000 } = {}
 ) {
   if (!Number.isSafeInteger(pid) || pid <= 0) throw Error('Depth trace requires an owned host PID')
   const finished = path.join(root, 'depth-trace-finished')
+  const startedAt = performance.now()
+  const report = (record) =>
+    log(prefix + JSON.stringify({ ...record, elapsedMs: Math.round(performance.now() - startedAt) }))
+  report({ pid, phase: 'debugger-launch', attachBudgetMs: attachMs })
   const child = launch(pid, finished)
   let terminal, launchError, ready
   const started = new Promise((resolve) => (ready = resolve))
@@ -60,19 +68,23 @@ export async function withDepthCrashTrace(
   createInterface({ input: child.stdout }).on('line', (line) => {
     const record = traceRecord(line, pid)
     if (!record) return
-    log(prefix + JSON.stringify(record))
-    if (record.phase === 'running') ready(true)
-    else terminal = record.phase
+    report(record)
+    if (record.phase === 'running') ready('running')
+    if (stopPhases.has(record.phase)) terminal = record.phase
   })
 
   let failed = false
   try {
-    const attached = await Promise.race([
+    const attachment = await Promise.race([
       started,
-      closed.then(() => false),
-      delay(attachMs, false, { ref: false })
+      closed.then(() => 'closed'),
+      delay(attachMs, 'deadline', { ref: false })
     ])
-    if (!attached)
+    if (attachment === 'deadline') {
+      report({ pid, phase: 'attach-deadline' })
+      throw Error('LLDB did not report a running depth host within the diagnostic attach budget')
+    }
+    if (attachment !== 'running')
       throw Error(
         'LLDB could not attach and resume the depth host' + (launchError ? ` (${launchError})` : '')
       )
