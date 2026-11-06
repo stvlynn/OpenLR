@@ -4,6 +4,10 @@ permissions:
   contents: read
 jobs:
   photos-export:
+    strategy:
+      fail-fast: false
+      matrix:
+        launch: [option-key, argument-domain, string-preference]
     runs-on: macos-15
     timeout-minutes: 8
     steps:
@@ -35,6 +39,26 @@ jobs:
           }))
           NODE
           osacompile -o "$PHOTOS_PROBE/inspect.scpt" scripts/fixtures/photos-inspect.applescript
-          defaults write com.apple.Photos IPXDefaultShowLibraryChooserOnLaunch -bool true
-          open -b com.apple.Photos
+          case '${{ matrix.launch }}' in
+            option-key)
+              osascript <<'APPLESCRIPT'
+          tell application "System Events" to key down option
+          try
+              do shell script "/usr/bin/open -b com.apple.Photos"
+              delay 2.0
+          on error errorText number errorNumber
+              tell application "System Events" to key up option
+              error errorText number errorNumber
+          end try
+          tell application "System Events" to key up option
+          APPLESCRIPT
+              ;;
+            argument-domain)
+              open -b com.apple.Photos --args -IPXDefaultShowLibraryChooserOnLaunch true
+              ;;
+            string-preference)
+              defaults write com.apple.Photos IPXDefaultShowLibraryChooserOnLaunch -string true
+              open -b com.apple.Photos
+              ;;
+          esac
           osascript "$PHOTOS_PROBE/inspect.scpt"
