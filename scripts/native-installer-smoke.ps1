@@ -26,7 +26,7 @@ try {
         if ($command -ne ('"{0}" "%1"' -f $executable)) { throw "Open command mismatch for $extension" }
         if ((Get-Item -LiteralPath "$classes\.$extension\OpenWithProgids").GetValueNames() -notcontains $class) { throw "Missing Open With entry for $extension" }
     }
-    node "$PSScriptRoot/native-installed-cli-smoke.mjs" $destination
+    node "$PSScriptRoot/native-installed-cli-smoke.mjs" $executable (Join-Path $destination 'cli/openlr.mjs')
     if ($LASTEXITCODE -ne 0) { throw "Installed CLI verification exited $LASTEXITCODE" }
 } finally {
     if (Test-Path -LiteralPath $uninstaller) {

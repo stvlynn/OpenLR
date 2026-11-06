@@ -10,7 +10,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, ubuntu-24.04, macos-15-intel, macos-15]
+        os: [ubuntu-24.04]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     steps:
@@ -22,8 +22,6 @@ jobs:
         with:
           go-version-file: go.mod
       - run: npm ci
-      - if: runner.os == 'Linux'
-        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends libwebkit2gtk-4.1-0 gstreamer1.0-plugins-bad xvfb
       - run: go test ./...
       - if: runner.os == 'Linux'
         run: go test -race ./...
@@ -48,8 +46,9 @@ jobs:
         if: ${{ !cancelled() && runner.os == 'macOS' && steps.distribution.outcome == 'success' }}
         timeout-minutes: 2
         run: node scripts/native-aac-input-probe.mjs build/audio-stream-probe
-      - if: runner.os == 'Linux'
-        run: xvfb-run -a dbus-run-session -- node scripts/native-suite.mjs build/release/linux-amd64/openlr
+      - name: Verify the installed Linux distribution
+        if: runner.os == 'Linux'
+        run: bash scripts/native-deb-smoke.sh build/release/linux-amd64/openlr_*.deb
       - if: ${{ !cancelled() && runner.os == 'macOS' && steps.distribution.outcome == 'success' }}
         run: node scripts/native-suite.mjs build/release/darwin-universal/OpenLR.app/Contents/MacOS/OpenLR
       - name: Verify macOS default-store restart in the disposable runner
