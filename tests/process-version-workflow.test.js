@@ -338,7 +338,7 @@ test('live slider frames wait for a matching committed recipe during both proces
 
 test('video remains on original processing and rejects linear activation without changing its recipe', async (t) => {
   const { page, run } = await workspace(t)
-  await page.evaluate(async () => {
+  const imported = await page.evaluate(async () => {
     const m = await import('./vendor/mediabunny/mediabunny.mjs'),
       canvas = document.createElement('canvas')
     canvas.width = 48
@@ -352,10 +352,12 @@ test('video remains on original processing and rejects linear activation without
     await source.add(0, 0.2)
     await source.add(0.2, 0.2)
     await output.finalize()
-    await window.openlr.run('import', {
+    return window.openlr.run('import', {
       files: [new File([target.buffer], 'process-video.webm', { type: 'video/webm' })]
     })
   })
+  assert.deepEqual(imported.failed, [])
+  assert.equal(imported.added.length, 1)
   await run('view', { mode: 'detail' })
   assert.equal(await page.locator('#processing-version').isDisabled(), true)
   const before = (await run('state')).photos[0].edit

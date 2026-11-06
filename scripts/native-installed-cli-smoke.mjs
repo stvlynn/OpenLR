@@ -7,7 +7,9 @@ import { makePng } from '../tests/fixtures/png.mjs'
 import { readPng } from '../web/png.js'
 import { withNativeWorkspace } from './native-workspace.mjs'
 
-const installed = path.resolve(process.argv[2])
+const [executable, cli] = process.argv.slice(2)
+if (!executable || !cli) throw Error('Pass the installed desktop executable and CLI paths')
+const installedCli = path.resolve(cli)
 const run = promisify(execFile)
 const rgb = [64, 96, 128]
 const source = Buffer.from(
@@ -22,14 +24,13 @@ const source = Buffer.from(
 )
 let cleaned
 await withNativeWorkspace(
-  path.join(installed, 'OpenLR.exe'),
+  executable,
   async ({ root, session }) => {
     const invoke = async (...args) => {
-      const { stdout } = await run(
-        process.execPath,
-        [path.join(installed, 'cli', 'openlr.mjs'), ...args, '--session', session],
-        { cwd: root, timeout: 32000 }
-      )
+      const { stdout } = await run(process.execPath, [installedCli, ...args, '--session', session], {
+        cwd: root,
+        timeout: 32000
+      })
       return JSON.parse(stdout)
     }
     const input = path.join(root, 'Installed fixture.png')

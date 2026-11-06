@@ -4,6 +4,10 @@
 
 ## 桌面验收与交付快照 — 2026-11-07
 
+Ubuntu 专项通过 APT 实际安装 `.deb`，从 `/usr/bin/openlr` 执行完整 Xvfb 原生套件，验证了视频导出、随包 CLI、桌面入口和清除后的文件状态。Intel 与 Apple Silicon macOS 均从实际 DMG 复制应用，卸载磁盘镜像后运行复制件和随包 CLI。三项安装专项均读回 32×24 预览及 93 字节原件。[Ubuntu 安装专项](https://github.com/stvlynn/OpenLR/actions/runs/42277094106) · [macOS DMG 专项](https://github.com/stvlynn/OpenLR/actions/runs/42277396982)
+
+后续 `b0eb03a` 的 Windows 浏览器任务有一项草稿等待超时，另一项视频处理用例在导入后未找到照片，原断言未读取导入失败清单。两份原始用例在本机使用同版 Chrome 156.0.8078.80 单独运行时 8/8 通过，尚未定位间歇原因。视频用例现先断言导入结果，Windows 浏览器失败也会保留失败状态，同时继续独立的原生构建与安装检查。[Windows 托管日志](https://github.com/stvlynn/OpenLR/actions/runs/42276151274/job/128092863907)
+
 `6fdcc46` 的托管端到端矩阵在 Windows、Ubuntu、Intel macOS 和 Apple Silicon macOS 全部通过。Windows 托管浏览器 480 项通过、零失败，8 项需要可选资源的检查跳过。Windows 普通原生套件、文件转交和三项独立短多音轨检查均通过。本轮未复现首次窗口启动超时，Go 栈取样已有本机受控验证。[完整矩阵](https://github.com/stvlynn/OpenLR/actions/runs/42274368178) · [启动证据](../research/native-startup.md#windows-window-creation-stall-at-d7c4b8a)
 
 Windows 安装专项在一次性托管账户运行实际 NSIS 静默安装和卸载，核对安装路径、开始菜单快捷方式、六种 Open With 注册及清理。已安装的 CLI 在源码树外实际导入照片，读回目录状态、32×24 预览像素和 93 字节原件。Ubuntu 推荐依赖消融减少了 20 个归档和 5,376,484 字节，并通过完整 Xvfb 原生验收。[Windows 安装专项](https://github.com/stvlynn/OpenLR/actions/runs/42275482733) · [Ubuntu 消融](../research/linux-dependencies.md#apt-recommendations-comparison)
