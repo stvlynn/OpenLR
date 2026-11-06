@@ -1,7 +1,7 @@
 import { renderPrepared as render } from './render.js'
 import { geometry } from './geometry.js'
 import { applyWatermark } from './export-options.js'
-import { desktopAudioEncoder, executeAudioExport, planAudioExport } from './audio-export.js'
+import { executeAudioExport, planAudioExport } from './audio-export.js'
 export const isVideo = (asset) =>
   Boolean(
     asset &&
@@ -167,7 +167,7 @@ export function clipRange(trim, duration) {
     throw Error('Trim must fit within the video duration')
   return { start, end: Math.min(end, duration) }
 }
-export async function exportVideo(file, photo, args, { encode = desktopAudioEncoder(), decodeAac } = {}) {
+export async function exportVideo(file, photo, args, { encode, decodeAac } = {}) {
   const media = await import('./vendor/mediabunny/mediabunny.mjs')
   const {
     Input,
@@ -186,7 +186,11 @@ export async function exportVideo(file, photo, args, { encode = desktopAudioEnco
       target = new BufferTarget()
     const format = mp4 ? new Mp4OutputFormat() : new WebMOutputFormat()
     const trim = clipRange(photo.edit.trim, await input.computeDuration())
-    const audioPlan = encode ? await planAudioExport(media, input, format, mp4, args.signal) : null
+    const audioPlan = await planAudioExport(media, input, format, mp4, {
+      signal: args.signal,
+      encode,
+      decodeAac
+    })
     const output = new Output({ format: audioPlan?.outputFormat ?? format, target })
     const size = geometry(photo, photo.edit, args.maxSize ?? Infinity)
     const frame = document.createElement('canvas')
@@ -216,8 +220,6 @@ export async function exportVideo(file, photo, args, { encode = desktopAudioEnco
         trim,
         video,
         plan: audioPlan,
-        encode,
-        decodeAac,
         signal: args.signal
       })
     } else {

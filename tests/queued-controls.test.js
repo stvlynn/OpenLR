@@ -3,6 +3,7 @@ import test from 'node:test'
 import { chromium } from 'playwright-core'
 import { serveWorkspace } from './browser-server.mjs'
 import { makePng } from './fixtures/png.mjs'
+import { makeVideoFixture } from './fixtures/video.mjs'
 
 const width = 360,
   height = 240
@@ -49,22 +50,34 @@ function image(page, command) {
   }, command)
 }
 
-async function holdThumbnail(page, control, type = 'click') {
+async function expectVideoColor(page, channel) {
+  const preview = await image(page, 'preview')
+  assert.deepEqual([preview.width, preview.height], [96, 64])
+  assert.ok(
+    preview.samples.every(
+      (pixel) =>
+        pixel[channel] > 120 && pixel.every((value, i) => i === channel || value < pixel[channel] - 30)
+    ),
+    JSON.stringify(preview.samples)
+  )
+}
+
+async function holdThumbnail(page, control, type = 'click', edge = 240) {
   await page.evaluate(
-    ({ control, type }) => {
+    ({ control, type, edge }) => {
       const toBlob = HTMLCanvasElement.prototype.toBlob
       const hold = (window.controlHold = { release: null, trustedEvents: 0 })
       document.querySelector(control).addEventListener(type, (event) => {
         if (event.isTrusted) hold.trustedEvents++
       })
       HTMLCanvasElement.prototype.toBlob = function (callback, ...args) {
-        if (Math.max(this.width, this.height) !== 240) return toBlob.call(this, callback, ...args)
+        if (Math.max(this.width, this.height) !== edge) return toBlob.call(this, callback, ...args)
         HTMLCanvasElement.prototype.toBlob = toBlob
         // Keep the real encoder and delay only delivery of its completed thumbnail.
         return toBlob.call(this, (blob) => (hold.release = () => callback(blob)), ...args)
       }
     },
-    { control, type }
+    { control, type, edge }
   )
 }
 
@@ -82,16 +95,23 @@ test('queued controls use the intended photo and apply relative actions once', a
   const browser = await chromium.launch({ channel: process.env.CHROME_CHANNEL || 'chrome' })
   t.after(() => browser.close())
   t.diagnostic('Chrome ' + browser.version())
-  async function workspace(t) {
+  async function openWorkspace(t) {
     const page = await browser.newPage({ viewport: { width: 1400, height: 900 } })
     t.after(() => page.close())
     const run = (command, args = {}) => page.evaluate(([c, a]) => window.openlr.run(c, a), [command, args])
     await page.goto(server.url)
     await page.waitForFunction(() => window.openlr)
+    return { page, run }
+  }
+  async function workspace(t, files = originals) {
+    const { page, run } = await openWorkspace(t)
     await page
       .locator('#files')
-      .setInputFiles(originals.map((buffer, i) => ({ name: `${i}.png`, mimeType: 'image/png', buffer })))
-    await page.waitForFunction(() => document.querySelectorAll('#gallery .tile').length === 2)
+      .setInputFiles(files.map((buffer, i) => ({ name: `${i}.png`, mimeType: 'image/png', buffer })))
+    await page.waitForFunction(
+      (count) => document.querySelectorAll('#gallery .tile').length === count,
+      files.length
+    )
     const { photos } = await run('state'),
       first = photos.find(({ name }) => name === '0.png').id,
       second = photos.find(({ name }) => name === '1.png').id
@@ -276,4 +296,143 @@ test('queued controls use the intended photo and apply relative actions once', a
     assert.equal((await run('state')).gridLayout, 'mosaic')
     assert.equal((await run('grid-layout', { layout: 'square' })).gridLayout, 'square')
   })
+
+  await t.test('queued arrow presses advance through the visible order and stop at its ends', async (t) => {
+    const thirdPalette = [colors[1], colors[2], colors[3], colors[0]]
+    const { page, run, first, second } = await workspace(t, [...originals, fixture(thirdPalette)])
+    const sorted = await run('sort', { order: 'name' })
+    const third = sorted.photos.find(({ name }) => name === '2.png').id
+    await page.evaluate(() => {
+      window.navigationChanges = []
+      const filename = document.getElementById('filename')
+      window.addEventListener('openlr-change', () => window.navigationChanges.push(filename.textContent))
+    })
+    await holdThumbnail(page, 'body', 'keydown')
+    await queuePhotoChange(page)
+    await page.keyboard.press('ArrowRight')
+    await page.keyboard.press('ArrowRight')
+    assert.equal(await page.evaluate(() => window.controlHold.trustedEvents), 2)
+    await page.evaluate(() => window.controlHold.release())
+    assert.equal((await run('state')).selected, third)
+    assert.deepEqual(await page.evaluate(() => window.navigationChanges), ['0.png', '1.png', '2.png'])
+    assert.deepEqual(await image(page, 'preview'), { width, height, samples: thirdPalette })
+
+    await run('straighten-tool', { axis: 'horizontal' })
+    const count = await page.evaluate(() => window.navigationChanges.length)
+    await page.keyboard.press('ArrowRight')
+    const atEnd = await run('select-relative', { direction: 'next' })
+    assert.equal(atEnd.selected, third)
+    assert.equal(atEnd.straightenTool.axis, 'horizontal')
+    assert.equal(await page.evaluate(() => window.navigationChanges.length), count)
+    const previous = await run('select-relative', { direction: 'previous' })
+    assert.equal(previous.selected, second)
+    assert.equal(previous.straightenTool.axis, 'off')
+    await page.keyboard.press('ArrowLeft')
+    assert.equal((await run('state')).selected, first)
+    assert.equal((await run('select-relative', { direction: 'previous' })).selected, first)
+
+    await run('rate', { value: 4, advance: false })
+    await run('select', { id: third })
+    await run('rate', { value: 4, advance: false })
+    await run('filter', { rating: 4 })
+    await run('select', { id: first })
+    assert.equal((await run('select-relative', { direction: 'next' })).selected, third)
+  })
+
+  await t.test(
+    'queued video controls use the current playback state and reject a switched clip',
+    async (t) => {
+      const { page, run } = await openWorkspace(t)
+      const buffer = await makeVideoFixture(page)
+      await page
+        .locator('#files')
+        .setInputFiles({ name: 'three-colors.webm', mimeType: 'video/webm', buffer })
+      await page.waitForFunction(() => document.querySelectorAll('#gallery .tile').length === 1)
+      const first = (await run('state')).selected
+      await run('video-seek', { time: 0.35 })
+      await page.evaluate(() => {
+        window.videoControlCalls = []
+        for (const method of ['play', 'pause']) {
+          const original = HTMLMediaElement.prototype[method]
+          HTMLMediaElement.prototype[method] = function (...args) {
+            window.videoControlCalls.push([method, this.paused])
+            return original.apply(this, args)
+          }
+        }
+      })
+      const button = page.locator('#play-video')
+      await holdThumbnail(page, '#play-video', 'click', 96)
+      await queuePhotoChange(page)
+      await button.click()
+      await button.click()
+      assert.equal(await page.evaluate(() => window.controlHold.trustedEvents), 2)
+      await page.evaluate(() => window.controlHold.release())
+      const paused = (await run('state')).playback
+      assert.equal(paused.playing, false)
+      assert.ok(paused.time >= 0.35)
+      assert.deepEqual(await page.evaluate(() => window.videoControlCalls), [
+        ['play', true],
+        ['pause', false]
+      ])
+      assert.equal(await button.textContent(), 'Play')
+      await expectVideoColor(page, Math.min(2, Math.floor(paused.time)))
+
+      const second = (await run('virtual-copy')).selected
+      const copiedEdit = { Contrast: 20 }
+      await run('select', { id: first })
+      await run('video-seek', { time: 0.35 })
+      await holdThumbnail(page, '#play-video', 'click', 96)
+      await queuePhotoChange(page, second)
+      await button.click()
+      assert.equal(await page.evaluate(() => window.controlHold.trustedEvents), 1)
+      await page.evaluate(() => window.controlHold.release())
+      const switched = await run('state')
+      assert.equal(switched.selected, second)
+      assert.equal(switched.playback.playing, false)
+      assert.match(await page.locator('#notice').textContent(), /selected photo changed/i)
+      await assert.rejects(() => run('video-toggle', { photoId: first }), /selected photo changed/i)
+      assert.equal((await run('video-toggle', { photoId: second })).playback.playing, true)
+      assert.equal((await run('video-pause')).playback.playing, false)
+
+      const position = page.locator('#video-position')
+      async function applyTrim() {
+        await page.locator('#trim-start').fill('1.1')
+        await page.locator('#trim-end').fill('2.6')
+        await page.locator('#trim-apply').click()
+      }
+      for (const [control, type, act] of [
+        ['#video-position', 'change', () => position.press('ArrowRight')],
+        ['#trim-apply', 'click', applyTrim]
+      ]) {
+        await run('select', { id: first })
+        await run('video-seek', { time: 0.35 })
+        await holdThumbnail(page, control, type, 96)
+        await queuePhotoChange(page, second)
+        await act()
+        assert.equal(await page.evaluate(() => window.controlHold.trustedEvents), 1)
+        await page.evaluate(() => window.controlHold.release())
+        const after = await run('state')
+        assert.equal(after.selected, second)
+        assert.equal(after.playback.time, 0)
+        assert.deepEqual(editOf(after, first), { Contrast: 20 })
+        assert.deepEqual(editOf(after, second), copiedEdit)
+        assert.match(await page.locator('#notice').textContent(), /selected photo changed/i)
+      }
+      await assert.rejects(() => run('video-seek', { time: 2.35, photoId: first }), /selected photo changed/i)
+      await assert.rejects(
+        () => run('video-trim', { start: 1.1, end: 2.6, photoId: first }),
+        /selected photo changed/i
+      )
+      await run('video-seek', { time: 2.34, photoId: second })
+      await position.press('ArrowRight')
+      assert.ok(Math.abs((await run('state')).playback.time - 2.35) < 1e-5)
+      await expectVideoColor(page, 2)
+      await applyTrim()
+      const trimmed = await run('state')
+      assert.deepEqual(editOf(trimmed), { ...copiedEdit, trim: { start: 1.1, end: 2.6 } })
+      assert.ok(Math.abs(trimmed.playback.time - 1.1) < 1e-5)
+      await expectVideoColor(page, 1)
+      assert.deepEqual(editOf(await run('undo')), copiedEdit)
+    }
+  )
 })

@@ -706,6 +706,7 @@ async function draw(pausedFrame) {
     $('video-position').value = video.video.currentTime
     $('trim-start').value = range.start
     $('trim-end').value = Number(range.end.toFixed(3))
+    $('video-bar').dataset.photoId = p.id
     $('play-video').textContent = video.video.paused ? 'Play' : 'Pause'
   }
 }
@@ -889,7 +890,6 @@ async function execute(command, args, context = {}) {
       'point-tool',
       'compare',
       'compare-pair',
-      'select',
       'scope',
       'library',
       'local-open',
@@ -1317,9 +1317,20 @@ async function execute(command, args, context = {}) {
       break
     }
     case 'select':
-      selected = organization.choose(visible(), selected, args)
+    case 'select-relative': {
+      const list = visible()
+      let target = args
+      if (command === 'select-relative') {
+        const index = list.findIndex((photo) => photo.id === selected)
+        const next = list[index + (args.direction === 'next' ? 1 : -1)]
+        if (!next) return snapshot()
+        target = { id: next.id }
+      }
+      opticsUI?.deactivate()
+      selected = organization.choose(list, selected, target)
       compare = zoom = false
       break
+    }
     case 'select-many':
       selected = organization.chooseMany(visible(), args.ids)
       compare = zoom = false
@@ -1964,13 +1975,15 @@ async function execute(command, args, context = {}) {
         }
         case 'video-play':
         case 'video-pause':
+        case 'video-toggle':
         case 'video-seek':
         case 'video-trim': {
+          if (args.photoId !== undefined && args.photoId !== p.id) throw Error('The selected photo changed')
           if (!isVideo(p)) throw Error('Select a video')
           mode = 'detail'
           if (bitmapId !== p.id) await source(p.id)
           const media = playingMedia
-          if (command === 'video-play') {
+          if (command === 'video-play' || (command === 'video-toggle' && media.video.paused)) {
             const range = clipRange(p.edit.trim, media.duration)
             if (media.video.currentTime < range.start || media.video.currentTime >= range.end)
               await media.seek(range.start)
@@ -1979,7 +1992,7 @@ async function execute(command, args, context = {}) {
             await media.video.play()
             playbackFrames = await media.playbackFrames()
             frameTicket = requestAnimationFrame(refreshPlayback)
-          } else if (command === 'video-pause') {
+          } else if (command === 'video-pause' || command === 'video-toggle') {
             cancelPlaybackFrames()
             const generation = playbackGeneration
             const image = await media.pauseFrame(
@@ -2259,13 +2272,15 @@ export function run(command, args = {}, observe, context) {
     .then(async () => {
       validateArgs(command, args)
       const previous = libraryHistory.checkpoint(command, photos, albums, local.state())
+      const previousSelection = selected
       const result = await execute(command, args, context)
       libraryHistory.record(previous, photos, albums)
       const unchangedPoll =
         (command === 'repair-source' && args.point === undefined && args.picking === undefined) ||
         (command === 'viewport' && args.x === undefined && args.y === undefined) ||
         (command === 'external-check' && !result.imported?.length) ||
-        (command === 'export-settings' && args.options === undefined)
+        (command === 'export-settings' && args.options === undefined) ||
+        (command === 'select-relative' && selected === previousSelection)
       if (
         !unchangedPoll &&
         !(result?.blob instanceof Blob) &&
@@ -2629,10 +2644,15 @@ previousExportButton.onclick = async () => {
     else notice(error.message)
   }
 }
-$('play-video').onclick = () => act(playingMedia?.video.paused ? 'video-play' : 'video-pause')
-$('video-position').onchange = (e) => act('video-seek', { time: Number(e.target.value) })
+$('play-video').onclick = () => act('video-toggle', { photoId: $('video-bar').dataset.photoId })
+$('video-position').onchange = (e) =>
+  act('video-seek', { time: Number(e.target.value), photoId: $('video-bar').dataset.photoId })
 $('trim-apply').onclick = () =>
-  act('video-trim', { start: Number($('trim-start').value), end: Number($('trim-end').value) })
+  act('video-trim', {
+    start: Number($('trim-start').value),
+    end: Number($('trim-end').value),
+    photoId: $('video-bar').dataset.photoId
+  })
 $('format').replaceChildren(...EXPORT_FORMATS.map((format) => option(format.value, format.label)))
 const exportColorLabel = document.createElement('label'),
   exportColorSelect = document.createElement('select')
@@ -2767,11 +2787,9 @@ document.onkeydown = (e) => {
   else if (!mod && key === 'c') act('crop-tool')
   else if (!mod && key === '/') act('film')
   else if (!mod && key === ' ') act('zoom')
-  else if (!mod && ['arrowleft', 'arrowright'].includes(key)) {
-    const list = visible(),
-      i = list.findIndex((p) => p.id === selected) + (key === 'arrowright' ? 1 : -1)
-    if (list[i]) act('select', { id: list[i].id })
-  } else return
+  else if (!mod && ['arrowleft', 'arrowright'].includes(key))
+    act('select-relative', { direction: key === 'arrowright' ? 'next' : 'previous' })
+  else return
   e.preventDefault()
 }
 updatePoints = pointPanel(act)

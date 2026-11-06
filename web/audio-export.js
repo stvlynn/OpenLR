@@ -1,50 +1,120 @@
-import { aacDescriptionFromCookie } from './audio-config.js'
+import { aacDecoderCookie, aacDescriptionFromCookie } from './audio-config.js'
 import { audioMovieTimescale, audioPacketTiming, audioTailFrames } from './audio-timing.js'
+import {
+  canEncodeBrowserAudio,
+  decodeBrowserAac,
+  encodeBrowserAudio,
+  opusHeadPriming
+} from './browser-audio.js'
 import { encodeNativeAudio } from './native-audio.js'
 
-export function desktopAudioEncoder() {
+function desktopAudioEncoder() {
   const bridge = globalThis.mygo
   if (bridge?.platform === 'darwin' && typeof bridge.call === 'function') return encodeNativeAudio
 }
 
-export async function planAudioExport(media, input, format, mp4, signal) {
+function canPreserveFormat({ codec, sampleRate, channels }) {
+  return (
+    (channels === 1 || channels === 2) &&
+    (sampleRate === 48_000 || (codec === 'aac' && sampleRate === 44_100))
+  )
+}
+
+async function supportsPreciseSource(track, codec, shape) {
+  if ((codec !== 'opus' && codec !== 'aac') || !canPreserveFormat({ ...shape, codec })) return false
+  if (codec === 'opus') return true
+  const { description } = (await track.getDecoderConfig()) ?? {}
+  const bytes = ArrayBuffer.isView(description)
+    ? new Uint8Array(description.buffer, description.byteOffset, description.byteLength)
+    : description instanceof ArrayBuffer
+      ? new Uint8Array(description)
+      : undefined
+  try {
+    aacDecoderCookie(bytes, shape)
+    return true
+  } catch {
+    // The ordinary browser conversion supports AAC profiles outside our
+    // 1024-sample AAC-LC timeline.
+    return false
+  }
+}
+
+async function exactBrowserCodec(media, candidates, { sampleRate, channels, decodable }) {
+  if (!decodable) return
+  for (const codec of candidates) {
+    if (
+      await media.canEncodeAudio(codec, {
+        sampleRate,
+        numberOfChannels: channels,
+        quality: media.QUALITY_HIGH
+      })
+    )
+      return codec
+  }
+}
+
+export async function planAudioExport(media, input, format, mp4, { signal, encode, decodeAac }) {
   const tracks = await input.getTracks()
   const audio = new Map()
-  const nativeCodec = mp4 ? 'aac' : 'opus'
+  const targetCodec = mp4 ? 'aac' : 'opus'
+  const nativeEncoder = desktopAudioEncoder()
   // Conversion prefers an exact non-PCM codec. If it finds none, it may
   // otherwise fall back to a different sample rate or number of channels.
-  const candidates = format
-    .getSupportedAudioCodecs()
-    .filter((codec) => media.NON_PCM_AUDIO_CODECS.includes(codec))
+  const candidates = format.getSupportedAudioCodecs()
+  const nonPcm = candidates.filter((codec) => media.NON_PCM_AUDIO_CODECS.includes(codec))
   for (const track of tracks) {
     if (!track.isAudioTrack()) continue
     signal?.throwIfAborted()
-    const [sampleRate, channels, decodable] = await Promise.all([
+    const [sampleRate, channels, decodable, sourceCodec] = await Promise.all([
       track.getSampleRate(),
       track.getNumberOfChannels(),
-      track.canDecode()
+      track.canDecode(),
+      track.getCodec()
     ])
-    let exactCodec
-    if (decodable) {
-      for (const codec of candidates) {
-        if (
-          await media.canEncodeAudio(codec, {
-            sampleRate,
-            numberOfChannels: channels,
-            quality: media.QUALITY_HIGH
-          })
-        ) {
-          exactCodec = codec
-          break
-        }
-      }
+    const shape = { sampleRate, channels }
+    const target = { ...shape, codec: targetCodec }
+    const preciseSource = await supportsPreciseSource(track, sourceCodec, shape)
+    const browserEncoder =
+      !encode &&
+      preciseSource &&
+      canPreserveFormat(target) &&
+      (sourceCodec === 'opus' || decodable || nativeEncoder || decodeAac) &&
+      (await canEncodeBrowserAudio(target))
+    if (encode || browserEncoder) {
+      audio.set(track, {
+        ...target,
+        encode: encode ?? encodeBrowserAudio,
+        decodeAac: decodeAac ?? (sourceCodec === 'aac' && decodable ? decodeBrowserAac : undefined)
+      })
+      continue
     }
-    audio.set(track, { sampleRate, channels, codec: exactCodec ?? nativeCodec, replace: !exactCodec })
+    const exactCodec =
+      nativeEncoder || preciseSource
+        ? await exactBrowserCodec(media, nonPcm, { ...shape, decodable })
+        : undefined
+    if (!exactCodec && nativeEncoder) {
+      audio.set(track, { ...target, encode: nativeEncoder, decodeAac })
+    } else if (!exactCodec && preciseSource) {
+      throw trackError(track, 'the selected format cannot preserve its sample rate and channel count')
+    } else {
+      audio.set(track, { ...shape, decodable, codec: exactCodec })
+    }
   }
-  if (![...audio.values()].some(({ replace }) => replace)) return null
+  const precise = [...audio.values()].filter(({ encode }) => encode)
+  if (!precise.length) return null
+  // Ordinary-only exports keep their existing Conversion route. In a mixed
+  // export, each retained track gets an exact codec so Conversion cannot
+  // silently choose its fallback channel count or sample rate.
+  for (const [track, entry] of audio) {
+    if (entry.encode) continue
+    signal?.throwIfAborted()
+    entry.codec ??= await exactBrowserCodec(media, candidates, entry)
+    if (!entry.codec)
+      throw trackError(track, 'the selected format cannot preserve its sample rate and channel count')
+  }
   const outputFormat = mp4
     ? new media.Mp4OutputFormat({
-        movieTimescale: audioMovieTimescale([...audio.values()].map(({ sampleRate }) => sampleRate))
+        movieTimescale: audioMovieTimescale(precise.map(({ sampleRate }) => sampleRate))
       })
     : new media.WebMOutputFormat({ timestampScale: 10_000 })
   return { tracks, audio, outputFormat }
@@ -62,16 +132,21 @@ function decoderConfig({ codec, sampleRate, channels }, info) {
     info.sampleRate !== sampleRate ||
     info.channels !== channels
   )
-    throw Error('The native audio codec returned inconsistent configuration or priming')
+    throw Error('The audio codec returned inconsistent configuration or priming')
   if (codec === 'aac') {
     return {
       codec: 'mp4a.40.2',
       sampleRate,
       numberOfChannels: channels,
-      description: aacDescriptionFromCookie(info.cookie, { sampleRate, channels })
+      description: info.description ?? aacDescriptionFromCookie(info.cookie, { sampleRate, channels })
     }
   }
   if (leading > 0xffff) throw Error('Opus priming exceeds the OpusHead field')
+  if (info.description) {
+    if (opusHeadPriming(info.description, channels) !== leading)
+      throw Error('The Opus header does not match the encoder priming')
+    return { codec: 'opus', sampleRate, numberOfChannels: channels, description: info.description }
+  }
   const description = new Uint8Array(19)
   description.set([79, 112, 117, 115, 72, 101, 97, 100, 1, channels]) // OpusHead version 1, mapping family 0
   const header = new DataView(description.buffer)
@@ -115,7 +190,9 @@ async function* timedPackets(track, format, blocks, first, encode, signal) {
   }
 
   const encoder = encode(continuousPcm(), {
-    ...format,
+    codec: format.codec,
+    sampleRate: format.sampleRate,
+    channels: format.channels,
     signal,
     onInfo(value) {
       info = value
@@ -145,7 +222,7 @@ async function* timedPackets(track, format, blocks, first, encode, signal) {
           final.inputFrames !== submitted ||
           final.codedFrames !== coded
         )
-          throw Error('The native audio codec returned inconsistent final frame counts')
+          throw Error('The audio codec returned inconsistent final frame counts')
         const tail = audioTailFrames(coded, info.prime.leading, submitted)
         const audibleEnd = coded - tail
         for (const item of pending) {
@@ -154,7 +231,7 @@ async function* timedPackets(track, format, blocks, first, encode, signal) {
         }
         return
       }
-      if (!info) throw Error('The native audio codec emitted a packet before its configuration')
+      if (!info) throw Error('The audio codec emitted a packet before its configuration')
       const { data, frames } = next.value
       pending.push({ data, frames, before: coded })
       coded += frames
@@ -177,10 +254,7 @@ async function* timedPackets(track, format, blocks, first, encode, signal) {
   }
 }
 
-export async function executeAudioExport(
-  media,
-  { input, output, trim, video, plan, encode, signal, decodeAac }
-) {
+export async function executeAudioExport(media, { input, output, trim, video, plan, signal }) {
   const { planAudioTrack } = await import('./audio-track.js')
   const { tracks, audio } = plan
   const abort = new AbortController()
@@ -208,23 +282,22 @@ export async function executeAudioExport(
   try {
     signal?.throwIfAborted()
     for (const [track, format] of audio) {
-      if (!format.replace) continue
-      if (
-        format.channels < 1 ||
-        format.channels > 2 ||
-        (format.sampleRate !== 48_000 && (format.codec !== 'aac' || format.sampleRate !== 44_100))
-      )
+      if (!format.encode) continue
+      if (!canPreserveFormat(format))
         throw trackError(track, 'the selected format cannot preserve its sample rate and channel count')
       const entry = { source: new media.EncodedAudioPacketSource(format.codec) }
       replacements.set(track, entry)
       try {
-        const timeline = await planAudioTrack(track, trim, { signal: abort.signal, decodeAac })
+        const timeline = await planAudioTrack(track, trim, {
+          signal: abort.signal,
+          decodeAac: format.decodeAac
+        })
         if (timeline.sampleRate !== format.sampleRate || timeline.channels !== format.channels)
           throw Error('The source track has inconsistent sample rate or channel metadata')
         entry.blocks = timeline.blocks()[Symbol.asyncIterator]()
         const first = await entry.blocks.next()
         if (first.done) throw Error('The selected interval contains no audible samples for this track')
-        entry.packets = timedPackets(track, format, entry.blocks, first, encode, abort.signal)
+        entry.packets = timedPackets(track, format, entry.blocks, first, format.encode, abort.signal)
         const [name, language, disposition] = await Promise.all([
           track.getName(),
           track.getLanguageCode(),

@@ -195,14 +195,35 @@ try {
     assert.equal(settledPause.playing, false)
     near(settledPause.time, paused.time, 0.0001, 'Paused playhead after idle')
 
-    const trimmed = await call('video-trim', '--start', String(trim.start), '--end', String(trim.end))
+    await assert.rejects(call('video-toggle', '--photoId', id + '-stale'), /selected photo changed/)
+    await assert.rejects(
+      call('video-seek', '--time', '1.5', '--photoId', id + '-stale'),
+      /selected photo changed/
+    )
+    await assert.rejects(
+      call('video-trim', '--start', '1', '--end', '2', '--photoId', id + '-stale'),
+      /selected photo changed/
+    )
+    assert.deepEqual((await call('state')).playback, settledPause)
+    assert.equal((await call('video-toggle', '--photoId', id)).playback.playing, true)
+    assert.equal((await call('video-toggle', '--photoId', id)).playback.playing, false)
+
+    const trimmed = await call(
+      'video-trim',
+      '--start',
+      String(trim.start),
+      '--end',
+      String(trim.end),
+      '--photoId',
+      id
+    )
     assert.deepEqual(trimmed.photos.find((photo) => photo.id === id).edit.trim, trim)
     assert.equal(trimmed.playback.playing, false)
     near(trimmed.playback.time, trim.start, 0.025, 'Trim start seek')
     const green = await decodeStill(page, await call('preview', '--output', path.join(root, 'green.png')))
     checkColor(green.pixel, 1, 'Trim-start preview')
     await call('edit', '--key', 'turn', '--value', '1')
-    const blueSeek = await call('video-seek', '--time', '2.35')
+    const blueSeek = await call('video-seek', '--time', '2.35', '--photoId', id)
     near(blueSeek.playback.time, 2.35, 0.025, 'Blue frame seek')
     const blue = await decodeStill(page, await call('preview', '--output', path.join(root, 'blue.png')))
     assert.deepEqual(blue.size, turnedSize)

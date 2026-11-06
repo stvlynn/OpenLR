@@ -62,6 +62,16 @@ jobs:
         id: windows-native
         if: runner.os == 'Windows'
         run: node scripts/native-suite.mjs build/release/windows-amd64/OpenLR.exe
+      - name: Install independent Windows audio verification tools
+        if: ${{ !cancelled() && runner.os == 'Windows' && steps.distribution.outcome == 'success' }}
+        run: |
+          if (-not (Get-Command ffmpeg -ErrorAction SilentlyContinue) -or -not (Get-Command ffprobe -ErrorAction SilentlyContinue)) {
+            choco install ffmpeg -y --no-progress
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+      - name: Verify Windows short multitrack audio exports
+        if: ${{ !cancelled() && runner.os == 'Windows' && steps.distribution.outcome == 'success' }}
+        run: node scripts/native-audio-export-smoke.mjs build/release/windows-amd64/OpenLR.exe
       - name: Build the Windows startup diagnostic after a native failure
         id: startup-diagnostic
         if: ${{ failure() && runner.os == 'Windows' && steps.windows-native.outcome == 'failure' }}

@@ -64,7 +64,9 @@ Video imports declare a media type from the case-insensitive suffix for WebM, MO
 
 Video playback and audio use the native media element. When its pixels are origin-restricted, OpenLR decodes visual frames from the original file for thumbnails, the live editor, previews and still exports. Pause and automatic trim-end stop prepare the frame at the captured playback position, then seek the paused media element to that position to anchor its clock. A later seek or asset change supersedes a pending pause. A saved frame uses the playback time captured for that command. Batch still export uses its own decoded frame at the saved trim start. Video-container exports require the selected format to retain every source track.
 
-On macOS, a missing exact browser audio codec selects the native export path: AAC-LC input uses AudioToolbox, Opus input uses the bundled packet decoder, and AudioToolbox encodes the replacement audio. This path preserves mono/stereo layout and the source sample rate, supporting 48 kHz Opus and 44.1/48 kHz AAC. It preserves delayed starts and gaps on the video trim timeline. Unsupported configurations or a replacement track with no audible overlap fail before saving; there is no automatic downmix or sample-rate change. Cancellation closes the export's codec handles. Current verification and remaining native checks are recorded in [the audio export record](../research/native-audio-export.md).
+`video-toggle --photoId PHOTO_ID` uses the same Play/Pause action as the video bar. It reads the clip's actual playback state when the command executes and returns the resulting `playback` state. `video-play` and `video-pause` remain available for explicit playback requests. `video-seek --time 0.75` moves the playhead, and `video-trim --start 0.5 --end 1.5` saves the trim and moves the playhead to its start. The video bar sends the ID of the clip it displays for Play/Pause, seeking and trimming. The `photoId` guard is optional for these three CLI commands.
+
+Sample-accurate audio export supports mono and stereo 48 kHz Opus and 44.1/48 kHz AAC-LC. It uses the bundled Opus decoder and selects WebCodecs or macOS AudioToolbox according to the source and output codec configuration. The selected samples share the video trim timeline, including delayed starts and gaps. In a mixed export, every additional track needs a codec that preserves its sample rate and channels. A replacement track with no audible overlap fails before saving. Other formats and layouts retain the ordinary conversion path when available. Cancellation closes the export's codec handles. The tested configurations and commands are recorded in [the audio export record](../research/native-audio-export.md).
 
 ```powershell
 node cli/openlr.mjs schema export
@@ -151,6 +153,8 @@ With the crop tool open, `state --summary true` exposes the uncommitted rectangl
 Basic adjustment sliders, aspect changes and **Clear crop** also submit the photo ID when they commit `edit`. A CLI caller can use `edit --key Exposure --value 0.5 --photoId PHOTO_ID` to guard its target, or omit `photoId` to use the active photo at execution.
 
 `grid-layout` without arguments switches between Square and Mosaic like the toolbar button. `grid-layout --layout mosaic` selects an explicit layout. Both open Grid, persist the choice and return the new `gridLayout` in workspace state. Consecutive switches each act on the previous queued result.
+
+`select-relative --direction next` and `select-relative --direction previous` navigate the current visible photo order like Right and Left outside crop editing. Each action uses the selection and visible order at execution. The command returns full state and stops at the ends without wrapping or changing the workspace. Use `select --id PHOTO_ID` for an explicit target.
 
 ## Selection export
 

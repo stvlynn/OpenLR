@@ -447,10 +447,21 @@ export const definitions = {
   }),
   'video-play': entry('Play the selected clip in detail view'),
   'video-pause': entry('Pause video playback'),
-  'video-seek': entry('Seek to a frame in seconds', { time: { type: 'number', minimum: 0 } }, ['time']),
+  'video-toggle': entry('Play or pause the selected clip using its current playback state', {
+    photoId: string('Optional current-photo guard')
+  }),
+  'video-seek': entry(
+    'Seek to a frame in seconds',
+    { time: { type: 'number', minimum: 0 }, photoId: string('Optional current-photo guard') },
+    ['time']
+  ),
   'video-trim': entry(
     'Set nondestructive in and out points in seconds',
-    { start: { type: 'number', minimum: 0 }, end: { type: 'number', minimum: 0 } },
+    {
+      start: { type: 'number', minimum: 0 },
+      end: { type: 'number', minimum: 0 },
+      photoId: string('Optional current-photo guard')
+    },
     ['start', 'end']
   ),
   'ai-mask': entry(
@@ -605,6 +616,11 @@ export const definitions = {
       range: { type: 'boolean', description: 'Select the visible range from the selection anchor' }
     },
     ['id']
+  ),
+  'select-relative': entry(
+    'Select the previous or next photo in the current visible order without wrapping',
+    { direction: string('Navigation direction', { enum: ['previous', 'next'] }) },
+    ['direction']
   ),
   'select-many': entry(
     'Select an explicit list of visible photo IDs; an empty array clears selection',
