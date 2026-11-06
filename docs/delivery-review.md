@@ -2,6 +2,16 @@
 
 Reviewed through 2026-11-06 on Windows and WSL Linux. This is delivery evidence, not an overall completeness claim.
 
+## Windows tracked snapshot `af5e06d`
+
+A Git ZIP made from clean HEAD identified `af5e06d54c77b70d9adadd4b6417cfc664b329dd` in its comment and contained 843 entries. The extracted tree began without installed dependencies, generated CLI or bindings, or prior build output. Node 24.9.0 and npm 11.6.0 installed 62 packages with `npm ci` and reported zero vulnerabilities. MyGo 0.7.4 used the external Go 1.27.3 toolchain and shared Go caches to build the Windows/amd64 application and generate the NSIS installer. The live verification used the unpacked executable. Installer coverage ended at generation.
+
+The packaged CLI ran alone from a fresh OS temporary directory outside the project, without ancestor `node_modules` and with `NODE_PATH` and `NODE_OPTIONS` unset. Offline discovery and dry runs checked the default viewport and explicit `detail`, `grid` and `filmstrip` targets, including the optional photo guard. The CLI rejected an unknown target and a negative coordinate. An esbuild parse found one source input and six external imports, all Node builtins.
+
+The archived navigation smoke used 106 separate invocations of the copied CLI and two `watch` processes. The actual Grid moved from 0 to 3,007.200 CSS pixels and Filmstrip from 0 to 1,881.600. Their 1783 × 1154 captures contained distinct generated thumbnail bands at the two positions. The watchers reported one revision per move, with the same offsets as the command and state. The smoke verified hidden and stale-target rejection, quiet reads and unchanged offsets, retained selection and edits, trusted keyboard input, fullscreen capture and preference restart. All 36 generated viewport fixture files retained their bytes, and both checked original exports matched their sources.
+
+Raw stdout preview and rendered export produced 459-byte 120 × 80 PNGs whose decoded samples matched their saved-file counterparts. The raw 225-byte original matched the file export and source bytes, and settings readback reported the original format. Ten byte comparisons verified the packaged CLI, icon, AGPL text, five component licenses, third-party notices and source notice. Six vendored Opus notice files were present. The private host workspace and copied CLI were removed. The archive, harness and logs are under ignored `.workspace/archive-af5e06d*` paths. [Packaged source link](https://github.com/stvlynn/OpenLR)
+
 ## Windows tracked snapshot `ffb5bff`
 
 A fresh Git ZIP archive identified `ffb5bff03ba80cffd85bdcebf0632182eec1b8a5` in its comment and contained 835 entries. The extracted tree began without installed dependencies, generated bindings or CLI, or build output. Node 24.9.0 and npm 11.6.0 installed 62 packages with `npm ci` and reported zero vulnerabilities. MyGo 0.7.4 used the external Go 1.27.3 toolchain and shared Go caches to build the Windows/amd64 application and generate the NSIS installer. The live check used the unpacked application. Installer coverage ended at generation.
