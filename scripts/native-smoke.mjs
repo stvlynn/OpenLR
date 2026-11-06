@@ -2263,6 +2263,12 @@ try {
   )
 } catch (error) {
   primaryError = error
+  try {
+    const diagnostic = await inspectNativeStartup({ session, host, startedAt })
+    console.error('Native workflow failure diagnostics: ' + JSON.stringify(diagnostic))
+  } catch {
+    console.error('Native workflow failure diagnostics unavailable')
+  }
   throw error
 } finally {
   const cleanupErrors = []

@@ -29,6 +29,7 @@ async function fixture(t) {
       let pending,
         gate,
         concurrentSeek,
+        lastRewound,
         resets = 0,
         sparseReads = 0
       CanvasRenderingContext2D.prototype.drawImage = function (source, ...args) {
@@ -59,6 +60,7 @@ async function fixture(t) {
             media.currentTime = start
           })
           resets++
+          lastRewound = media
           if (gate) {
             const held = gate
             held.entered = true
@@ -86,6 +88,11 @@ async function fixture(t) {
         trace: () => trace,
         resets: () => resets,
         sparseReads: () => sparseReads,
+        restoredAt(count, time) {
+          return (
+            resets >= count && lastRewound.paused && !lastRewound.seeking && lastRewound.currentTime >= time
+          )
+        },
         seekDuringRepair(time) {
           concurrentSeek = { time }
         },
@@ -166,7 +173,11 @@ test('paused video restores the captured playhead after a decoded read rewinds n
 
   await run(page, 'video-trim', { start, end })
   await play(page)
-  await playbackWhen(page, ({ playing, time }) => !playing && time >= end)
+  // Native pause happens before the decoded frame triggers the injected rewind.
+  await page.waitForFunction(({ end }) => pauseClock.restoredAt(2, end), { end })
+  const stopped = (await run(page, 'state')).playback
+  assert.equal(stopped.playing, false)
+  assert.ok(stopped.time >= end, JSON.stringify(stopped))
   assert.equal(await page.evaluate(() => pauseClock.resets()), 2)
   const sought = await run(page, 'video-seek', { time: 2.35 })
   assert.deepEqual(

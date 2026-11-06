@@ -35,6 +35,8 @@ try {
     minify: true,
     format: 'esm',
     platform: 'browser',
+    // Keep the upstream browser syntax floor, including lowered resource disposal.
+    target: 'es2021',
     tsconfigRaw: {},
     legalComments: 'eof',
     plugins: [
