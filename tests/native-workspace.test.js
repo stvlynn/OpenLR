@@ -105,10 +105,35 @@ function controlledHost(t, closes, { secondaryCloses = true } = {}) {
 
 test('native workspace removes its disposable profile after confirmed host close', async (t) => {
   const { run, errors, stopCalls } = controlledHost(t, true)
-  const { root } = await run((workspace) => workspace)
+  let cleanupCalls = 0
+  const { root } = await run((workspace) => workspace, { onCleanup: () => cleanupCalls++ })
+  assert.equal(cleanupCalls, 1)
   assert.equal(stopCalls(), 1)
   await assert.rejects(access(root), { code: 'ENOENT' })
   assert.deepEqual(errors, [])
+})
+
+test('native workspace reports confirmed cleanup even when the workflow failed', async (t) => {
+  const { run } = controlledHost(t, true)
+  const failure = new Error('Media import failed')
+  let root,
+    cleaned = false
+  await assert.rejects(
+    run(
+      (workspace) => {
+        root = workspace.root
+        throw failure
+      },
+      {
+        onCleanup: async () => {
+          await assert.rejects(access(root), { code: 'ENOENT' })
+          cleaned = true
+        }
+      }
+    ),
+    (error) => error === failure
+  )
+  assert.equal(cleaned, true)
 })
 
 test('native workspace can stop and start the same profile without overlapping hosts', async (t) => {
@@ -141,19 +166,24 @@ test('native workspace can stop and start the same profile without overlapping h
 test('native workspace retains the profile and session after an unconfirmed close', async (t) => {
   const { run, errors, profileData, stopCalls, spawnCalls } = controlledHost(t, false)
   let workspace
+  let cleanupCalls = 0
   await assert.rejects(
-    run(async (value) => {
-      workspace = value
-      await assert.rejects(workspace.stop(), /Host did not exit/)
-      await assert.rejects(workspace.start(), /exit is unconfirmed/)
-      assert.equal(spawnCalls(), 1)
-    }),
+    run(
+      async (value) => {
+        workspace = value
+        await assert.rejects(workspace.stop(), /Host did not exit/)
+        await assert.rejects(workspace.start(), /exit is unconfirmed/)
+        assert.equal(spawnCalls(), 1)
+      },
+      { onCleanup: () => cleanupCalls++ }
+    ),
     (error) =>
       error instanceof AggregateError &&
       error.message === 'Native workspace cleanup failed' &&
       error.errors[0]?.message === 'Host did not exit'
   )
   assert.equal(stopCalls(), 2)
+  assert.equal(cleanupCalls, 0)
   assert.equal(await readFile(workspace.marker, 'utf8'), profileData)
   await access(workspace.session)
   assert.deepEqual(errors, [

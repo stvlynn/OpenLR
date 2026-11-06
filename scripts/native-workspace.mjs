@@ -11,7 +11,7 @@ import { inspectNativeRuntime, reportNativeStartupFailure } from './native-start
 export async function withNativeWorkspace(
   executable,
   workflow,
-  { persistent = false, env: extraEnv = {}, prepare } = {}
+  { persistent = false, env: extraEnv = {}, prepare, onCleanup } = {}
 ) {
   if (!executable) throw Error('Pass the path to a built OpenLR executable')
   const temp = await realpath(tmpdir()),
@@ -187,6 +187,7 @@ export async function withNativeWorkspace(
         assert.equal(path.dirname(cleanup), temp)
         assert.ok(path.basename(cleanup).startsWith(prefix))
         await rm(cleanup, { recursive: true, force: true, maxRetries: 6, retryDelay: 200 })
+        await onCleanup?.()
       } catch (error) {
         cleanupFailures.push(error)
       }

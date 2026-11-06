@@ -1,0 +1,47 @@
+name: macOS packaged video load comparison
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  comparison:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15-intel, macos-15]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - run: npm ci
+      - name: Build the automatic-load control
+        run: node scripts/desktop.mjs build -o build/video-automatic -platform darwin/universal
+      - name: Build the explicit initial-load candidate
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import subprocess
+          source = Path('web/video.js')
+          original = source.read_bytes()
+          marker = b'      video.src = url\n'
+          if original.count(marker) != 1:
+              raise RuntimeError('Expected one initial source assignment')
+          try:
+              source.write_bytes(original.replace(marker, marker + b'      video.load()\n'))
+              subprocess.run(['node', 'scripts/desktop.mjs', 'build', '-o', 'build/video-explicit', '-platform', 'darwin/universal'], check=True)
+          finally:
+              source.write_bytes(original)
+          PY
+      - name: Compare actual import, seek, playback, frames and audio export
+        run: node scripts/native-video-load-comparison.mjs build/video-automatic/darwin-universal/OpenLR.app/Contents/MacOS/OpenLR build/video-explicit/darwin-universal/OpenLR.app/Contents/MacOS/OpenLR build/video-load-trials
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: video-load-${{ matrix.os }}
+          path: build/video-load-trials

@@ -150,6 +150,7 @@ const server = await serveWorkspace()
 let browser
 try {
   browser = await chromium.launch({ channel: process.env.CHROME_CHANNEL || 'chrome' })
+  console.log(JSON.stringify({ nativeVideoBrowser: browser.version() }))
   const page = await browser.newPage()
   // Use Chrome for the fixture and artifact decoder in a page without OpenLR application code.
   await page.route(server.url + '/', (route) =>
@@ -157,185 +158,198 @@ try {
   )
   await page.goto(server.url)
   const bytes = await makeVideoFixture(page)
-  await withNativeWorkspace(executable, async ({ root, call, initial }) => {
-    const clip = path.join(root, 'clip.webm')
-    await writeFile(clip, bytes)
+  await withNativeWorkspace(
+    executable,
+    async ({ root, call, initial }) => {
+      const clip = path.join(root, 'clip.webm')
+      await writeFile(clip, bytes)
 
-    assert.deepEqual(initial.photos, [])
-    const imported = await call('import', clip)
-    assert.deepEqual(imported.failed, [])
-    assert.equal(imported.added.length, 1)
-    const [id] = imported.added
-    const sought = await call('video-seek', '--time', '0.35')
-    assert.equal(sought.selected, id)
-    assert.equal(sought.mode, 'detail')
-    assert.equal(sought.playback.playing, false)
-    near(sought.playback.time, 0.35, 0.025, 'Initial seek')
-    near(sought.playback.duration, 3, 0.05, 'Source duration')
-    const red = await decodeStill(page, await call('preview', '--output', path.join(root, 'red.png')))
-    assert.deepEqual(red.size, sourceSize)
-    checkColor(red.pixel, 0, 'Initial preview')
+      assert.deepEqual(initial.photos, [])
+      const imported = await call('import', clip)
+      assert.deepEqual(imported.failed, [])
+      assert.equal(imported.added.length, 1)
+      const [id] = imported.added
+      const sought = await call('video-seek', '--time', '0.35')
+      assert.equal(sought.selected, id)
+      assert.equal(sought.mode, 'detail')
+      assert.equal(sought.playback.playing, false)
+      near(sought.playback.time, 0.35, 0.025, 'Initial seek')
+      near(sought.playback.duration, 3, 0.05, 'Source duration')
+      const red = await decodeStill(page, await call('preview', '--output', path.join(root, 'red.png')))
+      assert.deepEqual(red.size, sourceSize)
+      checkColor(red.pixel, 0, 'Initial preview')
 
-    const started = (await call('video-play')).playback
-    assert.equal(started.playing, true)
-    let advanced = started
-    const deadline = Date.now() + 5000
-    while (advanced.playing && advanced.time < started.time + 0.15 && Date.now() < deadline) {
-      await delay(50)
-      advanced = (await call('state')).playback
-    }
-    assert.ok(advanced.playing && advanced.time >= started.time + 0.15, JSON.stringify({ started, advanced }))
-    const paused = (await call('video-pause')).playback
-    assert.equal(paused.playing, false)
-    assert.ok(paused.time >= advanced.time, JSON.stringify({ started, advanced, paused }))
-    assert.deepEqual((await call('state')).playback, paused)
-    // WKWebView can rewind after pause returns, even without another frame read.
-    await delay(2000)
-    const settledPause = (await call('state')).playback
-    assert.equal(settledPause.playing, false)
-    near(settledPause.time, paused.time, 0.0001, 'Paused playhead after idle')
-
-    await assert.rejects(call('video-toggle', '--photoId', id + '-stale'), /selected photo changed/)
-    await assert.rejects(
-      call('video-seek', '--time', '1.5', '--photoId', id + '-stale'),
-      /selected photo changed/
-    )
-    await assert.rejects(
-      call('video-trim', '--start', '1', '--end', '2', '--photoId', id + '-stale'),
-      /selected photo changed/
-    )
-    assert.deepEqual((await call('state')).playback, settledPause)
-    assert.equal((await call('video-toggle', '--photoId', id)).playback.playing, true)
-    assert.equal((await call('video-toggle', '--photoId', id)).playback.playing, false)
-
-    const trimmed = await call(
-      'video-trim',
-      '--start',
-      String(trim.start),
-      '--end',
-      String(trim.end),
-      '--photoId',
-      id
-    )
-    assert.deepEqual(trimmed.photos.find((photo) => photo.id === id).edit.trim, trim)
-    assert.equal(trimmed.playback.playing, false)
-    near(trimmed.playback.time, trim.start, 0.025, 'Trim start seek')
-    const green = await decodeStill(page, await call('preview', '--output', path.join(root, 'green.png')))
-    checkColor(green.pixel, 1, 'Trim-start preview')
-    await call('edit', '--key', 'turn', '--value', '1')
-    const blueSeek = await call('video-seek', '--time', '2.35', '--photoId', id)
-    near(blueSeek.playback.time, 2.35, 0.025, 'Blue frame seek')
-    const blue = await decodeStill(page, await call('preview', '--output', path.join(root, 'blue.png')))
-    assert.deepEqual(blue.size, turnedSize)
-    checkColor(blue.pixel, 2, 'Edited preview')
-
-    const beforeStill = await call('state')
-    const original = await call(
-      'export',
-      '--format',
-      'original',
-      '--output',
-      path.join(root, 'original.webm')
-    )
-    assert.deepEqual(await readFile(original.path), bytes)
-    assert.deepEqual(await readFile(clip), bytes)
-    const afterOriginal = await call('state')
-    for (const key of ['mode', 'selected', 'selection', 'photos', 'playback'])
-      assert.deepEqual(afterOriginal[key], beforeStill[key], key)
-
-    await assert.rejects(() => call('save-frame', '--photoId', 'missing-photo'), /selected photo changed/i)
-    const saved = await call('save-frame', '--photoId', beforeStill.selected)
-    assert.deepEqual(saved.failed, [])
-    assert.equal(saved.added.length, 1)
-    const withStill = await call('state')
-    assert.equal(withStill.selected, saved.added[0])
-    assert.equal(withStill.photos.length, 2)
-    const savedRow = withStill.photos.find((photo) => photo.id === saved.added[0])
-    assert.equal(savedRow.name, `clip-${Math.round(beforeStill.playback.time * 1000)}.png`)
-    assert.deepEqual([savedRow.width, savedRow.height], turnedSize)
-    assert.deepEqual(savedRow.edit, {})
-    const still = await decodeStill(
-      page,
-      await call('export', '--format', 'original', '--output', path.join(root, 'saved.png'))
-    )
-    assert.deepEqual(still, blue)
-
-    await call('select', '--id', id)
-    const before = await call('video-seek', '--time', String(beforeStill.playback.time))
-    assert.equal(before.selected, id)
-    assert.deepEqual(before.selection, beforeStill.selection)
-    assert.equal(before.mode, beforeStill.mode)
-    assert.equal(before.playback.playing, false)
-    near(before.playback.time, beforeStill.playback.time, 0.025, 'Restored frame seek')
-    assert.deepEqual(
-      before.photos.find((photo) => photo.id === id).edit,
-      beforeStill.photos.find((photo) => photo.id === id).edit
-    )
-    console.log(
-      JSON.stringify({
-        nativeVideo: 'frames-passed',
-        playback: { started: started.time, advanced: advanced.time, paused: paused.time },
-        previewPixels: [red.pixel, green.pixel, blue.pixel],
-        savedFrame: still,
-        preservedOriginalBytes: bytes.length
-      })
-    )
-
-    const output = await call('export', '--format', 'video/webm', '--output', path.join(root, 'trimmed.webm'))
-    const decoded = await decodeClip(page, output)
-    const after = await call('state')
-    for (const key of ['mode', 'selected', 'selection', 'photos', 'playback'])
-      assert.deepEqual(after[key], before[key], key)
-    assert.deepEqual(decoded.size, turnedSize)
-    assert.equal(decoded.videoCodec, 'vp9')
-    assert.equal(decoded.audioCodec, 'opus')
-    near(decoded.duration, trim.end - trim.start, 0.055, 'Trimmed container duration')
-    near(decoded.audioDuration, trim.end - trim.start, 0.055, 'Decoded PCM duration')
-    checkColor(decoded.pixels[0], 1, 'Trimmed first segment')
-    checkColor(decoded.pixels[1], 2, 'Trimmed second segment')
-    checkSignal(decoded)
-
-    let nativeAudio
-    if (process.platform === 'darwin') {
-      const mp4 = await call('export', '--format', 'video/mp4', '--output', path.join(root, 'trimmed.mp4'))
-      const decodedMp4 = await decodeClip(page, mp4)
-      assert.equal(decodedMp4.videoCodec, 'avc')
-      assert.equal(decodedMp4.audioCodec, 'aac')
-      checkSignal(decodedMp4)
-      assert.deepEqual(decodedMp4.size, turnedSize)
-      checkColor(decodedMp4.pixels[0], 1, 'MP4 first segment')
-      checkColor(decodedMp4.pixels[1], 2, 'MP4 second segment')
-      nativeAudio = {}
-      for (const [format, result] of [
-        ['webm', output],
-        ['mp4', mp4]
-      ]) {
-        const audio = await playableAudio(page, result.path)
-        assert.equal(audio.channels, 1, format)
-        assert.equal(
-          audio.frames,
-          Math.round(trim.end * audio.sampleRate) - Math.round(trim.start * audio.sampleRate),
-          format
-        )
-        nativeAudio[format] = audio
+      const started = (await call('video-play')).playback
+      assert.equal(started.playing, true)
+      let advanced = started
+      const deadline = Date.now() + 5000
+      while (advanced.playing && advanced.time < started.time + 0.15 && Date.now() < deadline) {
+        await delay(50)
+        advanced = (await call('state')).playback
       }
-      const finalState = await call('state')
-      for (const key of ['mode', 'selected', 'selection', 'photos', 'playback'])
-        assert.deepEqual(finalState[key], before[key], key)
-    }
+      assert.ok(
+        advanced.playing && advanced.time >= started.time + 0.15,
+        JSON.stringify({ started, advanced })
+      )
+      const paused = (await call('video-pause')).playback
+      assert.equal(paused.playing, false)
+      assert.ok(paused.time >= advanced.time, JSON.stringify({ started, advanced, paused }))
+      assert.deepEqual((await call('state')).playback, paused)
+      // WKWebView can rewind after pause returns, even without another frame read.
+      await delay(2000)
+      const settledPause = (await call('state')).playback
+      assert.equal(settledPause.playing, false)
+      near(settledPause.time, paused.time, 0.0001, 'Paused playhead after idle')
 
-    console.log(
-      JSON.stringify({
-        nativeVideo: 'passed',
-        playback: { started: started.time, advanced: advanced.time, paused: paused.time },
-        previewPixels: [red.pixel, green.pixel, blue.pixel],
-        savedFrame: still,
-        exported: decoded,
-        ...(nativeAudio && { nativeAudio }),
-        preservedOriginalBytes: bytes.length
-      })
-    )
-  })
+      await assert.rejects(call('video-toggle', '--photoId', id + '-stale'), /selected photo changed/)
+      await assert.rejects(
+        call('video-seek', '--time', '1.5', '--photoId', id + '-stale'),
+        /selected photo changed/
+      )
+      await assert.rejects(
+        call('video-trim', '--start', '1', '--end', '2', '--photoId', id + '-stale'),
+        /selected photo changed/
+      )
+      assert.deepEqual((await call('state')).playback, settledPause)
+      assert.equal((await call('video-toggle', '--photoId', id)).playback.playing, true)
+      assert.equal((await call('video-toggle', '--photoId', id)).playback.playing, false)
+
+      const trimmed = await call(
+        'video-trim',
+        '--start',
+        String(trim.start),
+        '--end',
+        String(trim.end),
+        '--photoId',
+        id
+      )
+      assert.deepEqual(trimmed.photos.find((photo) => photo.id === id).edit.trim, trim)
+      assert.equal(trimmed.playback.playing, false)
+      near(trimmed.playback.time, trim.start, 0.025, 'Trim start seek')
+      const green = await decodeStill(page, await call('preview', '--output', path.join(root, 'green.png')))
+      checkColor(green.pixel, 1, 'Trim-start preview')
+      await call('edit', '--key', 'turn', '--value', '1')
+      const blueSeek = await call('video-seek', '--time', '2.35', '--photoId', id)
+      near(blueSeek.playback.time, 2.35, 0.025, 'Blue frame seek')
+      const blue = await decodeStill(page, await call('preview', '--output', path.join(root, 'blue.png')))
+      assert.deepEqual(blue.size, turnedSize)
+      checkColor(blue.pixel, 2, 'Edited preview')
+
+      const beforeStill = await call('state')
+      const original = await call(
+        'export',
+        '--format',
+        'original',
+        '--output',
+        path.join(root, 'original.webm')
+      )
+      assert.deepEqual(await readFile(original.path), bytes)
+      assert.deepEqual(await readFile(clip), bytes)
+      const afterOriginal = await call('state')
+      for (const key of ['mode', 'selected', 'selection', 'photos', 'playback'])
+        assert.deepEqual(afterOriginal[key], beforeStill[key], key)
+
+      await assert.rejects(() => call('save-frame', '--photoId', 'missing-photo'), /selected photo changed/i)
+      const saved = await call('save-frame', '--photoId', beforeStill.selected)
+      assert.deepEqual(saved.failed, [])
+      assert.equal(saved.added.length, 1)
+      const withStill = await call('state')
+      assert.equal(withStill.selected, saved.added[0])
+      assert.equal(withStill.photos.length, 2)
+      const savedRow = withStill.photos.find((photo) => photo.id === saved.added[0])
+      assert.equal(savedRow.name, `clip-${Math.round(beforeStill.playback.time * 1000)}.png`)
+      assert.deepEqual([savedRow.width, savedRow.height], turnedSize)
+      assert.deepEqual(savedRow.edit, {})
+      const still = await decodeStill(
+        page,
+        await call('export', '--format', 'original', '--output', path.join(root, 'saved.png'))
+      )
+      assert.deepEqual(still, blue)
+
+      await call('select', '--id', id)
+      const before = await call('video-seek', '--time', String(beforeStill.playback.time))
+      assert.equal(before.selected, id)
+      assert.deepEqual(before.selection, beforeStill.selection)
+      assert.equal(before.mode, beforeStill.mode)
+      assert.equal(before.playback.playing, false)
+      near(before.playback.time, beforeStill.playback.time, 0.025, 'Restored frame seek')
+      assert.deepEqual(
+        before.photos.find((photo) => photo.id === id).edit,
+        beforeStill.photos.find((photo) => photo.id === id).edit
+      )
+      console.log(
+        JSON.stringify({
+          nativeVideo: 'frames-passed',
+          playback: { started: started.time, advanced: advanced.time, paused: paused.time },
+          previewPixels: [red.pixel, green.pixel, blue.pixel],
+          savedFrame: still,
+          preservedOriginalBytes: bytes.length
+        })
+      )
+
+      const output = await call(
+        'export',
+        '--format',
+        'video/webm',
+        '--output',
+        path.join(root, 'trimmed.webm')
+      )
+      const decoded = await decodeClip(page, output)
+      const after = await call('state')
+      for (const key of ['mode', 'selected', 'selection', 'photos', 'playback'])
+        assert.deepEqual(after[key], before[key], key)
+      assert.deepEqual(decoded.size, turnedSize)
+      assert.equal(decoded.videoCodec, 'vp9')
+      assert.equal(decoded.audioCodec, 'opus')
+      near(decoded.duration, trim.end - trim.start, 0.055, 'Trimmed container duration')
+      near(decoded.audioDuration, trim.end - trim.start, 0.055, 'Decoded PCM duration')
+      checkColor(decoded.pixels[0], 1, 'Trimmed first segment')
+      checkColor(decoded.pixels[1], 2, 'Trimmed second segment')
+      checkSignal(decoded)
+
+      let nativeAudio
+      if (process.platform === 'darwin') {
+        const mp4 = await call('export', '--format', 'video/mp4', '--output', path.join(root, 'trimmed.mp4'))
+        const decodedMp4 = await decodeClip(page, mp4)
+        assert.equal(decodedMp4.videoCodec, 'avc')
+        assert.equal(decodedMp4.audioCodec, 'aac')
+        checkSignal(decodedMp4)
+        assert.deepEqual(decodedMp4.size, turnedSize)
+        checkColor(decodedMp4.pixels[0], 1, 'MP4 first segment')
+        checkColor(decodedMp4.pixels[1], 2, 'MP4 second segment')
+        nativeAudio = {}
+        for (const [format, result] of [
+          ['webm', output],
+          ['mp4', mp4]
+        ]) {
+          const audio = await playableAudio(page, result.path)
+          assert.equal(audio.channels, 1, format)
+          assert.equal(
+            audio.frames,
+            Math.round(trim.end * audio.sampleRate) - Math.round(trim.start * audio.sampleRate),
+            format
+          )
+          nativeAudio[format] = audio
+        }
+        const finalState = await call('state')
+        for (const key of ['mode', 'selected', 'selection', 'photos', 'playback'])
+          assert.deepEqual(finalState[key], before[key], key)
+      }
+
+      console.log(
+        JSON.stringify({
+          nativeVideo: 'passed',
+          playback: { started: started.time, advanced: advanced.time, paused: paused.time },
+          previewPixels: [red.pixel, green.pixel, blue.pixel],
+          savedFrame: still,
+          exported: decoded,
+          ...(nativeAudio && { nativeAudio }),
+          preservedOriginalBytes: bytes.length
+        })
+      )
+    },
+    { onCleanup: () => console.log(JSON.stringify({ nativeVideoCleanup: 'confirmed' })) }
+  )
 } finally {
   try {
     await browser?.close()
