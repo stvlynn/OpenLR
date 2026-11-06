@@ -5,8 +5,12 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"errors"
+	"fmt"
 	"log"
+	"os"
 	"sync"
+	"sync/atomic"
+	"time"
 
 	"github.com/egoist/mygo"
 	"openlr/internal/nativeaudio"
@@ -286,6 +290,20 @@ func (m *nativeAudioManager) quit() error {
 // NativeAudio exposes bounded codec transfers owned by the calling window.
 type NativeAudio struct{ manager *nativeAudioManager }
 
+var nativeAudioTraceSequence atomic.Uint64
+
+func traceNativeAudio(operation string) func() {
+	if os.Getenv("OPENLR_DIAGNOSTICS") != "1" {
+		return func() {}
+	}
+	sequence := nativeAudioTraceSequence.Add(1)
+	started := time.Now()
+	fmt.Fprintf(os.Stderr, "OpenLR native audio diagnostic: operation=%s sequence=%d stage=start\n", operation, sequence)
+	return func() {
+		fmt.Fprintf(os.Stderr, "OpenLR native audio diagnostic: operation=%s sequence=%d stage=returned elapsed_ms=%d\n", operation, sequence, time.Since(started).Milliseconds())
+	}
+}
+
 func newNativeAudio() *NativeAudio {
 	return &NativeAudio{manager: &nativeAudioManager{
 		openCodec: func(config nativeaudio.Config) (nativeAudioStream, error) {
@@ -303,6 +321,7 @@ func nativeAudioCaller(ctx context.Context) (int, error) {
 }
 
 func (b *NativeAudio) Open(ctx context.Context, config nativeAudioConfig) (nativeAudioHandle, error) {
+	defer traceNativeAudio("open")()
 	windowID, err := nativeAudioCaller(ctx)
 	if err != nil {
 		return nativeAudioHandle{}, err
@@ -311,6 +330,7 @@ func (b *NativeAudio) Open(ctx context.Context, config nativeAudioConfig) (nativ
 }
 
 func (b *NativeAudio) Process(ctx context.Context, id string, input nativeAudioInput) (nativeAudioOutput, error) {
+	defer traceNativeAudio("process")()
 	windowID, err := nativeAudioCaller(ctx)
 	if err != nil {
 		return nativeAudioOutput{}, err
@@ -319,6 +339,7 @@ func (b *NativeAudio) Process(ctx context.Context, id string, input nativeAudioI
 }
 
 func (b *NativeAudio) Info(ctx context.Context, id string) (nativeAudioInfo, error) {
+	defer traceNativeAudio("info")()
 	windowID, err := nativeAudioCaller(ctx)
 	if err != nil {
 		return nativeAudioInfo{}, err
@@ -331,6 +352,7 @@ func (b *NativeAudio) Info(ctx context.Context, id string) (nativeAudioInfo, err
 }
 
 func (b *NativeAudio) Close(ctx context.Context, id string) error {
+	defer traceNativeAudio("close")()
 	windowID, err := nativeAudioCaller(ctx)
 	if err != nil {
 		return err
