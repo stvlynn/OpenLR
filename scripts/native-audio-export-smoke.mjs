@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { readFile, writeFile } from 'node:fs/promises'
+import { copyFile, mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { chromium } from 'playwright-core'
 import { serveWorkspace } from '../tests/browser-server.mjs'
@@ -31,6 +31,71 @@ function decode(file, index, channels) {
   return samples
 }
 
+function diagnostic(read) {
+  try {
+    return read()
+  } catch (error) {
+    return { error: error.message }
+  }
+}
+
+async function retainFailure(testCase, error, tools) {
+  const { source, file, label, expected, chrome } = testCase
+  const failures = path.resolve('.workspace/native-audio-export-failures')
+  await mkdir(failures, { recursive: true })
+  const retained = await mkdtemp(path.join(failures, path.parse(file).name + '-'))
+  const report = { label, expected, chrome, tools, error: error.message }
+  for (const generated of [source, file]) {
+    try {
+      await copyFile(generated, path.join(retained, path.basename(generated)))
+    } catch (copyError) {
+      if (copyError.code !== 'ENOENT') throw copyError
+    }
+  }
+  const bytes = await readFile(file).catch((readError) => {
+    if (readError.code !== 'ENOENT') throw readError
+  })
+  if (bytes) {
+    report.ffprobe = diagnostic(() => {
+      const { streams, packets } = inspect(file)
+      let audioIndex = 0
+      return streams.map(
+        ({ index, codec_type, codec_name, sample_rate, channels, time_base, start_pts, duration_ts }) => {
+          const result = {
+            index,
+            codec_type,
+            codec_name,
+            sample_rate,
+            channels,
+            time_base,
+            start_pts,
+            duration_ts
+          }
+          if (codec_type !== 'audio') return result
+          const coded = packets.filter(({ stream_index }) => stream_index === index)
+          const boundary = (packet) =>
+            packet && {
+              pts: packet.pts,
+              pts_time: packet.pts_time,
+              duration: packet.duration,
+              sideData: packet.side_data_list
+            }
+          return {
+            ...result,
+            packets: coded.length,
+            first: boundary(coded[0]),
+            last: boundary(coded.at(-1)),
+            rawDecodedFrames: diagnostic(() => decode(file, audioIndex++, channels)[0].length)
+          }
+        }
+      )
+    })
+    if (file.endsWith('.mp4')) report.mp4AudioEdits = diagnostic(() => readMp4AudioEdits(bytes))
+  }
+  await writeFile(path.join(retained, 'audio-export-report.json'), JSON.stringify(report, null, 2) + '\n')
+  console.error('Generated audio export diagnostics: ' + JSON.stringify(report))
+}
+
 function boxes(bytes, [start, end]) {
   const entries = []
   for (let offset = start; offset < end;) {
@@ -44,25 +109,30 @@ function boxes(bytes, [start, end]) {
   }
   return entries
 }
-function box(bytes, parent, type) {
+function box(bytes, parent, type, required = true) {
   const entry = boxes(bytes, parent).find((child) => child.type === type)
-  assert.ok(entry, 'Expected MP4 box ' + type)
-  return entry.payload
+  if (required) assert.ok(entry, 'Expected MP4 box ' + type)
+  return entry?.payload
 }
-function mp4AudioEdits(bytes, rate) {
+function readMp4AudioEdits(bytes) {
   const movie = box(bytes, [0, bytes.length], 'moov')
   const [header] = box(bytes, movie, 'mvhd')
-  const scale = bytes.readUInt32BE(header + (bytes[header] === 1 ? 20 : 12))
-  const edits = []
+  const movieTimescale = bytes.readUInt32BE(header + (bytes[header] === 1 ? 20 : 12))
+  const tracks = []
   for (const { type, payload } of boxes(bytes, movie)) {
     if (type !== 'trak') continue
     const media = box(bytes, payload, 'mdia')
     const [handler] = box(bytes, media, 'hdlr')
     if (bytes.toString('ascii', handler + 8, handler + 12) !== 'soun') continue
     const [header] = box(bytes, media, 'mdhd')
-    const mediaScale = bytes.readUInt32BE(header + (bytes[header] === 1 ? 20 : 12))
-    assert.equal(mediaScale, rate)
-    const [edit, end] = box(bytes, box(bytes, payload, 'edts'), 'elst')
+    const mediaTimescale = bytes.readUInt32BE(header + (bytes[header] === 1 ? 20 : 12))
+    const edits = box(bytes, payload, 'edts', false)
+    const listBox = edits && box(bytes, edits, 'elst', false)
+    if (!listBox) {
+      tracks.push({ mediaTimescale, list: [] })
+      continue
+    }
+    const [edit, end] = listBox
     const version = bytes[edit]
     assert.ok(version === 0 || version === 1)
     const count = bytes.readUInt32BE(edit + 4)
@@ -70,21 +140,33 @@ function mp4AudioEdits(bytes, rate) {
     assert.equal(edit + 8 + count * step, end)
     const list = Array.from({ length: count }, (_, index) => {
       const position = edit + 8 + index * step
-      const ticks = version === 1 ? Number(bytes.readBigUInt64BE(position)) : bytes.readUInt32BE(position)
+      const durationTicks =
+        version === 1 ? Number(bytes.readBigUInt64BE(position)) : bytes.readUInt32BE(position)
       const mediaTime =
         version === 1 ? Number(bytes.readBigInt64BE(position + 8)) : bytes.readInt32BE(position + 4)
-      assert.equal(bytes.readInt32BE(position + step - 4), 0x10000, 'MP4 edit must run at normal rate')
-      const frames = (ticks * rate) / scale
+      const mediaRate = bytes.readInt32BE(position + step - 4) / 0x10000
+      return { durationTicks, mediaTime, mediaRate }
+    })
+    tracks.push({ mediaTimescale, version, list })
+  }
+  return { movieTimescale, tracks }
+}
+function mp4AudioEdits(bytes, rate) {
+  const { movieTimescale, tracks } = readMp4AudioEdits(bytes)
+  return tracks.map(({ mediaTimescale, list }) => {
+    assert.equal(mediaTimescale, rate)
+    assert.ok(list.length > 0, 'Expected MP4 audio edit list')
+    const [first, next] = list.map(({ durationTicks, mediaTime, mediaRate }) => {
+      assert.equal(mediaRate, 1, 'MP4 edit must run at normal rate')
+      const frames = (durationTicks * rate) / movieTimescale
       assert.ok(Number.isSafeInteger(frames), 'Movie edit duration must represent whole audio samples')
       return { frames, mediaTime }
     })
-    const [first, next] = list
     assert.equal(list.length, first.mediaTime < 0 ? 2 : 1)
     const audible = next ?? first
     assert.ok(audible.mediaTime > 0, 'AAC edit must account for encoder priming')
-    edits.push({ delay: next ? first.frames : 0, frames: audible.frames, prime: audible.mediaTime })
-  }
-  return edits
+    return { delay: next ? first.frames : 0, frames: audible.frames, prime: audible.mediaTime }
+  })
 }
 
 // Compare the independently decoded export against the independently decoded
@@ -166,7 +248,7 @@ function checkAudio(file, bytes, codec, rate, expected, reference) {
       assert.deepEqual([edit.delay, edit.frames], [delay, frames])
       assert.ok(
         samples[0].length >= frames && samples[0].length < frames + 1024,
-        'AAC raw decode includes at most one partly padded packet'
+        `AAC track ${index + 1} decoded ${samples[0].length} raw frames, expected ${frames} through ${frames + 1023}`
       )
     } else {
       const first = packets.find(({ stream_index }) => stream_index === stream.index)
@@ -263,12 +345,14 @@ async function checkOriginal(call, source, bytes) {
   assert.deepEqual(await readFile(result.path), bytes)
 }
 
-run('ffmpeg', '-version')
-run('ffprobe', '-version')
+const tools = Object.fromEntries(
+  ['ffmpeg', 'ffprobe'].map((tool) => [tool, run(tool, '-version').toString().split(/\r?\n/)[0]])
+)
 const server = await serveWorkspace()
 let browser
 try {
   browser = await chromium.launch({ channel: process.env.CHROME_CHANNEL || 'chrome' })
+  tools.chrome = browser.version()
   const page = await browser.newPage()
   await page.route(server.url + '/', (route) =>
     route.fulfill({ contentType: 'text/html', body: '<title>Independent audio export oracle</title>' })
@@ -284,12 +368,17 @@ try {
   await withNativeWorkspace(executable, async ({ root, call, initial }) => {
     assert.deepEqual(initial.photos, [])
     const failures = []
-    async function verify(label, work) {
+    async function verify(testCase, work) {
       try {
         await work()
       } catch (error) {
-        console.error(`${label}: ${error.message}`)
+        console.error(`${testCase.label}: ${error.message}`)
         failures.push(error)
+        try {
+          await retainFailure(testCase, error, tools)
+        } catch (diagnosticError) {
+          console.error('Could not retain generated audio export diagnostics: ' + diagnosticError.message)
+        }
       }
     }
     const opus = path.join(root, 'multitrack.webm')
@@ -310,16 +399,17 @@ try {
       ['webm', 'opus'],
       ['mp4', 'aac']
     ]) {
-      await verify(`Multitrack ${extension}`, async () => {
-        const result = await call(
-          'export',
-          '--format',
-          'video/' + extension,
-          '--output',
-          path.join(root, 'trimmed.' + extension)
-        )
+      const testCase = {
+        label: `Multitrack ${extension}`,
+        file: path.join(root, 'trimmed.' + extension),
+        source: opus,
+        expected
+      }
+      await verify(testCase, async () => {
+        const result = await call('export', '--format', 'video/' + extension, '--output', testCase.file)
         const bytes = await readFile(result.path)
         const decoded = await chromeMetadata(page, bytes, sampleRate)
+        testCase.chrome = decoded
         await unchanged(call, state, opus, opusBytes)
         assert.deepEqual(decoded.playablePrimary, [shortFrames, sampleRate, 1], extension)
         assert.deepEqual(decoded.video, [64, 96], extension)
@@ -345,34 +435,28 @@ try {
       })
     }
 
-    await verify('44.1 kHz AAC input and export', async () => {
-      const aacRate = 44_100,
-        aacStart = 21_941
+    const aacRate = 44_100,
+      aacStart = 21_941
+    const aacCase = {
+      label: '44.1 kHz AAC input and export',
+      file: path.join(root, 'trimmed-44100.mp4'),
+      source: path.join(root, 'aac-input.mp4'),
+      expected: [{ channels: 2, delay: 0, frames: shortFrames, sourceOffset: aacStart }]
+    }
+    await verify(aacCase, async () => {
       const aac = await makeAacInput(root, aacRate, aacStart)
       const aacBytes = await readFile(aac)
       const aacReference = [decode(aac, 0, 2)]
       const aacState = await prepareClip(call, aac, aacStart, aacRate)
       await checkOriginal(call, aac, aacBytes)
-      const result = await call(
-        'export',
-        '--format',
-        'video/mp4',
-        '--output',
-        path.join(root, 'trimmed-44100.mp4')
-      )
+      const result = await call('export', '--format', 'video/mp4', '--output', aacCase.file)
       const bytes = await readFile(result.path)
       const decoded = await chromeMetadata(page, bytes, aacRate)
+      aacCase.chrome = decoded
       await unchanged(call, aacState, aac, aacBytes)
       assert.deepEqual(decoded.playablePrimary, [shortFrames, aacRate, 2])
       assert.deepEqual(decoded.video, [64, 96])
-      const evidence = checkAudio(
-        result.path,
-        bytes,
-        'aac',
-        aacRate,
-        [{ channels: 2, delay: 0, frames: shortFrames, sourceOffset: aacStart }],
-        aacReference
-      )
+      const evidence = checkAudio(result.path, bytes, 'aac', aacRate, aacCase.expected, aacReference)
       console.log(
         JSON.stringify({
           nativeAudioExport: 'aac-input-44100-passed',

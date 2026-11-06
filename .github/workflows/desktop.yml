@@ -80,6 +80,13 @@ jobs:
         if: ${{ !cancelled() && runner.os == 'Windows' && steps.startup-diagnostic.outcome == 'success' }}
         run: node scripts/native-suite.mjs build/startup-diagnostic/windows-amd64/OpenLR.exe
       - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: audio-export-failures-${{ matrix.os }}
+          path: .workspace/native-audio-export-failures/**
+          include-hidden-files: true
+          if-no-files-found: ignore
+      - uses: actions/upload-artifact@v4
         with:
           name: OpenLR-${{ matrix.os }}
           path: |
