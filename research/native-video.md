@@ -152,4 +152,18 @@ The `clock-seek` candidate assigns the captured pause position immediately, obse
 
 In run `42165155379`, the ARM candidate requested a native seek, settled at 0.507411916 seconds, and held that time after the 1,805 ms timer and a decoded frame read. The Intel candidate also held through its shorter observation. Both macOS jobs passed the 17-workflow strict native suite, including edited WebM and MP4 with 72,000 independently decoded audio frames, and passed the separate AAC input check. Both jobs still failed because the independent DOM-attached diagnostic exceeded its 15-second deadline. [ARM64 job](https://github.com/stvlynn/OpenLR/actions/runs/42165155379/job/127719796725) · [Intel job](https://github.com/stvlynn/OpenLR/actions/runs/42165155379/job/127719797184)
 
-The editor now seeks to the captured position after preparing the paused frame, including when the native clock still reports that position. A newer seek or asset change still supersedes the repair, and an ordinary same-position seek still avoids a redundant write. The controlled Chrome regression first observed pause returning 1.136327 seconds with no seek assignment, followed by a deferred rollback to 0.85. It now checks that the corrective seek precedes the delayed observation, that the green paused preview matches the captured time, and that a subsequent same-time user seek adds no assignment. All nine focused Chrome video and ownership tests passed. The packaged app still needs a native delayed-pause result for this change. The ignored logs are `.workspace/video-pause-delayed-baseline.log` and `.workspace/video-pause-delayed-repair.log`.
+The editor now seeks to the captured position after preparing the paused frame, including when the native clock still reports that position. A newer seek or asset change still supersedes the repair, and an ordinary same-position seek still avoids a redundant write. The controlled Chrome regression first observed pause returning 1.136327 seconds with no seek assignment, followed by a deferred rollback to 0.85. It now checks that the corrective seek precedes the delayed observation, that the green paused preview matches the captured time, and that a subsequent same-time user seek adds no assignment. All nine focused Chrome video and ownership tests passed. The ignored logs are `.workspace/video-pause-delayed-baseline.log` and `.workspace/video-pause-delayed-repair.log`.
+
+The rebuilt Windows `8e0b6a4` package passed the strict video workflow with the new two-second idle pause assertion. Playback advanced from 0.35 to 0.530545 seconds and paused at 0.537521. The workflow also checked the preview colors, 64×96 rotated saved PNG, the normal 1.5-second edited VP9/Opus export and exact source bytes. The log is `.workspace/queued-controls-native-video.log`. Packaged macOS verification of the two-second product assertion remains open. [Acceptance](../docs/acceptance.md#public-actions-follow-up-2026-11-06)
+
+### Packet-unaligned Windows audio
+
+A separate packaged Windows run requested exactly 9,601 audible frames and decoded the actual files in Chrome. The existing browser codec path exceeded the requested sample count in all three cases.
+
+| Actual export | Requested frames | Decoded frames |
+| --- | ---: | ---: |
+| 48 kHz mono Opus in WebM | 9,601 | 10,224 |
+| 48 kHz mono MP4 from the Opus fixture | 9,601 | 10,065 |
+| 44.1 kHz stereo AAC input and MP4 export | 9,601 | 9,803 |
+
+The retained baseline is `.workspace/native-audio-export-short-windows.log`. Exact short-cut timing through the browser codec path remains under repair. The macOS 72,000-frame export result and the Windows 1.5-second workflow retain their own fixture and revision boundaries.
