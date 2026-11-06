@@ -2,6 +2,16 @@
 
 Reviewed through 2026-11-06 on Windows and WSL Linux. This is delivery evidence, not an overall completeness claim.
 
+## Windows tracked snapshot `ffb5bff`
+
+A fresh Git ZIP archive identified `ffb5bff03ba80cffd85bdcebf0632182eec1b8a5` in its comment and contained 835 entries. The extracted tree began without installed dependencies, generated bindings or CLI, or build output. Node 24.9.0 and npm 11.6.0 installed 62 packages with `npm ci` and reported zero vulnerabilities. MyGo 0.7.4 used the external Go 1.27.3 toolchain and shared Go caches to build the Windows/amd64 application and generate the NSIS installer. The live check used the unpacked application. Installer coverage ended at generation.
+
+The packaged `openlr.mjs` ran alone in a fresh OS temporary directory outside the project, with no ancestor `node_modules` and with `NODE_PATH` and `NODE_OPTIONS` unset. Offline schema and dry runs verified `edit`, `curve-set`, `grading-set`, `preview`, `draft-commit` and `draft-cancel` for drafts. The CLI rejected a missing draft ID and a non-adjustment edit. An esbuild parse found one source input and six external imports, all Node builtins.
+
+The archived adjustment smoke sent 71 live command invocations through separate processes of the copied CLI. It opened two generated local photos and decoded the native PNGs independently of the renderer. The 96 × 64 fixture's committed baseline RGB was `[53,83,121]`. The draft PNG and display histogram showed `[69,106,154]`, and the workspace capture contained a matching color patch within four levels per channel. Ordinary preview and export retained the baseline. Curve and grading draft centers were `[108,83,121]` and `[70,108,156]`. Cancellation and stale-ID checks passed. One undo restored the baseline after commit. The process restart restored the committed sidecar and discarded the abandoned draft. Both fixture files retained their original bytes.
+
+Additional `--output -` invocations produced 354-byte draft and rendered PNGs whose decoded pixels matched their file outputs, and a 180-byte original export identical to the preserved source. `export-settings` returned the saved original format. Ten direct byte comparisons verified the packaged CLI, icon, AGPL text, five component licenses, third-party notices and source notice. Six vendored Opus notice files were present in the archive. The private host workspace and copied CLI were removed. The archive, harness and logs are under ignored `.workspace/delivery-ffb5bff*` paths. [Packaged source link](https://github.com/stvlynn/OpenLR)
+
 ## Windows tracked snapshot `640ac85`
 
 A fresh Git ZIP archive identified `640ac85355314131acfcedd0e6de6a87510afc93` in its comment. The extracted tree contained no dependencies, generated bindings or CLI, or build output. Node 24.9.0 and npm 11.6.0 installed 62 packages with `npm ci` and reported zero vulnerabilities. MyGo 0.7.4 used the external Go 1.27.3 toolchain and shared Go caches to build the Windows/amd64 application and generate the NSIS installer. The live run used the unpacked application.
