@@ -4,6 +4,8 @@
 
 ## 桌面验收与交付快照 — 2026-11-07
 
+`6fdcc46` 的托管端到端矩阵在 Windows、Ubuntu、Intel macOS 和 Apple Silicon macOS 全部通过。Windows 托管浏览器 480 项通过、零失败，8 项需要可选资源的检查跳过。Windows 普通原生套件、文件转交和三项独立短多音轨检查均通过。本轮未复现首次窗口启动超时，Go 栈取样已有本机受控验证。[完整矩阵](https://github.com/stvlynn/OpenLR/actions/runs/42274368178) · [启动证据](../research/native-startup.md#windows-window-creation-stall-at-d7c4b8a)
+
 Windows 安装专项在一次性托管账户运行实际 NSIS 静默安装和卸载，核对安装路径、开始菜单快捷方式、六种 Open With 注册及清理。已安装的 CLI 在源码树外实际导入照片，读回目录状态、32×24 预览像素和 93 字节原件。Ubuntu 推荐依赖消融减少了 20 个归档和 5,376,484 字节，并通过完整 Xvfb 原生验收。[Windows 安装专项](https://github.com/stvlynn/OpenLR/actions/runs/42275482733) · [Ubuntu 消融](../research/linux-dependencies.md#apt-recommendations-comparison)
 
 `6a03088` 在 Windows、Linux、Intel macOS 和 ARM macOS 的完整托管任务均通过。Linux 修复延后了诊断中的原生时间轴读取。本机 WebKitGTK 的对照从 8 次均报告零时长，变为 8 次通过真实定位、播放、帧像素、音频导出及原件检查。[四平台结果](https://github.com/stvlynn/OpenLR/actions/runs/42264627961) · [Linux 消融记录](../research/native-video.md)
