@@ -43,7 +43,7 @@ On 2026-11-05, the Windows/amd64 package launched on WebView2 156.0.4314.58, and
 
 Official packages include the single-file Node CLI under cli/openlr.mjs in the native resource directory. Run it with Node 24. The build command bundles the shared schema and CLI implementation from this checkout.
 
-The shared installed CLI check runs from an isolated working directory, resolves the executable via `open --dry-run`, and attaches to the live workspace via `open` after importing a test photo. It also reads the rendered pixels and original bytes. The Windows cold-launch check used a fresh MyGo profile and the rebuilt bundled CLI, confirmed that its reported process ID matched the live broker, and reopened the same workspace without another launch. [CLI startup behavior](agent-cli.md)
+The shared installed CLI check runs from an isolated working directory, resolves the executable via `open --dry-run`, and attaches to the live workspace via `open` after importing a test photo. It also reads the rendered pixels and original bytes. The separate Windows cold launch used a rebuilt bundle, and the Linux cold launch used the tarball from hosted revision `d2f15aa` on WSL Ubuntu 24.04 with Node 24.9.0, WebKitGTK 2.52.6 and isolated Xvfb/D-Bus. Both used fresh MyGo profiles. The first `open` reported the PID of the live broker, the next `open` reused that session, and both tests read back a 4×3 preview and a 73-byte original. Process exit and profile cleanup were confirmed. [CLI startup behavior](agent-cli.md) · [Hosted Linux artifact](https://github.com/stvlynn/OpenLR/actions/runs/42281028302/job/128109698307)
 
 ## Windows installer verification
 
