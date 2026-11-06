@@ -47,7 +47,7 @@ export async function processEnhance({
     throw Error('Invalid neural enhancement options')
   const start = performance.now(),
     session = await modelSession(modelUrl || model.url, () =>
-      modelUrl ? fetchModel(modelUrl) : cachedModel(model, 'enhance-' + model.id)
+      modelUrl ? fetchModel(modelUrl, onProgress) : cachedModel(model, 'enhance-' + model.id, onProgress)
     ),
     loaded = performance.now(),
     { width, height, data } = pixels,

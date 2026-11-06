@@ -6,9 +6,16 @@ async function load(model) {
 }
 // This kernel is shared by the worker and the native-host compatibility path.
 // normalization is exposed only to reproducible research scripts, not the product UI.
-export async function inferSemantic({ pixels, target = 'subject', normalization = 'standard', modelUrl }) {
+export async function inferSemantic({
+  pixels,
+  target = 'subject',
+  normalization = 'standard',
+  modelUrl,
+  onProgress
+}) {
   if (!AI_TARGETS.includes(target)) throw Error('No licensed model is installed for target ' + target)
-  if (target === 'sky') return (await import('./sky-kernel.js')).inferSky({ pixels, normalization, modelUrl })
+  if (target === 'sky')
+    return (await import('./sky-kernel.js')).inferSky({ pixels, normalization, modelUrl, onProgress })
   const model = modelFor(target),
     start = performance.now(),
     session = await load(model),

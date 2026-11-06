@@ -7,10 +7,10 @@ export const DEPTH_MODEL = {
   sha256: 'fcf51f1b230362b28690bb9d1809bf0431f29cad20534e3f589bd7285547f20d',
   url: 'https://huggingface.co/onnx-community/depth-anything-v2-small/resolve/4472b7362082ad9968fee890ca0f1e5aca36b93d/onnx/model_quantized.onnx'
 }
-export async function inferDepth({ pixels, normalization = 'standard', modelUrl }) {
+export async function inferDepth({ pixels, normalization = 'standard', modelUrl, onProgress }) {
   const start = performance.now(),
     session = await modelSession(modelUrl || DEPTH_MODEL.url, () =>
-      modelUrl ? fetchModel(modelUrl) : cachedModel(DEPTH_MODEL, 'depth')
+      modelUrl ? fetchModel(modelUrl, onProgress) : cachedModel(DEPTH_MODEL, 'depth', onProgress)
     ),
     loaded = performance.now()
   const { width, height, data } = pixels,

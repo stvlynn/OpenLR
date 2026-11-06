@@ -26,6 +26,20 @@ test('real local subject/person inference, UI, original preservation and persist
   const server = createServer(async (req, res) => {
     try {
       const file = new URL(req.url, 'http://localhost').pathname.slice(1) || 'index.html'
+      if (file === 'slow-model.onnx') {
+        const chunk = Buffer.alloc(32768)
+        let sent = 0
+        res.writeHead(200, {
+          'Content-Type': 'application/octet-stream',
+          'Content-Length': 13 * chunk.length
+        })
+        const timer = setInterval(() => {
+          if (++sent <= 12) res.write(chunk)
+          else res.destroy()
+        }, 250)
+        res.on('close', () => clearInterval(timer))
+        return
+      }
       if (file === 'sky.onnx') {
         res.setHeader('Access-Control-Allow-Origin', '*')
         res.setHeader('Content-Type', 'application/octet-stream')
@@ -194,6 +208,35 @@ test('real local subject/person inference, UI, original preservation and persist
   assert.equal(complement.count, 320 * 320)
   assert.equal(complement.complement, true)
   assert.equal(complement.model, 'u2netp.onnx')
+  await t.test(
+    'model download progress keeps the real workers alive until a truncated response fails',
+    async () => {
+      const codes = await page.evaluate(async () => {
+        const { runImageWorker } = await import('./image-worker.js')
+        const originalTimer = window.setTimeout
+        window.setTimeout = (callback, delay, ...args) =>
+          originalTimer(callback, delay === 120000 ? 1500 : delay, ...args)
+        try {
+          const modelUrl = new URL('./slow-model.onnx', location.href).href
+          return await Promise.all(
+            ['ai', 'depth', 'enhance'].map((worker) =>
+              runImageWorker(new URL('./' + worker + '-worker.js', location.href), {
+                modelUrl,
+                target: 'sky',
+                pixels: { width: 1, height: 1, data: new Uint8ClampedArray(4) }
+              }).then(
+                () => 'unexpected success',
+                (error) => error.code
+              )
+            )
+          )
+        } finally {
+          window.setTimeout = originalTimer
+        }
+      })
+      assert.deepEqual(codes, ['AI_INFERENCE', 'DEPTH', 'ENHANCE'])
+    }
+  )
   let skyBytes
   try {
     skyBytes = await readFile(new URL('../.tools/ai-models/detr-fp32.onnx', import.meta.url))

@@ -16,13 +16,29 @@ export async function modelSession(key, getBytes) {
   }
   return sessions.get(key)
 }
-export async function fetchModel(url) {
+export async function fetchModel(url, onProgress) {
   const response = await fetch(url, { cache: 'no-store' })
   if (!response.ok) throw Error('Cannot load the image model: HTTP ' + response.status)
-  return response.arrayBuffer()
+  if (!onProgress || !response.body) return response.arrayBuffer()
+  let downloadedBytes = 0,
+    lastReport = -Infinity
+  const stream = response.body.pipeThrough(
+    new TransformStream({
+      transform(chunk, controller) {
+        controller.enqueue(chunk)
+        downloadedBytes += chunk.byteLength
+        const now = performance.now()
+        if (chunk.byteLength && now - lastReport >= 250) {
+          lastReport = now
+          onProgress({ downloadedBytes })
+        }
+      }
+    })
+  )
+  return new Response(stream).arrayBuffer()
 }
-export const cachedSkyModel = (model) => cachedModel(model, 'sky')
-export async function cachedModel(model, key) {
+export const cachedSkyModel = (model, onProgress) => cachedModel(model, 'sky', onProgress)
+export async function cachedModel(model, key, onProgress) {
   const db = await new Promise((resolve, reject) => {
     const request = indexedDB.open('openlr-models', 1)
     request.onupgradeneeded = () => request.result.createObjectStore('weights')
@@ -64,7 +80,7 @@ export async function cachedModel(model, key) {
       })
       return bytes.buffer
     }
-    const bytes = await fetchModel(model.url)
+    const bytes = await fetchModel(model.url, onProgress)
     await new Promise((resolve, reject) => {
       const transaction = db.transaction('weights', 'readwrite')
       // ArrayBuffer chunks support ephemeral WKWebView (which rejects Blob writes)

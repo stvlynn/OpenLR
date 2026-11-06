@@ -27,6 +27,8 @@ Sky bytes are stored once in `openlr-models` IndexedDB under a `sky` manifest an
 
 Versions are identified by fixed commit/release URLs. SHA-256 values in provenance/experiment records are observations, **not model-load gates**. There is no digest allowlist check.
 
+First-use downloads for Sky, Depth and neural enhancement report received bytes to the shared image worker. The worker's inactivity timer resets while the download advances. An interrupted response returns the underlying model error and leaves the cache without a new record.
+
 ## Original-coordinate soft masks and CLI
 
 Output probabilities become 0–255 soft samples in a portable `base64-u8` raster covering the normalized decoded original. The renderer bilinearly samples it before crop/rotation/flip. Inference need not rerun for exposure changes, geometry, export, undo or restart. The raster, target, model revision and preprocessing metadata persist in `edit.localTools.masks` and travel with copied recipes and saved versions.

@@ -1,11 +1,11 @@
 import { ort, modelSession, fetchModel, cachedSkyModel } from './ai-runtime.js'
 import { AI_MODELS } from './ai-models.js'
 
-export async function inferSky({ pixels, normalization = 'standard', modelUrl }) {
+export async function inferSky({ pixels, normalization = 'standard', modelUrl, onProgress }) {
   const model = AI_MODELS.sky,
     start = performance.now()
   const session = await modelSession(modelUrl || model.url, () =>
-      modelUrl ? fetchModel(modelUrl) : cachedSkyModel(model)
+      modelUrl ? fetchModel(modelUrl, onProgress) : cachedSkyModel(model, onProgress)
     ),
     loaded = performance.now()
   const { width, height, data } = pixels,
