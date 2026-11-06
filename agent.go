@@ -123,6 +123,10 @@ func (b *agentBroker) serveHTTP(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]any{"ok": true, "version": 1})
 		return
 	}
+	if r.URL.Path == "/diagnostics/startup-ui" && r.Method == http.MethodGet && b.startup != nil {
+		b.startup.serveUIProbe(w, r)
+		return
+	}
 	if r.URL.Path != "/command" || r.Method != http.MethodPost {
 		http.Error(w, `{"error":"unknown endpoint"}`, http.StatusNotFound)
 		return

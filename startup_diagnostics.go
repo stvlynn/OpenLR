@@ -1,8 +1,11 @@
 package main
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
 	"sync"
 	"time"
 
@@ -12,14 +15,16 @@ import (
 // Startup diagnostics retain only the first occurrence of each stage. They
 // log host-relative time and fixed names, independent of request or page data.
 type startupTrace struct {
-	started time.Time
-	output  io.Writer
-	mu      sync.Mutex
-	seen    map[string]bool
+	started  time.Time
+	output   io.Writer
+	mu       sync.Mutex
+	seen     map[string]bool
+	uiProbe  sync.Once
+	uiPumped chan struct{}
 }
 
 func newStartupTrace(output io.Writer) *startupTrace {
-	return &startupTrace{started: time.Now(), output: output, seen: make(map[string]bool)}
+	return &startupTrace{started: time.Now(), output: output, seen: make(map[string]bool), uiPumped: make(chan struct{})}
 }
 
 func (t *startupTrace) mark(stage string) {
@@ -43,6 +48,27 @@ func (t *startupTrace) observeWindow(window *mygo.Window) {
 	page.OnDidFinishLoad(func() { t.mark("load-finished") })
 	page.OnDidFailLoad(func(*mygo.LoadError) { t.mark("load-failed") })
 	page.OnRenderProcessGone(func(string) { t.mark("renderer-gone") })
+	t.mark("window-observers-attached")
+}
+
+func (t *startupTrace) serveUIProbe(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), time.Second)
+	defer cancel()
+	json.NewEncoder(w).Encode(map[string]bool{"responded": t.probeUI(ctx, mygo.RunOnMain)})
+}
+
+func (t *startupTrace) probeUI(ctx context.Context, runOnMain func(func())) bool {
+	// RunOnMain waits for dispatch and exposes no cancellation. A failed probe
+	// may leave one waiting goroutine until the UI pumps or the host exits.
+	t.uiProbe.Do(func() {
+		go runOnMain(func() { close(t.uiPumped) })
+	})
+	select {
+	case <-t.uiPumped:
+		return true
+	case <-ctx.Done():
+		return false
+	}
 }
 
 // StartupMilestone accepts only fixed diagnostic stage names from the renderer.

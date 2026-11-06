@@ -69,6 +69,7 @@ func main() {
 			BackgroundColor: "#141414",
 			AutoHideMenuBar: true,
 		})
+		desktop.startup.mark("window-request-returned")
 		window.OnClosed(func() { window = nil })
 	}
 	mygo.App.WhenReady(func() {

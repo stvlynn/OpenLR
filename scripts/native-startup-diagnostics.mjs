@@ -38,21 +38,35 @@ export async function inspectNativeStartup({
     result.session = { valid: false, ...failure(error) }
     return result
   }
-  const [health, control] = await Promise.allSettled([
+  const get = (endpoint) =>
+    fetch(new URL(endpoint, connection.url), {
+      headers: { Authorization: 'Bearer ' + connection.token },
+      signal: AbortSignal.timeout(timeoutMs)
+    })
+  const [health, control, uiPump] = await Promise.allSettled([
     (async () => {
-      const response = await fetch(new URL('/health', connection.url), {
-        headers: { Authorization: 'Bearer ' + connection.token },
-        signal: AbortSignal.timeout(timeoutMs)
-      })
+      const response = await get('/health')
       const body = await response.json()
       return { status: response.status, ok: response.ok && body.ok === true, protocolV1: body.version === 1 }
     })(),
     execute({ command: 'export-status', args: {}, session, timeout: timeoutMs / 1000 }).then((value) => ({
       replied: true,
       active: value !== null
-    }))
+    })),
+    (async () => {
+      const started = performance.now()
+      const response = await get('/diagnostics/startup-ui')
+      if (!response.ok) return { status: response.status }
+      const body = await response.json()
+      return {
+        status: response.status,
+        responded: typeof body?.responded === 'boolean' ? body.responded : null,
+        elapsedMs: Math.round(performance.now() - started)
+      }
+    })()
   ])
   result.health = health.status === 'fulfilled' ? health.value : failure(health.reason)
   result.control = control.status === 'fulfilled' ? control.value : failure(control.reason)
+  result.uiPump = uiPump.status === 'fulfilled' ? uiPump.value : failure(uiPump.reason)
   return result
 }

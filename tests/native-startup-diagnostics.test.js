@@ -47,14 +47,16 @@ async function fixture(t, respond) {
   return { inspect, requests, token, session }
 }
 
-test('startup diagnostics probe broker and control without replaying state or exposing payloads', async (t) => {
+test('startup diagnostics probe broker, control and UI without replaying state or exposing payloads', async (t) => {
   const { inspect, requests, token } = await fixture(t, (request, response) => {
     response.setHeader('Content-Type', 'application/json')
     response.end(
       JSON.stringify(
         request.url === '/health'
           ? { ok: true, version: 1 }
-          : { ok: true, result: { filename: 'private-photo.jpg', token: 'private-test-token' } }
+          : request.url === '/diagnostics/startup-ui'
+            ? { responded: true, data: 'private-probe-data' }
+            : { ok: true, result: { filename: 'private-photo.jpg', token: 'private-test-token' } }
       )
     )
   })
@@ -63,9 +65,15 @@ test('startup diagnostics probe broker and control without replaying state or ex
   assert.deepEqual(result.host, { pid: 123, exitCode: null, signal: null })
   assert.deepEqual(result.health, { status: 200, ok: true, protocolV1: true })
   assert.deepEqual(result.control, { replied: true, active: true })
+  assert.deepEqual(result.uiPump, { status: 200, responded: true, elapsedMs: result.uiPump.elapsedMs })
+  assert.ok(result.uiPump.elapsedMs >= 0)
   assert.ok(result.elapsedMs.failure >= result.elapsedMs.request)
   assert.ok(result.elapsedMs.request >= result.elapsedMs.session)
-  assert.deepEqual(requests.map((request) => request.path).sort(), ['/command', '/health'])
+  assert.deepEqual(requests.map((request) => request.path).sort(), [
+    '/command',
+    '/diagnostics/startup-ui',
+    '/health'
+  ])
   assert.deepEqual(requests.find((request) => request.body).body, {
     command: 'export-status',
     args: {},
@@ -73,20 +81,38 @@ test('startup diagnostics probe broker and control without replaying state or ex
   })
   assert.equal(JSON.stringify(result).includes(token), false)
   assert.equal(JSON.stringify(result).includes('private-photo'), false)
+  assert.equal(JSON.stringify(result).includes('private-probe-data'), false)
 })
 
 test('startup diagnostics retain working health when the separate control path stalls', async (t) => {
   const { inspect, requests } = await fixture(t, (request, response) => {
     if (request.url === '/health') response.end(JSON.stringify({ ok: true, version: 1 }))
+    if (request.url === '/diagnostics/startup-ui') response.end(JSON.stringify({ responded: false }))
   })
   const result = await inspect({ timeoutMs: 1000 })
   assert.equal(result.health.ok, true)
   assert.equal(result.control.error, 'Error')
+  assert.equal(result.uiPump.responded, false)
   assert.equal(requests.filter((request) => request.body?.command === 'export-status').length, 1)
+  assert.equal(requests.filter((request) => request.path === '/diagnostics/startup-ui').length, 1)
   assert.equal(
     requests.some((request) => request.body?.command === 'state'),
     false
   )
+})
+
+test('startup diagnostics distinguish an unavailable UI probe endpoint from a nonresponding UI', async (t) => {
+  const { inspect } = await fixture(t, (request, response) => {
+    if (request.url === '/diagnostics/startup-ui') {
+      response.writeHead(404).end('private error details')
+    } else {
+      response.end(JSON.stringify({ ok: true, version: 1, result: null }))
+    }
+  })
+  const result = await inspect()
+  assert.deepEqual(result.uiPump, { status: 404 })
+  assert.equal(result.health.ok, true)
+  assert.equal(result.control.replied, true)
 })
 
 test('startup diagnostics reject invalid sessions without sending a probe or leaking the path', async (t) => {
