@@ -264,7 +264,7 @@ test('WebCodecs audio adapter preserves both trim edges and closes a canceled st
   }
   assert.equal(evidence.canceled, true)
   assert.equal(evidence.returned, true)
-  assert.equal(evidence.closed, 1)
+  assert.equal(evidence.closed, 2, 'The Opus timing probe and the canceled source encoder both close')
   assert.equal(evidence.standalone, null)
   assert.deepEqual(evidence.retained, { precise: true, ordinary: 'vorbis' })
   assert.deepEqual(evidence.probes, [

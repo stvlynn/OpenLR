@@ -2,6 +2,7 @@ import { aacDecoderCookie, aacDescriptionFromCookie } from './audio-config.js'
 
 const aacPacketFrames = 1024
 const aacWarmupFrames = 2 * aacPacketFrames
+const opusFrameDuration = 20_000
 const maxQueue = 4
 
 function microseconds(frames, sampleRate) {
@@ -14,7 +15,9 @@ function encoderConfig({ codec, sampleRate, channels }) {
     sampleRate,
     numberOfChannels: channels,
     bitrate: codec === 'aac' ? 192_000 : 130_000,
-    ...(codec === 'aac' ? { aac: { format: 'aac' } } : { opus: { format: 'opus' } })
+    ...(codec === 'aac'
+      ? { aac: { format: 'aac' } }
+      : { opus: { format: 'opus', frameDuration: opusFrameDuration } })
   }
 }
 
@@ -217,6 +220,19 @@ function outputDescription(metadata, format) {
   return description
 }
 
+// The header and TOC of a small independent encode establish how much silence
+// the real stream needs before flush, including when it has no full input block.
+async function browserOpusTiming(format, signal) {
+  const frames = (format.sampleRate * opusFrameDuration) / 1e6
+  const silence = new Float32Array(frames * format.channels)
+  for await (const packet of encodePackets([silence], format, signal)) {
+    if (packet.frames !== frames) throw Error('Browser Opus encoder changed the requested packet duration')
+    const description = outputDescription(packet.metadata, format)
+    return { frames, leading: opusHeadPriming(description, format.channels) }
+  }
+  throw Error('Browser Opus timing probe produced no packets')
+}
+
 // Measure this browser's AAC delay at the actual output rate and layout. A
 // second, distinct pulse verifies the same offset later in the stream.
 async function browserAacPrime(format, signal) {
@@ -282,7 +298,8 @@ async function browserAacPrime(format, signal) {
 
 export async function* encodeBrowserAudio(source, { signal, onInfo, ...format }) {
   const { codec, sampleRate, channels } = format
-  let leading = codec === 'aac' ? await browserAacPrime(format, signal) : null
+  const opus = codec === 'opus' ? await browserOpusTiming(format, signal) : null
+  const leading = opus?.leading ?? (await browserAacPrime(format, signal))
   let inputFrames = 0,
     codedFrames = 0,
     info
@@ -292,13 +309,18 @@ export async function* encodeBrowserAudio(source, { signal, onInfo, ...format })
       inputFrames += data.length / channels
       yield data
     }
-    if (codec === 'aac' && leading > aacWarmupFrames)
+    if (opus && inputFrames) {
+      const required = Math.ceil((inputFrames + leading) / opus.frames) * opus.frames
+      if (required > inputFrames) yield new Float32Array((required - inputFrames) * channels)
+    } else if (codec === 'aac' && leading > aacWarmupFrames)
       yield new Float32Array((leading - aacWarmupFrames) * channels)
   }
   for await (const { data, frames, metadata } of encodePackets(pcm(), format, signal)) {
+    if (opus && frames !== opus.frames) throw Error('Browser Opus encoder changed its packet duration')
     if (!info) {
       const description = outputDescription(metadata, format)
-      if (codec === 'opus') leading = opusHeadPriming(description, channels)
+      if (opus && opusHeadPriming(description, channels) !== leading)
+        throw Error('Browser Opus encoder changed its priming')
       info = { sampleRate, channels, description, prime: { leading } }
       await onInfo?.(info)
     }
