@@ -2,6 +2,11 @@ name: macOS ARM video export crash trace
 on:
   workflow_dispatch:
     inputs:
+      scenario:
+        description: Native workflow to observe
+        type: choice
+        options: [video, short-audio]
+        default: video
       compare_audio_trace:
         description: Compare native audio logging in sixteen ABBA trials without LLDB
         type: boolean
@@ -37,17 +42,36 @@ jobs:
           mkdir -p build/video-oracle
           curl --fail --location "https://storage.googleapis.com/chrome-for-testing-public/157.0.8103.38/mac-arm64/chrome-mac-arm64.zip" -o build/video-oracle/chrome.zip
           ditto -xk build/video-oracle/chrome.zip build/video-oracle
-          echo "OPENLR_VIDEO_PROBE_CHROME=$PWD/build/video-oracle/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing" >> "$GITHUB_ENV"
+          chrome="$PWD/build/video-oracle/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing"
+          echo "OPENLR_VIDEO_PROBE_CHROME=$chrome" >> "$GITHUB_ENV"
+          echo "OPENLR_AUDIO_ORACLE_CHROME=$chrome" >> "$GITHUB_ENV"
       - name: Build the ordinary native distribution
         run: node scripts/desktop.mjs build -o build/release -platform darwin/universal
       - name: Observe predetermined video export trials
+        if: inputs.scenario == 'video'
         timeout-minutes: 15
         env:
           OPENLR_DIAGNOSTICS: '1'
           OPENLR_TRACE_MODE: ${{ inputs.compare_audio_trace && '--compare-audio-trace' || (inputs.debugger && (inputs.scope == 'workflow' && '--lldb-workflow' || '--lldb') || '') }}
         run: node scripts/native-video-export-trials.mjs build/release/darwin-universal/OpenLR.app/Contents/MacOS/OpenLR build/video-export-trials $OPENLR_TRACE_MODE
       - uses: actions/upload-artifact@v4
-        if: always()
+        if: always() && inputs.scenario == 'video'
         with:
           name: video-export-trace
           path: build/video-export-trials
+      - name: Install independent audio verification tools
+        if: inputs.scenario == 'short-audio'
+        run: command -v ffmpeg && command -v ffprobe || brew install ffmpeg
+      - name: Observe short multitrack preparation and export
+        if: inputs.scenario == 'short-audio'
+        run: |
+          set -o pipefail
+          node scripts/native-audio-export-smoke.mjs build/release/darwin-universal/OpenLR.app/Contents/MacOS/OpenLR 2>&1 | tee build/short-audio-trace.log
+      - uses: actions/upload-artifact@v4
+        if: always() && inputs.scenario == 'short-audio'
+        with:
+          name: short-audio-trace
+          path: |
+            build/short-audio-trace.log
+            .workspace/native-audio-export-failures/**
+          include-hidden-files: true
