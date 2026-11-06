@@ -14,8 +14,8 @@ import { withNativeWorkspace } from './native-workspace.mjs'
 const executable = process.argv[2]
 const mac = process.platform === 'darwin'
 const linux = process.platform === 'linux'
-const desktopEntry = process.argv[3]
-const coldLauncher = mac && process.argv[3] === '--macos-cold' && process.argv[4]
+const desktopEntry = linux && process.argv[3]
+const coldLauncher = (linux || (mac && process.argv[3] === '--macos-cold')) && process.argv[4]
 if (!executable || (linux ? !desktopEntry : !mac && process.platform !== 'win32'))
   throw Error('Pass a packaged executable and, on Linux, the desktop entry')
 if (mac && process.argv[3] === '--macos-cold' && !coldLauncher)
@@ -37,7 +37,11 @@ if (mac) {
 
 function launchCold({ executable, args, env }) {
   assert.equal(args.length, 1)
-  const child = spawn(path.resolve(coldLauncher), [executable, args[0]], {
+  const launcher = linux ? '/usr/bin/python3' : path.resolve(coldLauncher)
+  const launchArgs = linux
+    ? [path.resolve(coldLauncher), path.resolve(desktopEntry), executable, args[0]]
+    : [executable, args[0]]
+  const child = spawn(launcher, launchArgs, {
     env,
     stdio: ['pipe', 'pipe', 'inherit']
   })
@@ -50,10 +54,10 @@ function launchCold({ executable, args, env }) {
       return Number(line)
     }),
     once(child, 'close').then(([code]) => {
-      throw Error('Launch Services exited before reporting the application PID (code ' + code + ')')
+      throw Error('System launcher exited before reporting the application PID (code ' + code + ')')
     }),
     delay(40_000, null, { ref: false }).then(() => {
-      throw Error('Launch Services did not report the application PID')
+      throw Error('System launcher did not report the application PID')
     })
   ])
   return { child, ready, stop: () => child.stdin.end() }
@@ -195,14 +199,17 @@ await withNativeWorkspace(
       JSON.stringify({
         nativeFileOpen: 'passed',
         delivery: linux
-          ? 'GIO desktop entry to a running app'
+          ? coldLauncher
+            ? 'GIO desktop entry cold then warm'
+            : 'GIO desktop entry to a running app'
           : mac
             ? coldLauncher
               ? 'Launch Services cold then warm'
               : 'Launch Services to a running app'
             : 'executable arguments',
         first: {
-          input: 'absolute path with spaces',
+          input:
+            linux && coldLauncher ? 'file URL with spaces in the source path' : 'absolute path with spaces',
           dimensions: [first.width, first.height],
           rgb: first.rgb,
           bytes: first.bytes.length

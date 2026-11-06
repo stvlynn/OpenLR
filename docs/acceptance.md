@@ -4,6 +4,8 @@
 
 ## 桌面验收与交付快照 — 2026-11-07
 
+`55a52c2` 的本机 Windows Chrome 完整回归 **497/497**，零失败、零跳过，314.1 秒。Ubuntu 24.04 的独立 GIO 专项用原始 Debian 桌面入口冷启动应用，核对实际 PID 与 CLI 会话，并验证了预览、原件和退出。后续系统文件交付与重复打开也通过。[整合后的四平台作业](https://github.com/stvlynn/OpenLR/actions/runs/42310306955) · [Linux 复验方法](desktop.md#linux-and-macos-installer-verification)
+
 `8a76636` 在本机 Windows Chrome 157.0.8103.38 启用独立色彩和元数据校验，完整回归 **496/496**，零失败、零跳过，319.9 秒。重建的 Windows 包通过原生主流程和文件打开专项，常规托管四平台全部通过。Apple Silicon 托管作业验证了系统文件打开、CLI Unicode 搜索、五种格式的锐化回读、模型与视频套件。[四平台作业](https://github.com/stvlynn/OpenLR/actions/runs/42305673788) · [Apple Silicon 日志](https://github.com/stvlynn/OpenLR/actions/runs/42305673788/job/128194250258)
 
 `b8cc778` 的双架构冷启动专项从 DMG 复制应用。Launch Services 启动停止的应用并交付首张照片，实际应用 PID 与 CLI 会话一致。两种架构均验证 32×24 和 30×22 预览、导出像素、93 与 90 字节原件以及重复打开的照片 ID。Ubuntu 同一提交通过已安装的 GIO 桌面入口、原生套件和卸载。[冷启动专项](https://github.com/stvlynn/OpenLR/actions/runs/42308944936) · [Ubuntu 安装作业](https://github.com/stvlynn/OpenLR/actions/runs/42308086402/job/128202431475)
