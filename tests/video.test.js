@@ -2,7 +2,69 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { chromium } from 'playwright-core'
 import { serveWorkspace } from './browser-server.mjs'
+import { waitForAsyncFunction } from './browser-wait.mjs'
 import { makeVideoFixture } from './fixtures/video.mjs'
+
+test('visible legacy macOS video thumbnails refresh without changing the original or edit', async (t) => {
+  const server = await serveWorkspace()
+  t.after(server.close)
+  const browser = await chromium.launch({ channel: process.env.CHROME_CHANNEL || 'chrome' })
+  t.after(() => browser.close())
+  const page = await browser.newPage()
+  await page.goto(server.url)
+  const bytes = Array.from(await makeVideoFixture(page))
+  const id = await page.evaluate(async (bytes) => {
+    const { run } = await import('./app.js')
+    const db = await import('./catalog.js')
+    const file = new File([Uint8Array.from(bytes)], 'legacy.webm', { type: 'video/webm' })
+    const { added, failed } = await run('import', { files: [file] })
+    if (failed.length) throw Error(failed[0].error)
+    const [id] = added
+    const photo = (await db.all('photos')).find((entry) => entry.id === id)
+    const canvas = new OffscreenCanvas(16, 16)
+    const context = canvas.getContext('2d')
+    context.fillStyle = '#000'
+    context.fillRect(0, 0, 16, 16)
+    photo.thumbnail = await canvas.convertToBlob()
+    photo.edit = { Exposure: 0.5 }
+    await db.save('photos', photo)
+    return id
+  }, bytes)
+  await page.addInitScript(() => {
+    globalThis.openlrNativePlatform = 'darwin'
+  })
+  await page.reload()
+  await waitForAsyncFunction(
+    page,
+    async (id) =>
+      (await window.openlr.run('state')).photos.find((photo) => photo.id === id)?.videoPosterVersion === 1,
+    id
+  )
+  const image = page.locator(`[data-photo="${id}"] img`)
+  await page.waitForFunction((id) => {
+    const tile = document.querySelector(`[data-photo="${id}"] img`)
+    return (
+      tile?.complete && tile.currentSrc === tile.src && tile.naturalWidth === 96 && tile.naturalHeight === 64
+    )
+  }, id)
+  const pixel = await image.evaluate((tile) => {
+    const canvas = new OffscreenCanvas(1, 1)
+    const context = canvas.getContext('2d')
+    context.drawImage(tile, 0, 0, 1, 1)
+    return Array.from(context.getImageData(0, 0, 1, 1).data)
+  })
+  const saved = await page.evaluate(async (id) => {
+    const db = await import('./catalog.js')
+    const photo = (await db.all('photos')).find((entry) => entry.id === id)
+    return {
+      edit: photo.edit,
+      version: photo.videoPosterVersion,
+      bytes: Array.from(new Uint8Array(await (await db.original(id)).file.arrayBuffer()))
+    }
+  }, id)
+  assert.deepEqual(saved, { edit: { Exposure: 0.5 }, version: 1, bytes })
+  assert.ok(pixel[0] > 130 && pixel[1] < 100 && pixel[2] < 100 && pixel[3] === 255, JSON.stringify(pixel))
+})
 
 test('opt-in native seek tracing observes the real event before its awaited callback resolves', async (t) => {
   const server = await serveWorkspace()

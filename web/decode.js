@@ -57,6 +57,7 @@ export const PNG_PREVIEW_VERSION = 1
 export const isRawPhoto = (photo) =>
   RAW_EXTENSIONS.includes((photo.sourceName || photo.name || '').split('.').pop().toLowerCase())
 export function photoPreviewVersions(photo) {
+  if (globalThis.openlrNativePlatform === 'darwin' && isVideo(photo)) return { videoPosterVersion: 1 }
   if (isRawPhoto(photo)) return { rawPreviewVersion: RAW_PREVIEW_VERSION }
   if (
     photoFormat({ name: photo.sourceName || photo.name, type: photo.mediaType || photo.type }) === 'image/png'
