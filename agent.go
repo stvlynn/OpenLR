@@ -36,9 +36,10 @@ type agentBroker struct {
 	server   *http.Server
 	file     string
 	token    string
+	startup  *startupTrace
 }
 
-func startAgent() (*agentBroker, error) {
+func startAgent(startup *startupTrace) (*agentBroker, error) {
 	var secret [32]byte
 	if _, err := rand.Read(secret[:]); err != nil {
 		return nil, err
@@ -47,7 +48,7 @@ func startAgent() (*agentBroker, error) {
 	if err != nil {
 		return nil, err
 	}
-	b := &agentBroker{changed: make(chan struct{}), queue: make(chan *AgentCommand, 32), controls: make(chan *AgentCommand, 32), done: make(chan struct{}), pending: make(map[string]chan json.RawMessage), token: hex.EncodeToString(secret[:])}
+	b := &agentBroker{changed: make(chan struct{}), queue: make(chan *AgentCommand, 32), controls: make(chan *AgentCommand, 32), done: make(chan struct{}), pending: make(map[string]chan json.RawMessage), token: hex.EncodeToString(secret[:]), startup: startup}
 	b.file = os.Getenv("OPENLR_AGENT_FILE")
 	if b.file == "" {
 		config, err := os.UserConfigDir()
@@ -147,10 +148,15 @@ func (b *agentBroker) serveHTTP(w http.ResponseWriter, r *http.Request) {
 	defer func() { b.mu.Lock(); delete(b.pending, command.ID); b.mu.Unlock() }()
 	ctx := r.Context()
 	queue := b.queue
+	lane := "ordinary"
 	// Only operation inspection and cancellation bypass ordinary command delivery.
 	// The frontend still validates and executes both through its central dispatcher.
 	if command.Command == "export-status" || command.Command == "export-cancel" {
 		queue = b.controls
+		lane = "control"
+	}
+	if b.startup != nil {
+		b.startup.mark(lane + "-http-received")
 	}
 	select {
 	case queue <- &command:
@@ -163,7 +169,9 @@ func (b *agentBroker) serveHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	select {
 	case result := <-reply:
-		w.Write(result)
+		if _, err := w.Write(result); err == nil && b.startup != nil {
+			b.startup.mark(lane + "-http-replied")
+		}
 	case <-ctx.Done():
 		http.Error(w, `{"error":"command request closed"}`, http.StatusGatewayTimeout)
 	case <-b.done:
@@ -191,7 +199,7 @@ func (d *Desktop) AgentPoll(ctx context.Context) *AgentCommand {
 	if d.agent == nil {
 		return nil
 	}
-	return d.agent.poll(ctx, d.agent.queue)
+	return d.agent.poll(ctx, d.agent.queue, "ordinary")
 }
 
 // AgentPollControl remains available while the ordinary dispatcher awaits export.
@@ -199,10 +207,13 @@ func (d *Desktop) AgentPollControl(ctx context.Context) *AgentCommand {
 	if d.agent == nil {
 		return nil
 	}
-	return d.agent.poll(ctx, d.agent.controls)
+	return d.agent.poll(ctx, d.agent.controls, "control")
 }
 
-func (b *agentBroker) poll(ctx context.Context, queue <-chan *AgentCommand) *AgentCommand {
+func (b *agentBroker) poll(ctx context.Context, queue <-chan *AgentCommand, lane string) *AgentCommand {
+	if b.startup != nil {
+		b.startup.mark(lane + "-poll-entered")
+	}
 	timer := time.NewTimer(20 * time.Second)
 	defer timer.Stop()
 	for {
@@ -212,6 +223,9 @@ func (b *agentBroker) poll(ctx context.Context, queue <-chan *AgentCommand) *Age
 			_, live := b.pending[command.ID]
 			b.mu.Unlock()
 			if live {
+				if b.startup != nil {
+					b.startup.mark(lane + "-poll-delivered")
+				}
 				return command
 			}
 		case <-timer.C:

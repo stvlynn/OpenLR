@@ -23,18 +23,12 @@ type Desktop struct {
 	folders map[string]string
 	opened  []string
 	agent   *agentBroker
+	startup *startupTrace
 }
 
 func (d *Desktop) ToggleFullscreen(ctx context.Context) {
 	if window := mygo.CallerWindow(ctx); window != nil {
 		window.ToggleFullScreen()
-	}
-}
-
-// StartupError allows native smoke tests to report failures before IPC polling starts.
-func (d *Desktop) StartupError(message string) {
-	if os.Getenv("OPENLR_DIAGNOSTICS") == "1" {
-		fmt.Fprintln(os.Stderr, message)
 	}
 }
 

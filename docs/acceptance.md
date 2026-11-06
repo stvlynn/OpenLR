@@ -17,6 +17,8 @@
 
 ## 补充验证
 
+- **启动阶段诊断与当前回归**。`OPENLR_DIAGNOSTICS=1` 现记录固定名称和首次观察时间，覆盖窗口／页面、目录读取、普通与控制命令的宿主和 renderer 边界；原命令超时和失败语义保持。重建的 `startup-trace` Windows 安装包先通过实际两条命令通路，再通过 **十七组原生套件**，包含双设备持久同步。Windows／Node 24.9／Chrome 156 的完整配置回归 **365/365、零失败、零跳过**，约 297.0 秒；之后新增的视频探针进程回归独立 **3/3**。Go test／vet 通过。日志 `.workspace/startup-trace-{build,windows,full,native}.log`。这些是本地成功路径证据，不解释之前的 Windows 远程启动超时；[启动记录](../research/native-startup.md)保留观察边界和受控失败检查。
+
 - **双设备原生同步**。两个隔离的持久 Windows WebView2 profile 通过实际 CLI／Go DAV 适配器交替同步，B 下载 A 的原件并复现 `[85,102,132]` 编辑像素、相册和预设。独立字段合并后为 `[101,119,154]`；同字段冲突保持负曝光 `[60,73,95]` 和远端清单，直到明确选择。独立 HTTP 写入先取得 201，使进行中的原生条件写入得到 412；失败与重启后本地编辑仍在，显式再次同步才合并并收敛到 `[119,140,180]`。93 字节生成原件上传一次，各端原件逐字节一致。`native-sync-smoke` 在 `db34e33` Windows 包上通过，使用当前已验证的 start/stop 测试生命周期；不是实际云服务或其他平台持久性验收。
 
 - **`3dbc68d` 远程终态**。[Actions 42146852141](https://github.com/stvlynn/OpenLR/actions/runs/42146852141) 的 Linux 构建和十六组原生流程全部成功，含首次模型下载、深度、增强、选片与 VP9／Opus 实际输出。Linux 深度与增强的独立像素统计和 Windows 一致，选片重启标记明确为 false；Xvfb 结果不代表物理显示器。Windows 浏览器检查和安装包构建完成，但首次原生 state 超时：会话 133ms 发布且 PID 匹配，HTTP health 200，控制命令也未回复，尚未导入照片。macOS universal 构建成功，独立视频探针未生成报告，严格原生套件没有开始；没有任何候选解码路径的 macOS 结论。三份日志保留在 `.workspace/expanded-ci-{linux,windows,macos}.log`。不重跑失败作业来替代原因调查。

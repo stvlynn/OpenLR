@@ -2163,9 +2163,12 @@ async function execute(command, args, context = {}) {
   await draw()
   return result ?? snapshot()
 }
+globalThis.openlrStartupMilestone?.('catalog-read-started')
 const ready = Promise.all([db.all('photos'), db.all('albums'), presets.load()]).then(async (values) => {
+  globalThis.openlrStartupMilestone?.('catalog-read-finished')
   ;[photos, albums] = values
   await draw()
+  globalThis.openlrStartupMilestone?.('workspace-ready')
 })
 export function run(command, args = {}, observe, context) {
   if (command === 'export-status' || command === 'export-cancel') {
@@ -2760,7 +2763,10 @@ external.mount(
 )
 camera.mount(run, notice)
 sharing.mount(run, notice)
-ready.catch((e) => notice(e.message))
+ready.catch((e) => {
+  globalThis.openlrStartupMilestone?.('workspace-ready-failed')
+  notice(e.message)
+})
 updateOrganization = mountOrganization(act)
 updateStacks = stackMenu(act)
 $('layout').onclick = () => act('grid-layout', { layout: gridLayout === 'square' ? 'mosaic' : 'square' })

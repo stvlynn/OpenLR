@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"net/http"
@@ -90,7 +91,8 @@ func TestAgentReplyIsClaimedExactlyOnce(t *testing.T) {
 }
 
 func TestExportControlsBypassHeldCommandAndQueuedEdit(t *testing.T) {
-	b := &agentBroker{queue: make(chan *AgentCommand, 1), controls: make(chan *AgentCommand, 2), done: make(chan struct{}), pending: make(map[string]chan json.RawMessage), token: "test-secret"}
+	var trace bytes.Buffer
+	b := &agentBroker{queue: make(chan *AgentCommand, 1), controls: make(chan *AgentCommand, 2), done: make(chan struct{}), pending: make(map[string]chan json.RawMessage), token: "test-secret", startup: newStartupTrace(&trace)}
 	d := &Desktop{agent: b}
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
@@ -138,11 +140,25 @@ func TestExportControlsBypassHeldCommandAndQueuedEdit(t *testing.T) {
 		default:
 		}
 	}
+	milestones := trace.String()
+	for _, stage := range []string{"ordinary-http-received", "ordinary-poll-entered", "ordinary-poll-delivered", "control-http-received", "control-poll-entered", "control-poll-delivered", "control-http-replied"} {
+		if strings.Count(milestones, "milestone "+stage+" ") != 1 {
+			t.Fatalf("expected one %s stage: %s", stage, milestones)
+		}
+	}
+	for _, text := range []string{"ordinary-http-replied", "test-secret", "job-1", "export-selection", "export-cancel", export.ID} {
+		if strings.Contains(milestones, text) {
+			t.Fatalf("unexpected startup log content %q", text)
+		}
+	}
 	if err := d.AgentReply(export.ID, `{"ok":true,"result":{"cancelled":true}}`); err != nil {
 		t.Fatal(err)
 	}
 	if got := <-exportReply; !strings.Contains(got.Body.String(), `"cancelled":true`) {
 		t.Fatalf("wrong export reply: %s", got.Body.String())
+	}
+	if !strings.Contains(trace.String(), "milestone ordinary-http-replied ") {
+		t.Fatal("ordinary reply stage should appear only after the held request completes")
 	}
 	if next := d.AgentPoll(ctx); next == nil || next.ID != "edit" {
 		t.Fatalf("ordinary ordering lost: %+v", next)

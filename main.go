@@ -29,6 +29,11 @@ func main() {
 	}
 	mygo.SetFrontend(web)
 	desktop := &Desktop{exports: make(map[string]*exportFile)}
+	if os.Getenv("OPENLR_DIAGNOSTICS") == "1" {
+		desktop.startup = newStartupTrace(os.Stderr)
+		// MyGo fires this before loading WindowOptions.URL.
+		mygo.App.OnWindowCreated(desktop.startup.observeWindow)
+	}
 	mygo.Bind(desktop)
 	local := newLocal()
 	mygo.Bind(local)
@@ -48,9 +53,10 @@ func main() {
 		if os.Getenv("OPENLR_EPHEMERAL") == "1" {
 			page.Session = mygo.NewEphemeralSession()
 		}
-		if os.Getenv("OPENLR_DIAGNOSTICS") == "1" {
+		if desktop.startup != nil {
 			page.PreloadScript = "globalThis.openlrDiagnostics = true"
 		}
+		desktop.startup.mark("window-requested")
 		window = mygo.NewWindow(mygo.WindowOptions{
 			Page:            page,
 			Title:           "OpenLR",
@@ -66,15 +72,17 @@ func main() {
 		window.OnClosed(func() { window = nil })
 	}
 	mygo.App.WhenReady(func() {
+		desktop.startup.mark("application-ready")
 		if !mygo.App.RequestSingleInstanceLock() {
 			mygo.App.Quit()
 			return
 		}
-		agent, err := startAgent()
+		agent, err := startAgent(desktop.startup)
 		if err != nil {
 			log.Fatal("start local agent: ", err)
 		}
 		desktop.agent = agent
+		desktop.startup.mark("agent-published")
 		installMenu()
 		mygo.App.OnQuit(agent.close)
 		openWindow()

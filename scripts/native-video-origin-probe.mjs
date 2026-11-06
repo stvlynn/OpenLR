@@ -1,19 +1,16 @@
 import assert from 'node:assert/strict'
-import { execFile } from 'node:child_process'
+import { spawn } from 'node:child_process'
+import { once } from 'node:events'
 import { mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { promisify } from 'node:util'
-import { chromium } from 'playwright-core'
 import { serveWorkspace } from '../tests/browser-server.mjs'
 import { makeVideoFixture, videoFixtureSize } from '../tests/fixtures/video.mjs'
 import { readPng } from '../web/png.js'
 
-const executable = process.argv[2]
-if (!executable) throw Error('Pass a built video origin probe executable')
-
 async function generatedVideo() {
+  const { chromium } = await import('playwright-core')
   const server = await serveWorkspace()
   let browser
   try {
@@ -110,7 +107,17 @@ function reportCandidate(candidate, times, stages) {
     frames: frames.map((frame, index) => reportFrame(frame, times[index]))
   }
 }
-function sanitize(report) {
+const times = [0, 2.35]
+const elementStages = ['complete', 'media-load', 'media-duration', 'seek', 'draw']
+const candidates = {
+  direct: { times, stages: elementStages },
+  poster: { times: [0], stages: ['complete', 'media-load', 'media-duration', 'poster-bitmap', 'draw'] },
+  anonymous: { times, stages: elementStages },
+  decoded: { times, stages: ['complete', 'demux', 'decode', 'draw'] }
+}
+
+function sanitize(report, candidate) {
+  assert.equal(report.candidate, candidate, 'Report belongs to a different candidate')
   const { context } = report
   const capabilities = {}
   for (const key of [
@@ -125,51 +132,113 @@ function sanitize(report) {
     capabilities[key] = context[key]
   }
   assert.ok(['opaque', 'tuple'].includes(context.documentOrigin), 'Missing renderer origin')
-  const elementStages = ['complete', 'media-load', 'media-duration', 'seek', 'draw']
+  const { times, stages } = candidates[candidate]
   return {
-    nativeVideoOrigin: 'complete',
+    nativeVideoOrigin: 'candidate',
+    candidate,
     context: { ...capabilities, documentOrigin: context.documentOrigin },
-    direct: reportCandidate(report.direct, [0, 2.35], elementStages),
-    poster: reportCandidate(
-      report.poster,
-      [0],
-      ['complete', 'media-load', 'media-duration', 'poster-bitmap', 'draw']
-    ),
-    anonymous: reportCandidate(report.anonymous, [0, 2.35], elementStages),
-    decoded: reportCandidate(report.decoded, [0, 2.35], ['complete', 'demux', 'decode', 'draw'])
+    result: reportCandidate(report.result, times, stages)
   }
 }
 
-const temp = await realpath(tmpdir()),
-  prefix = 'olr-vp-',
-  root = await mkdtemp(path.join(temp, prefix))
-try {
-  const fixture = path.join(root, 'fixture.webm'),
-    report = path.join(root, 'report.json'),
-    frontend = fileURLToPath(new URL('../web/', import.meta.url))
-  await writeFile(fixture, await generatedVideo())
+class ProbeHostUnconfirmedError extends Error {}
+
+export async function runProbeHost(executable, args, { env, timeout = 75000 } = {}) {
+  const child = spawn(executable, args, { env, stdio: ['ignore', 'inherit', 'inherit'] })
+  let timedOut = false
+  const deadline = setTimeout(() => {
+    timedOut = true
+    // MyGo handles SIGTERM as a normal quit and can exit successfully on Unix.
+    child.kill('SIGKILL')
+  }, timeout)
+  let status
+  try {
+    status = await once(child, 'close')
+  } catch (error) {
+    if (child.pid && child.exitCode === null && child.signalCode === null) {
+      child.unref()
+      throw new ProbeHostUnconfirmedError('Video origin probe host exit was not confirmed', { cause: error })
+    }
+    throw error
+  } finally {
+    clearTimeout(deadline)
+  }
+  const [code, signal] = status
+  if (timedOut) throw Error(`Video origin probe timed out after ${timeout}ms`)
+  if (code !== 0) throw Error(`Video origin probe host failed (${code ?? signal})`)
+}
+
+async function removeDirectory(directory, parent, prefix) {
+  const cleanup = await realpath(directory)
+  assert.equal(path.dirname(cleanup), parent)
+  assert.ok(path.basename(cleanup).startsWith(prefix))
+  await rm(cleanup, { recursive: true, force: true, maxRetries: 6, retryDelay: 200 })
+}
+
+function profileEnvironment(profile) {
   const env = {
     ...process.env,
-    WEBVIEW2_USER_DATA_FOLDER: path.join(root, 'webview2'),
-    APPDATA: root,
-    LOCALAPPDATA: root,
-    XDG_CONFIG_HOME: root,
-    XDG_DATA_HOME: root,
-    XDG_CACHE_HOME: root,
-    XDG_RUNTIME_DIR: root
+    WEBVIEW2_USER_DATA_FOLDER: path.join(profile, 'webview2'),
+    APPDATA: profile,
+    LOCALAPPDATA: profile,
+    XDG_CONFIG_HOME: profile,
+    XDG_DATA_HOME: profile,
+    XDG_CACHE_HOME: profile,
+    XDG_RUNTIME_DIR: profile
   }
   const { WAYLAND_DISPLAY: display, XDG_RUNTIME_DIR: runtime } = process.env
   if (process.platform === 'linux' && runtime && display && !path.isAbsolute(display))
     env.WAYLAND_DISPLAY = path.join(runtime, display)
-  try {
-    await promisify(execFile)(path.resolve(executable), [frontend, fixture, report], { env, timeout: 75000 })
-  } catch ({ code, killed }) {
-    throw Error(killed ? 'Video origin probe timed out' : `Video origin probe host failed (${code})`)
-  }
-  console.log(JSON.stringify(sanitize(JSON.parse(await readFile(report, 'utf8')))))
-} finally {
-  const cleanup = await realpath(root)
-  assert.equal(path.dirname(cleanup), temp)
-  assert.ok(path.basename(cleanup).startsWith(prefix))
-  await rm(cleanup, { recursive: true, force: true, maxRetries: 6, retryDelay: 200 })
+  return env
 }
+
+async function main(executable) {
+  if (!executable) throw Error('Pass a built video origin probe executable')
+  const temp = await realpath(tmpdir()),
+    prefix = 'olr-vp-',
+    root = await mkdtemp(path.join(temp, prefix))
+  let retainRoot = false
+  try {
+    const fixture = path.join(root, 'fixture.webm'),
+      frontend = fileURLToPath(new URL('../web/', import.meta.url))
+    await writeFile(fixture, await generatedVideo())
+    const deadline = performance.now() + 75000
+    const failed = []
+    for (const candidate of Object.keys(candidates)) {
+      const profilePrefix = `${candidate}-`
+      const profile = await mkdtemp(path.join(root, profilePrefix))
+      try {
+        const report = path.join(profile, 'report.json')
+        const timeout = Math.min(15000, Math.floor(deadline - performance.now()))
+        if (timeout <= 0) throw Error('Aggregate video origin probe deadline expired before launch')
+        console.error(`Video origin probe candidate: ${candidate}`)
+        await runProbeHost(path.resolve(executable), [frontend, fixture, report, candidate], {
+          env: profileEnvironment(profile),
+          timeout
+        })
+        const contents = await readFile(report, 'utf8').catch((error) => {
+          if (error.code === 'ENOENT') throw Error('Video origin probe host exited without a report')
+          throw error
+        })
+        console.log(JSON.stringify(sanitize(JSON.parse(contents), candidate)))
+      } catch (error) {
+        console.error(`Video origin probe ${candidate} incomplete: ${error.message}`)
+        if (error instanceof ProbeHostUnconfirmedError) {
+          retainRoot = true
+          throw new Error(`Video origin probe ${candidate} could not be stopped`, { cause: error })
+        }
+        failed.push(new Error(`${candidate}: ${error.message}`, { cause: error }))
+      } finally {
+        if (!retainRoot) await removeDirectory(profile, root, profilePrefix)
+      }
+    }
+    if (failed.length) throw new AggregateError(failed, 'Incomplete video origin probe candidates')
+    console.log(JSON.stringify({ nativeVideoOrigin: 'complete' }))
+  } finally {
+    if (retainRoot)
+      console.error(`Video origin probe retained its temporary directory ${path.basename(root)}`)
+    else await removeDirectory(root, temp, prefix)
+  }
+}
+
+if (import.meta.main) await main(process.argv[2])

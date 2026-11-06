@@ -48,7 +48,12 @@ async function capture(canvas, time) {
   return { time, size: [width, height], read, encode }
 }
 
-async function candidate(run) {
+function stage(value) {
+  return globalThis.mygo.call('VideoProbe.Stage', value)
+}
+
+async function candidate(name, run) {
+  await stage(`${name}-start`)
   const report = { stage: 'input', frames: [] }
   try {
     await run(report)
@@ -56,6 +61,7 @@ async function candidate(run) {
   } catch (error) {
     report.errorName = errorName(error)
   }
+  await stage(`${name}-end`)
   return report
 }
 
@@ -112,8 +118,8 @@ async function openAnonymous(file, report) {
   }
 }
 
-function elementPath(file, open) {
-  return candidate(async (report) => {
+function elementPath(name, file, open) {
+  return candidate(name, async (report) => {
     report.stage = 'media-load'
     const media = await open(file, report)
     try {
@@ -131,7 +137,8 @@ function elementPath(file, open) {
   })
 }
 
-const encoded = await globalThis.mygo.call('VideoProbe.Fixture')
+await stage('renderer-start')
+const { candidate: name, encoded } = await globalThis.mygo.call('VideoProbe.Fixture')
 const file = new File(
   [Uint8Array.from(atob(encoded), (character) => character.charCodeAt(0))],
   'fixture.webm',
@@ -139,44 +146,47 @@ const file = new File(
     type: 'video/webm'
   }
 )
-const report = {
-  context: {
-    secureContext: isSecureContext,
-    documentOrigin: location.origin === 'null' ? 'opaque' : 'tuple',
-    nativeScheme: location.protocol === 'mygo:',
-    videoDecoder: typeof VideoDecoder === 'function',
-    videoEncoder: typeof VideoEncoder === 'function',
-    audioDecoder: typeof AudioDecoder === 'function',
-    audioEncoder: typeof AudioEncoder === 'function'
-  },
-  direct: await elementPath(file, openVideo),
-  poster: await candidate(async (report) => {
-    const { bitmap } = await poster(file, report)
-    try {
-      report.stage = 'draw'
-      report.frames.push(await capture(render(bitmap, {}, 240), 0))
-    } finally {
-      bitmap.close()
-    }
-  }),
-  anonymous: await elementPath(file, openAnonymous),
-  decoded: await candidate(async (report) => {
-    report.stage = 'demux'
-    const input = new Input({ source: new BlobSource(file), formats: ALL_FORMATS })
-    try {
-      const track = await input.getPrimaryVideoTrack()
-      if (!track) throw Error('No video track')
-      const sink = new CanvasSink(track)
-      for (const time of times) {
-        report.stage = 'decode'
-        const frame = await sink.getCanvas(time)
-        if (!frame) throw Error('No video frame')
-        report.stage = 'draw'
-        report.frames.push(await capture(render(frame.canvas, {}, 240), time))
-      }
-    } finally {
-      input.dispose()
-    }
-  })
+const context = {
+  secureContext: isSecureContext,
+  documentOrigin: location.origin === 'null' ? 'opaque' : 'tuple',
+  nativeScheme: location.protocol === 'mygo:',
+  videoDecoder: typeof VideoDecoder === 'function',
+  videoEncoder: typeof VideoEncoder === 'function',
+  audioDecoder: typeof AudioDecoder === 'function',
+  audioEncoder: typeof AudioEncoder === 'function'
 }
-await globalThis.mygo.call('VideoProbe.Finish', JSON.stringify(report))
+const paths = {
+  direct: () => elementPath('direct', file, openVideo),
+  poster: () =>
+    candidate('poster', async (report) => {
+      const { bitmap } = await poster(file, report)
+      try {
+        report.stage = 'draw'
+        report.frames.push(await capture(render(bitmap, {}, 240), 0))
+      } finally {
+        bitmap.close()
+      }
+    }),
+  anonymous: () => elementPath('anonymous', file, openAnonymous),
+  decoded: () =>
+    candidate('decoded', async (report) => {
+      report.stage = 'demux'
+      const input = new Input({ source: new BlobSource(file), formats: ALL_FORMATS })
+      try {
+        const track = await input.getPrimaryVideoTrack()
+        if (!track) throw Error('No video track')
+        const sink = new CanvasSink(track)
+        for (const time of times) {
+          report.stage = 'decode'
+          const frame = await sink.getCanvas(time)
+          if (!frame) throw Error('No video frame')
+          report.stage = 'draw'
+          report.frames.push(await capture(render(frame.canvas, {}, 240), time))
+        }
+      } finally {
+        input.dispose()
+      }
+    })
+}
+const result = await paths[name]()
+await globalThis.mygo.call('VideoProbe.Finish', JSON.stringify({ candidate: name, context, result }))
