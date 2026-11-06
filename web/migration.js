@@ -6,6 +6,7 @@ import { photoPreviewVersions } from './decode.js'
 import { processingVersion, PROCESS_MESSAGES } from './process-version.js'
 import { isVideo, poster } from './video.js'
 import { metadata } from './metadata.js'
+import { normalizeCaptureDate } from './export-metadata.js'
 import { renderPrepared as render, controls } from './render.js'
 import { encodeThumbnail } from './encode.js'
 import { CRS_FIELDS, readXmp } from './xmp.js'
@@ -150,15 +151,17 @@ export async function report(id) {
     lastReport: plan.lastReport ?? null
   }
 }
-function changes(photo, warnings) {
-  let edit = {}
-  if (photo.xmp)
-    try {
-      edit = readXmp(photo.xmp).edit ?? {}
-    } catch (error) {
-      if (error.code === 'PROCESS_VERSION') throw error
-      warnings.push('XMP: ' + error.message)
-    }
+function readSidecar(xml, warnings, includeCaptureDate) {
+  if (!xml) return {}
+  try {
+    return readXmp(xml, { includeCaptureDate })
+  } catch (error) {
+    if (error.code === 'PROCESS_VERSION') throw error
+    warnings.push('XMP: ' + error.message)
+    return {}
+  }
+}
+function changes(photo, edit, warnings) {
   for (const [key, field] of Object.entries(CRS_FIELDS))
     if (typeof photo.develop?.[field] === 'number') {
       const value = photo.develop[field],
@@ -245,19 +248,16 @@ export async function commit(id) {
           warnings.push('Sidecar: ' + error.message)
         }
       }
-      const edit = changes({ ...source, xmp }, warnings)
+      const sidecar = readSidecar(xmp, warnings, plan.kind === 'apple-export')
+      const edit = changes(source, sidecar.edit ?? {}, warnings)
+      const captureDate = normalizeCaptureDate(sidecar.captureDate)
+      if (sidecar.captureDate !== undefined && !captureDate)
+        warnings.push('XMP: Invalid or incomplete capture date')
       if (isVideo(file) && processingVersion(edit) === 2) throw Error(PROCESS_MESSAGES.video)
       const media = isVideo(file) ? await poster(file) : null
       image = media?.bitmap ?? (await decodeEditSource(file, edit))
-      const sidecar = xmp
-        ? (() => {
-            try {
-              return readXmp(xmp)
-            } catch {
-              return {}
-            }
-          })()
-        : {}
+      const photoMetadata = media ? {} : await metadata(file)
+      if (captureDate) photoMetadata.DateTimeOriginal = captureDate.iso
       const photo = {
         id: source.id,
         name: source.name,
@@ -274,7 +274,7 @@ export async function commit(id) {
         mediaType: file.type,
         ...(source.originalId ? { originalId: source.originalId, virtual: true } : {}),
         ...(media ? { duration: media.duration } : {}),
-        metadata: media ? {} : await metadata(file),
+        metadata: photoMetadata,
         reference: checkedRow.reference,
         migration: {
           id,

@@ -5,6 +5,8 @@ import { serveWorkspace } from './browser-server.mjs'
 import { makeLrcat } from './fixtures/lrcat.mjs'
 import { frame, png } from './fixtures/merge-scene.js'
 import { makeDng } from './fixtures/dng.mjs'
+import { embedPngMetadata } from '../web/color-containers.js'
+import { buildExportMetadata } from '../web/export-metadata.js'
 import UTIF from '../web/vendor/codecs/utif.js'
 
 test('synthetic Classic/Apple resource migration reviews explicit references, retries missing files, persists edits and syncs portable originals', async (t) => {
@@ -13,16 +15,32 @@ test('synthetic Classic/Apple resource migration reviews explicit references, re
   const browser = await chromium.launch({ channel: process.env.CHROME_CHANNEL || 'chrome', headless: true })
   t.after(() => browser.close())
   const original = png(frame(80, 60)),
+    embeddedDate = '2021-02-03T04:05:06Z',
+    appleDate = '2017-10-03T12:34:56-07:00',
+    datedOriginal = Buffer.from(
+      embedPngMetadata(
+        original,
+        buildExportMetadata(
+          { DateTimeOriginal: embeddedDate },
+          {
+            policy: 'supported',
+            width: 80,
+            height: 60
+          }
+        )
+      )
+    ),
+    sidecar = (date) =>
+      Buffer.from(
+        '<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"><rdf:Description xmlns:xmp="http://ns.adobe.com/xap/1.0/" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:p="http://ns.adobe.com/photoshop/1.0/" xmp:Rating="5"><dc:subject><rdf:Seq><rdf:li>Exported keyword</rdf:li></rdf:Seq></dc:subject><p:DateCreated>' +
+          date +
+          '</p:DateCreated></rdf:Description></rdf:RDF></x:xmpmeta>'
+      ),
     resources = new Map([
       ['Album/first.png', original],
       ['Album/second.png', original],
-      ['Export album/apple.png', original],
-      [
-        'Export album/apple.xmp',
-        Buffer.from(
-          '<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"><rdf:Description xmlns:xmp="http://ns.adobe.com/xap/1.0/" xmlns:dc="http://purl.org/dc/elements/1.1/" xmp:Rating="5"><dc:subject><rdf:Bag><rdf:li>Exported keyword</rdf:li></rdf:Bag></dc:subject></rdf:Description></rdf:RDF></x:xmpmeta>'
-        )
-      ]
+      ['Export album/apple.png', datedOriginal],
+      ['Export album/apple.xmp', sidecar(appleDate)]
     ])
   const objects = new Map(),
     roots = [
@@ -206,6 +224,7 @@ test('synthetic Classic/Apple resource migration reviews explicit references, re
   const applePhoto = state.photos.find((photo) => photo.name === 'apple.png')
   assert.equal(applePhoto.rating, 5)
   assert.equal(applePhoto.keywords, 'Exported keyword')
+  assert.equal(applePhoto.metadata.DateTimeOriginal, appleDate)
   assert.ok(state.albums.some((album) => album.name === 'Export album'))
 
   // This is a generated standard export folder, not an actual Photos library.
@@ -222,6 +241,8 @@ test('synthetic Classic/Apple resource migration reviews explicit references, re
   )
   resources.set('Export album/foreign.png', original)
   resources.set('Export album/foreign.xmp', Buffer.from('<invalid-foreign-sidecar'))
+  resources.set('Export album/partial-date.png', datedOriginal)
+  resources.set('Export album/partial-date.xmp', sidecar('2016-10'))
   resources.set(
     'Export album/video.webm',
     Buffer.from('Not a video: reject linear processing before poster decoding')
@@ -229,8 +250,8 @@ test('synthetic Classic/Apple resource migration reviews explicit references, re
   resources.set('Export album/video.xmp', Buffer.from(linearXmp))
   const linearScan = await a.run('migration-apple-scan', { root: 'apple-root' }),
     linearCommit = await a.run('migration-commit', { id: linearScan.id })
-  assert.equal(linearScan.total, 5)
-  assert.equal(linearCommit.imported.length, 2)
+  assert.equal(linearScan.total, 6)
+  assert.equal(linearCommit.imported.length, 3)
   assert.equal(linearCommit.existing.length, 1)
   assert.equal(linearCommit.failed.length, 2)
   assert.match(
@@ -248,10 +269,22 @@ test('synthetic Classic/Apple resource migration reviews explicit references, re
     false
   )
   const linearPhoto = state.photos.find((photo) => photo.name === 'linear.dng'),
-    foreignPhoto = state.photos.find((photo) => photo.name === 'foreign.png')
+    foreignPhoto = state.photos.find((photo) => photo.name === 'foreign.png'),
+    partialPhoto = state.photos.find((photo) => photo.name === 'partial-date.png')
   assert.deepEqual(linearPhoto.edit, { processVersion: 2, Exposure: -0.5 })
   assert.deepEqual(foreignPhoto.edit, {})
   assert.ok(foreignPhoto.migration.warnings.some((warning) => /XMP: Invalid XMP document/.test(warning)))
+  assert.equal(partialPhoto.metadata.DateTimeOriginal, embeddedDate)
+  assert.equal(partialPhoto.keywords, 'Exported keyword')
+  assert.ok(partialPhoto.migration.warnings.includes('XMP: Invalid or incomplete capture date'))
+  await a.run('sort', { order: 'capture', direction: 'asc' })
+  const ordered = (await a.run('state')).photos.map(({ id }) => id)
+  assert.ok(ordered.indexOf(applePhoto.id) < ordered.indexOf(partialPhoto.id))
+  await a.run('select', { id: applePhoto.id })
+  await a.run('capture-time', { time: '2024-01-01T00:00:00Z' })
+  await a.run('migration-retry', { id: linearScan.id })
+  const revisedApple = (await a.run('state')).photos.find(({ id }) => id === applePhoto.id)
+  assert.equal(revisedApple.metadata.DateTimeOriginal, '2024-01-01T00:00:00.000Z')
   await a.run('select', { id: linearPhoto.id })
   await a.run('view', { mode: 'detail' })
   const linearImages = await a.page.evaluate(async (id) => {

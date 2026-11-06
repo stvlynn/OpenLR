@@ -22,6 +22,7 @@ const ns = {
   rdf: 'http://www.w3.org/1999/02/22-rdf-syntax-ns#',
   xmp: 'http://ns.adobe.com/xap/1.0/',
   dc: 'http://purl.org/dc/elements/1.1/',
+  photoshop: 'http://ns.adobe.com/photoshop/1.0/',
   crs: 'http://ns.adobe.com/camera-raw-settings/1.0/',
   olr: 'https://github.com/stvlynn/OpenLR/ns/1.0/'
 }
@@ -130,7 +131,7 @@ function safeRecipe(recipe) {
   }
   return result
 }
-export function readXmp(xml) {
+export function readXmp(xml, { includeCaptureDate = false } = {}) {
   const doc = new DOMParser().parseFromString(xml, 'application/xml')
   if (doc.doctype || doc.querySelector('parsererror')) throw Error('Invalid XMP document')
   const descriptions = Array.from(doc.getElementsByTagNameNS(ns.rdf, 'Description'))
@@ -173,6 +174,10 @@ export function readXmp(xml) {
     changes.keywords = Array.from(subject.getElementsByTagNameNS(ns.rdf, 'li'))
       .map((e) => e.textContent)
       .join(', ')
+  if (includeCaptureDate) {
+    const value = get('photoshop', 'DateCreated')
+    if (value !== null) changes.captureDate = value
+  }
   return changes
 }
 export async function exportPackage(photo, file) {

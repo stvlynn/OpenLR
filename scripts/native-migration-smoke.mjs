@@ -33,7 +33,7 @@ for (const filename of ['first.png', 'second.png'])
 await writeFile(path.join(apple, 'Export album', 'apple.png'), image)
 await writeFile(
   path.join(apple, 'Export album', 'apple.xmp'),
-  '<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"><rdf:Description xmlns:xmp="http://ns.adobe.com/xap/1.0/" xmp:Rating="5"/></rdf:RDF></x:xmpmeta>'
+  '<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"><rdf:Description xmlns:xmp="http://ns.adobe.com/xap/1.0/" xmlns:photoshop="http://ns.adobe.com/photoshop/1.0/" xmp:Rating="5" photoshop:DateCreated="2018-04-02T11:12:13+02:00"/></rdf:RDF></x:xmpmeta>'
 )
 const folders = [authorized(originals), authorized(apple)]
 await writeFile(config, JSON.stringify(folders))
@@ -105,7 +105,9 @@ try {
     appleResult = await call('migration-commit', '--id', appleScan.id)
   assert.equal(appleResult.imported.length, 1)
   state = await call('state')
-  assert.equal(state.photos.find((row) => row.name === 'apple.png').rating, 5)
+  const applePhoto = state.photos.find((row) => row.name === 'apple.png')
+  assert.equal(applePhoto.rating, 5)
+  assert.equal(applePhoto.metadata.DateTimeOriginal, '2018-04-02T11:12:13+02:00')
   assert.deepEqual(await readFile(catalogPath), catalog)
   assert.deepEqual(await readFile(path.join(originals, 'Album', 'first.png')), image)
   await call('screenshot', '--output', path.join(output, 'migration-synthetic.png'), '--force')
