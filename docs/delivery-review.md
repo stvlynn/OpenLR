@@ -2,6 +2,12 @@
 
 Reviewed through 2026-11-06 on Windows and WSL Linux. This is delivery evidence, not an overall completeness claim.
 
+## Windows tracked snapshot `556e8d7`
+
+The fresh Git ZIP contained 868 entries. Node 24.9.0 installed 62 locked packages with zero reported vulnerabilities. MyGo 0.7.4 and Go 1.27.3 built the Windows/amd64 package and NSIS installer in 64 seconds. The package was tested through the unpacked executable. The copied CLI ran alone in an OS temporary directory with no ancestor `node_modules` and clean Node environment overrides. Ten distribution files matched their sources and six vendored Opus notices were present.
+
+Navigation used 205 separate CLI invocations and four live `watch` processes. Actual captures and watch offsets agreed for Grid, Filmstrip, Photos and Inspector. The Inspector changed 21,957 control pixels and the Photos panel reached the final label among 54 albums. Comparison, fullscreen, trusted keyboard, raw and saved 120×80 PNGs, settings restart and original bytes passed. Organization used 106 separate invocations and verified guarded catalog actions, both auto-stack modes, albums, named versions and catalog/settings restart. Actual preset pixels changed from `#465265` to `#57657c`. Both host and standalone CLI workspaces were removed after confirmation. Logs and the archive are under `.workspace/archive-556e8d7*`. [Verified source revision](https://github.com/stvlynn/OpenLR/tree/556e8d716af73bc0f57b491f06c4e83c72d4b9a5)
+
 ## Windows tracked snapshot `2d0f448`
 
 A fresh Git ZIP identified `2d0f448aeeed69c4a78006ba977065a17bfcef9d` in its archive comment and contained 861 entries. The extracted tree had no installed dependencies, generated CLI/bindings or build output. `npm ci` installed 62 packages and reported zero vulnerabilities in that run. The external Go 1.27.3 toolchain and shared Go caches built the Windows/amd64 MyGo application and NSIS installer in 54.5 seconds. Live verification used the unpacked executable; the installer was generated but not installed.
