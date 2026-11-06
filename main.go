@@ -47,6 +47,10 @@ func main() {
 	mygo.Protocol.HandleFunc("cameraphoto", camera.servePhoto)
 	mygo.Bind(newSharing())
 	mygo.App.OnQuit(desktop.cancelAll)
+	audio := newNativeAudio()
+	mygo.Bind(audio)
+	mygo.App.OnWindowCreated(audio.observeWindow)
+	mygo.App.OnQuit(audio.quit)
 	var window *mygo.Window
 	openWindow := func() {
 		var page mygo.PageOptions

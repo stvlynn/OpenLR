@@ -356,9 +356,8 @@ async function main(executable) {
         ...candidate,
         packetFrames: packets.map(({ frames }) => frames),
         cookieBytes: cookie.length / 2,
-        ...(candidate.codec === 'opus'
-          ? { cookieHex: cookie, firstPacketToc: packets[0]?.data.slice(0, 2) ?? null }
-          : {}),
+        cookieHex: cookie,
+        ...(candidate.codec === 'opus' ? { firstPacketToc: packets[0]?.data.slice(0, 2) ?? null } : {}),
         impliedEndPadding:
           candidate.stage === 'complete' && encoderPrime.status === 0 && padding >= 0 ? padding : null,
         signalMatches:

@@ -141,3 +141,5 @@ xcrun clang -std=c11 -Wall -Wextra -Werror scripts/fixtures/audio-probe/main.c -
 CGO_ENABLED=0 go build -o build/audio-stream-probe ./scripts/fixtures/audio-stream-probe
 build/audio-stream-probe build/audio-toolbox-probe
 ```
+
+The application now binds `NativeAudio.Open`, `Process`, `Info` and `Close` through MyGo. Each opaque handle belongs to its originating window, uses bounded base64 transfers and is closed when that window closes or the app quits. Opening across a concurrent window close cannot publish a leaked handle. This is a transport boundary only; video export does not consume it yet. The manager's ownership, chunking and close-race tests, full Windows Go tests/vet, both Darwin cross-builds and the actual MyGo binding generator passed. These checks do not establish a renderer-driven macOS codec call.
