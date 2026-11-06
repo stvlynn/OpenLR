@@ -4,6 +4,8 @@
 
 ## Photos 与 Inspector viewport — 2026-11-06
 
+`9fc50ae` 的 [Actions 42196862646](https://github.com/stvlynn/OpenLR/actions/runs/42196862646) 中，Linux 全套成功，Intel macOS 已通过新增侧栏导航，但其后视频导入在 `loadedmetadata` 后等待首帧超时。Windows 浏览器为 452 通过、1 失败、8 可选跳过：Inspector 的偏移、命令返回和 watch 均匹配，精确截图比较失败；截断日志仅显示部分 RGB 通道相差一个码值，不能据此断言完整最大差异或原因。截图验证现保留所有像素，允许 UI 栅格每通道最多一个 8-bit 码值差异，超出时报告最大值、数量和位置范围；尺寸、状态、可见控件和事件断言不变。十三项定向测试通过，最后一次本地截图最大差异两侧栏均为零。ARM 作业在此记录时仍排队，Windows 没有运行打包或原生步骤。见[侧栏记录](../research/panel-viewport.md)。
+
 `viewport --target photos|inspector` 与 GUI 共用两个侧栏的真实滚动区域，完整／摘要状态增加 `panelViewports`，实际滚动通知 `watch`。最终 Windows／Chrome 156.0.8078.80 完整回归 **461/461，零失败、零跳过**，约 308.3 秒；Go 全部测试和 vet 通过。浏览器测试核对可信鼠标与 CLI 的整块侧栏截图、队列、隐藏目标、相册选择和原件。最初全套为 458/459：旧局部工具测试把收起 Masks 后浏览器真实滚动的事件误计为重复命令。修正后分别核对唯一工具事件与独立 DOM 滚动，定向十项和最终全套均通过。日志 `.workspace/panel-viewport-full.log` 保留失败；最终日志 `.workspace/panel-viewport-full-verified.log`。
 
 新 Windows 包的原生导航通过 Photos 0→2095.199951、Inspector 0→1136.800049 CSS px 的实际定位，截图分别显示不同相册标签及 Histogram／Keywords，`watch`、选择、配方和原件保持通过。这是该包的 Windows 证据，新增目标的其他平台仍待执行。见[侧栏观察与验证](../research/panel-viewport.md)。

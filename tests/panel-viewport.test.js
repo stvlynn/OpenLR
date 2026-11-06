@@ -12,7 +12,38 @@ const frame = (page) =>
 
 async function panelPixels(page, port) {
   const { x, y, width, height } = await port.boundingBox()
-  return readPng(await page.screenshot({ clip: { x, y, width, height }, animations: 'disabled' })).data
+  return readPng(await page.screenshot({ clip: { x, y, width, height }, animations: 'disabled' }))
+}
+
+function panelRasterDiff(actual, expected) {
+  const { width, height, data } = actual
+  assert.deepEqual([width, height], [expected.width, expected.height])
+  let maxDifference = 0,
+    count = 0,
+    left = width,
+    right = -1,
+    top = height,
+    bottom = -1
+  for (let offset = 0; offset < data.length; offset += 4) {
+    let difference = 0
+    for (let channel = 0; channel < 4; channel++) {
+      const index = offset + channel
+      const actualByte = Math.round(data[index] * 255)
+      const expectedByte = Math.round(expected.data[index] * 255)
+      difference = Math.max(difference, Math.abs(actualByte - expectedByte))
+    }
+    maxDifference = Math.max(maxDifference, difference)
+    if (difference <= 1) continue
+    const pixel = offset / 4,
+      x = pixel % width,
+      y = Math.floor(pixel / width)
+    count++
+    left = Math.min(left, x)
+    right = Math.max(right, x)
+    top = Math.min(top, y)
+    bottom = Math.max(bottom, y)
+  }
+  return { maxDifference, count, bounds: count ? { left, top, right, bottom } : null }
 }
 
 test(
@@ -116,7 +147,10 @@ test(
       assert.deepEqual(wheelEvents.at(-1).panelViewports[target], scrolled)
       await page.mouse.move(1, 1)
       const trustedPixels = await panelPixels(page, port)
-      assert.notDeepEqual(trustedPixels, beforePixels)
+      assert.ok(
+        panelRasterDiff(trustedPixels, beforePixels).count > 0,
+        `${target} wheel must change panel pixels`
+      )
       assert.deepEqual(await move(target, { y: before.y }), before)
       await resetEvents()
       assert.deepEqual(await move(target, { y: scrolled.y, photoId: first.id }), scrolled)
@@ -124,7 +158,13 @@ test(
         (await watch()).map((value) => value.panelViewports[target]),
         [scrolled]
       )
-      assert.deepEqual(await panelPixels(page, port), trustedPixels)
+      const difference = panelRasterDiff(await panelPixels(page, port), trustedPixels)
+      t.diagnostic(JSON.stringify({ target, ...difference }))
+      assert.equal(
+        difference.count,
+        0,
+        `${target} panel raster exceeds one 8-bit level ${JSON.stringify(difference)}`
+      )
       assert.deepEqual((await state()).panelViewports[target], scrolled)
       assert.deepEqual((await state(true)).panelViewports[target], scrolled)
 
