@@ -1,3 +1,14 @@
+import { fileURLToPath } from 'node:url'
+
+export function serveMultitrackVideoFixture(page) {
+  return page.route('**/__fixtures/multitrack-video.mjs', (route) =>
+    route.fulfill({
+      contentType: 'text/javascript',
+      path: fileURLToPath(new URL('./multitrack-video.mjs', import.meta.url))
+    })
+  )
+}
+
 export const videoFixtureSize = [96, 64]
 export const videoFixtureFrequencies = [330, 660, 990]
 const colors = ['#b42e2e', '#29a549', '#2b3dc6']

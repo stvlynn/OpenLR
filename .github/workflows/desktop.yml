@@ -52,6 +52,12 @@ jobs:
         run: xvfb-run -a dbus-run-session -- node scripts/native-suite.mjs build/release/linux-amd64/openlr
       - if: ${{ !cancelled() && runner.os == 'macOS' && steps.distribution.outcome == 'success' }}
         run: node scripts/native-suite.mjs build/release/darwin-universal/OpenLR.app/Contents/MacOS/OpenLR
+      - name: Install independent audio verification tools
+        if: ${{ !cancelled() && runner.os == 'macOS' && steps.distribution.outcome == 'success' }}
+        run: command -v ffmpeg && command -v ffprobe || brew install ffmpeg
+      - name: Verify short multitrack audio exports
+        if: ${{ !cancelled() && runner.os == 'macOS' && steps.distribution.outcome == 'success' }}
+        run: node scripts/native-audio-export-smoke.mjs build/release/darwin-universal/OpenLR.app/Contents/MacOS/OpenLR
       - name: Verify the Windows native distribution
         id: windows-native
         if: runner.os == 'Windows'
