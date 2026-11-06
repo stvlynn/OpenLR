@@ -6,8 +6,8 @@ import { setTimeout as delay } from 'node:timers/promises'
 import { readPng } from '../web/png.js'
 import { withNativeWorkspace } from './native-workspace.mjs'
 
-const [control, candidate, directory] = process.argv.slice(2)
-if (!control || !candidate || !directory) throw Error('Pass the two poster packages and report directory')
+const [app, directory] = process.argv.slice(2)
+if (!app || !directory) throw Error('Pass the packaged application and report directory')
 const destination = path.resolve(directory)
 const ff = (tool, ...args) => execFileSync(tool, args, { stdio: ['ignore', 'pipe', 'inherit'] })
 const variants = [
@@ -161,26 +161,19 @@ async function verify(label, app) {
   return records
 }
 
-const candidateResults = await verify('presented', candidate)
 const results = {
   platform: process.platform,
   arch: process.arch,
-  order: ['presented', 'native'],
-  control: await verify('native', control),
-  candidate: candidateResults
+  records: await verify('production', app)
 }
 await writeFile(path.join(destination, 'report.json'), JSON.stringify(results, null, 2))
 console.log(JSON.stringify(results))
-for (const [index, left] of results.control.entries()) {
-  const right = results.candidate[index]
-  if (left.name !== 'h264.mkv') assert.equal(left.accepted, true, left.name)
-  assert.equal(right.accepted, left.accepted, left.name + ' import compatibility')
-  if (!left.accepted) continue
-  for (const record of [left, right]) {
-    assert.deepEqual(record.size, [96, 64], record.name)
-    assert.ok(Math.abs(record.catalogDuration - record.duration) < 0.06, record.name + ' duration')
-    assert.ok(record.posterPixels >= 700, record.name + ' first frame thumbnail')
-    assert.ok(record.laterColorPixels < 200, record.name + ' later frame in thumbnail')
-    assert.ok(Math.abs(record.firstSeek - 0.25) < 0.03, record.name + ' native seek')
-  }
+for (const record of results.records) {
+  assert.equal(record.accepted, record.name !== 'h264.mkv', record.name + ' import compatibility')
+  if (!record.accepted) continue
+  assert.deepEqual(record.size, [96, 64], record.name)
+  assert.ok(Math.abs(record.catalogDuration - record.duration) < 0.06, record.name + ' duration')
+  assert.ok(record.posterPixels >= 700, record.name + ' first frame thumbnail')
+  assert.ok(record.laterColorPixels < 200, record.name + ' later frame in thumbnail')
+  assert.ok(Math.abs(record.firstSeek - 0.25) < 0.03, record.name + ' native seek')
 }

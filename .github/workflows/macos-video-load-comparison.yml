@@ -1,130 +1,60 @@
-name: macOS packaged video load comparison
+name: macOS production poster verification
 on:
   workflow_dispatch:
     inputs:
       comparison:
-        description: Video behavior to compare
+        description: Media workflow
         type: choice
-        options: [load, pause, decoder, poster]
-        default: load
+        options: [poster]
+        default: poster
 permissions:
   actions: read
   contents: read
 jobs:
-  comparison:
+  poster:
     strategy:
       fail-fast: false
       matrix:
         os: [macos-15-intel, macos-15]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
-    env:
-      VIDEO_COMPARISON: ${{ inputs.comparison || 'load' }}
-      VIDEO_CONTROL: ${{ inputs.comparison == 'poster' && 'native-poster' || inputs.comparison == 'decoder' && 'default-decoder' || inputs.comparison == 'pause' && 'frame-first' || 'automatic' }}
-      VIDEO_CANDIDATE: ${{ inputs.comparison == 'poster' && 'presented-poster' || inputs.comparison == 'decoder' && 'software-decoder' || inputs.comparison == 'pause' && 'anchor-first' || 'explicit' }}
     steps:
       - uses: actions/checkout@v5
+      - name: Retrieve the production revision
+        uses: actions/checkout@v5
+        with:
+          ref: dad42fe8db5280ee26ed36d7a2eef1aaa322af27
+          path: production
       - uses: actions/setup-node@v5
         with:
           node-version: 24
       - uses: actions/setup-go@v6
         with:
-          go-version-file: go.mod
-      - run: npm ci
+          go-version-file: production/go.mod
+      - name: Build the unmodified production app
+        working-directory: production
+        run: |
+          npm ci
+          node scripts/desktop.mjs build -o build/video-poster -platform darwin/universal
       - name: Provision independent fixture tools
         run: command -v ffmpeg && command -v ffprobe || brew install ffmpeg
-      - name: Build the comparison control
-        run: node scripts/desktop.mjs build -o "build/video-$VIDEO_CONTROL" -platform darwin/universal
-      - name: Build the comparison candidate
-        run: |
-          python3 - <<'PY'
-          import os
-          from pathlib import Path
-          import subprocess
-          comparison = os.environ['VIDEO_COMPARISON']
-          source = Path('web/video-frames.js' if comparison == 'decoder' else 'web/video.js')
-          edits = []
-          if comparison == 'decoder':
-              marker = b'new CanvasSink(track, { alpha: true })'
-              replacement = b"new CanvasSink(track, { alpha: true, decoderOptions: { hardwareAcceleration: 'prefer-software' } })"
-          elif comparison == 'pause':
-              frame = (
-                  b"          markVideoSeek(trace, 'pause-frame', video)\n"
-                  b'          const image = await frameAt(time)\n'
-                  b"          markVideoSeek(trace, 'pause-frame-read', video)\n"
-              )
-              anchor = (
-                  b'          // Anchor a paused clock before it can fall back to the previous seek.\n'
-                  b'          if (!closed && isCurrent() && video.paused) await seek(time, true, trace)\n'
-              )
-              marker, replacement = frame + anchor, anchor + frame
-          elif comparison == 'poster':
-              edits.extend((source, before, after) for before, after in [
-                  (b'openVideo(file, diagnostic, seekTrace) {', b'openVideo(file, diagnostic, seekTrace, preparePoster = false) {'),
-                  (b'  const close = () => {\n', b'''  let frameCallback
-            let presented
-            if (preparePoster && typeof video.requestVideoFrameCallback === 'function') {
-              presented = new Promise((resolve) => {
-                frameCallback = video.requestVideoFrameCallback((_now, { mediaTime }) => resolve(mediaTime))
-              })
-            }
-            const close = () => {
-              if (frameCallback !== undefined) video.cancelVideoFrameCallback(frameCallback)
-          '''),
-                  (b'    markVideoSeek(seekTrace, \'playback-loaded\', video)\n', b'''    if (presented) {
-                let timer
-                const limit = new Promise((resolve) => { timer = setTimeout(() => resolve(null), 2000) })
-                const mediaTime = await Promise.race([presented, limit])
-                clearTimeout(timer)
-                video.cancelVideoFrameCallback(frameCallback)
-                frameCallback = undefined
-                markVideoImport(diagnostic, mediaTime === null ? 'poster-frame-timeout' : 'poster-frame-presented', video)
-              }
-              markVideoSeek(seekTrace, 'playback-loaded', video)
-          '''),
-              ])
-              marker = b'const media = await openVideo(file, diagnostic)\n'
-              replacement = b'const media = await openVideo(file, diagnostic, undefined, true)\n'
-          else:
-              marker = b'\n          video.src = url\n'
-              replacement = marker + b'          video.load()\n'
-          edits.append((source, marker, replacement))
-          originals = {file: file.read_bytes() for file, _, _ in edits}
-          for file, before, _ in edits:
-              if originals[file].count(before) != 1:
-                  raise RuntimeError(f'Expected one comparison source block in {file}')
-          try:
-              for file, before, after in edits:
-                  file.write_bytes(file.read_bytes().replace(before, after))
-              output = 'build/video-' + os.environ['VIDEO_CANDIDATE']
-              subprocess.run(['node', 'scripts/desktop.mjs', 'build', '-o', output, '-platform', 'darwin/universal'], check=True)
-          finally:
-              for file, original in originals.items():
-                  file.write_bytes(original)
-          PY
       - name: Retrieve the exact previous media samples
-        if: inputs.comparison == 'poster'
         uses: actions/download-artifact@v4
         with:
           name: video-poster-${{ matrix.os }}
           path: build/prior-poster-formats
           run-id: 42284746616
           github-token: ${{ github.token }}
-      - name: Use the same media samples for both packages
-        if: inputs.comparison == 'poster'
+      - name: Verify actual import, thumbnail and first seek across formats
+        shell: bash
         run: |
           mkdir -p build/video-poster-trials
           cp build/prior-poster-formats/*.{webm,mp4,mov,mkv} build/video-poster-trials/
-      - name: Compare actual import, thumbnail and first seek across formats
-        if: inputs.comparison == 'poster'
-        shell: bash
-        run: |
           node scripts/native-video-poster-formats.mjs \
-            "build/video-$VIDEO_CONTROL/darwin-universal/OpenLR.app/Contents/MacOS/OpenLR" \
-            "build/video-$VIDEO_CANDIDATE/darwin-universal/OpenLR.app/Contents/MacOS/OpenLR" \
-            "build/video-$VIDEO_COMPARISON-trials" 2>&1 | tee build/video-poster-trials/workflow.log
+            production/build/video-poster/darwin-universal/OpenLR.app/Contents/MacOS/OpenLR \
+            build/video-poster-trials 2>&1 | tee build/video-poster-trials/workflow.log
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: video-${{ env.VIDEO_COMPARISON }}-${{ matrix.os }}
-          path: build/video-${{ env.VIDEO_COMPARISON }}-trials
+          name: video-poster-release-${{ matrix.os }}
+          path: build/video-poster-trials
