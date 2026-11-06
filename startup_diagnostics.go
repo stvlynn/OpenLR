@@ -12,15 +12,16 @@ import (
 	"github.com/egoist/mygo"
 )
 
-// Startup diagnostics retain only the first occurrence of each stage. They
-// log host-relative time and fixed names, independent of request or page data.
+// Startup milestones retain only the first occurrence of each stage. The
+// separate file-open stream retains repeated stages with a per-process cap.
 type startupTrace struct {
-	started  time.Time
-	output   io.Writer
-	mu       sync.Mutex
-	seen     map[string]bool
-	uiProbe  sync.Once
-	uiPumped chan struct{}
+	started         time.Time
+	output          io.Writer
+	mu              sync.Mutex
+	seen            map[string]bool
+	fileOpenRecords int
+	uiProbe         sync.Once
+	uiPumped        chan struct{}
 }
 
 func newStartupTrace(output io.Writer) *startupTrace {

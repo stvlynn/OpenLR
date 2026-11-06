@@ -72,7 +72,14 @@ func (d *Desktop) OpenedFiles() ([]ChosenPhoto, error) {
 	paths := d.opened
 	d.opened = nil
 	d.mu.Unlock()
-	return readChosenPhotos(paths)
+	d.startup.fileOpen(0, "drain-started", len(paths))
+	files, err := readChosenPhotos(paths)
+	if err != nil {
+		d.startup.fileOpen(0, "drain-read-failed", len(paths))
+	} else {
+		d.startup.fileOpen(0, "drain-read", len(files))
+	}
+	return files, err
 }
 
 func readChosenPhotos(paths []string) ([]ChosenPhoto, error) {

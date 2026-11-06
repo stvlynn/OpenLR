@@ -2,6 +2,14 @@
 
 对照目标为本机 Adobe Lightroom 9.4 云桌面版。REA 证据来自可执行文件及其资源；登录后的 Windows 运行观察已核对裁剪、蒙版入口及导出设置，见 [运行记录](../research/lightroom.md#登录后的-windows-运行观察)。当前仍未建立全部功能逐屏、逐像素的 Adobe 对照。静态入口、独立实现及实际通过的测试分别记录。
 
+## Photos 与 Inspector viewport — 2026-11-06
+
+`viewport --target photos|inspector` 与 GUI 共用两个侧栏的真实滚动区域，完整／摘要状态增加 `panelViewports`，实际滚动通知 `watch`。最终 Windows／Chrome 156.0.8078.80 完整回归 **461/461，零失败、零跳过**，约 308.3 秒；Go 全部测试和 vet 通过。浏览器测试核对可信鼠标与 CLI 的整块侧栏截图、队列、隐藏目标、相册选择和原件。最初全套为 458/459：旧局部工具测试把收起 Masks 后浏览器真实滚动的事件误计为重复命令。修正后分别核对唯一工具事件与独立 DOM 滚动，定向十项和最终全套均通过。日志 `.workspace/panel-viewport-full.log` 保留失败；最终日志 `.workspace/panel-viewport-full-verified.log`。
+
+新 Windows 包的原生导航通过 Photos 0→2095.199951、Inspector 0→1136.800049 CSS px 的实际定位，截图分别显示不同相册标签及 Histogram／Keywords，`watch`、选择、配方和原件保持通过。这是该包的 Windows 证据，新增目标的其他平台仍待执行。见[侧栏观察与验证](../research/panel-viewport.md)。
+
+前一版本 `af5e06d` 的 [Actions 42192660557](https://github.com/stvlynn/OpenLR/actions/runs/42192660557) 已结束：Linux、ARM macOS 和 Intel macOS 成功，Windows 失败。两个 macOS 完成严格视频与短音频检查，ARM／Intel 首次视频定位分别约 6.128 秒／152 ms；没有据此认定早期超时已修复。Windows 已通过主流程、同步以及首次文件转交，但再次打开同一文件时未从 Grid 返回 Detail；这次没有首次状态超时。对应干净归档的独立 CLI 和本地重复转交验证通过，远程失败仍待新的分阶段证据。见[视频记录](../research/native-video.md)、[文件转交记录](../research/native-startup.md)和[归档交付](delivery-review.md#windows-tracked-snapshot-af5e06d)。
+
 ## 图库与胶片条 viewport — 2026-11-06
 
 `viewport` 增加 `grid`／`filmstrip` 目标，沿用真实滚动区域和现有 dispatcher；默认 Detail 兼容。完整 Windows／Chrome 156.0.8078.80 回归 **457/457，零失败、零跳过**，约 304.2 秒。定向测试比较真实鼠标与 CLI 的实际偏移和截图像素，并覆盖只读／无变化通知、隐藏目标、排队 scope 变化、过期照片保护和原件。日志 `.workspace/catalog-viewport-full.log`。

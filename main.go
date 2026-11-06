@@ -98,14 +98,23 @@ func main() {
 		}
 		desktop.mu.Lock()
 		desktop.opened = append(desktop.opened, path)
+		queued := len(desktop.opened)
 		desktop.mu.Unlock()
+		desktop.startup.fileOpen(0, "queued", queued)
 		if window != nil {
-			_ = menuAction.Emit(window, "open-files")
+			if err := menuAction.Emit(window, "open-files"); err != nil {
+				desktop.startup.fileOpen(0, "emit-failed")
+			} else {
+				desktop.startup.fileOpen(0, "emit-accepted")
+			}
 			window.Restore()
 			window.Focus()
+		} else {
+			desktop.startup.fileOpen(0, "no-window")
 		}
 	})
 	mygo.App.OnSecondInstance(func(_ []string, _ string) {
+		desktop.startup.fileOpen(0, "second-instance")
 		if window != nil {
 			window.Restore()
 			window.Focus()

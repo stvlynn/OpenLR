@@ -1,5 +1,6 @@
 import { run, commands } from './app.js'
 import { schema, searchCommands, validateArgs } from './agent-protocol.js'
+import { receiveOpenedFiles } from './file-open.js'
 
 import { decodeFile, encodeBlob } from './transfer.js'
 import {
@@ -103,16 +104,9 @@ if (globalThis.mygo?.call) {
     window.addEventListener('openlr-change', () =>
       globalThis.mygo.call('Desktop.AgentChanged').catch((error) => console.error(error))
     )
-  async function receiveOpened() {
-    const chosen = await globalThis.mygo.call('Desktop.OpenedFiles')
-    if (!chosen?.length) return
-    const { failed, added, existing } = await run('import', { files: chosen.map(decodeFile) })
-    if (added.length || existing.length) await run('view', { mode: 'detail' })
-    if (failed.length) throw Error(failed.map((f) => f.name + ': ' + f.error).join(', '))
-  }
   globalThis.mygo.on?.('workspaceMenu', async (id) => {
     try {
-      if (id === 'open-files') await receiveOpened()
+      if (id === 'open-files') await receiveOpenedFiles(run, true)
       else if (id === 'choose-photos') document.getElementById('import').click()
       else if (id === 'export-dialog') document.getElementById('export').click()
       else if (id === 'export-previous') document.getElementById('export-previous').click()
@@ -123,7 +117,7 @@ if (globalThis.mygo?.call) {
     }
   })
   if (globalThis.mygo.on)
-    receiveOpened().catch((error) => {
+    receiveOpenedFiles(run, false).catch((error) => {
       document.getElementById('notice').textContent = error.message
     })
 }
