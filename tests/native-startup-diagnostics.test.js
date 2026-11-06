@@ -92,12 +92,29 @@ test('startup diagnostics probe broker, control and UI without replaying state o
 test('startup diagnostics retain working health when the separate control path stalls', async (t) => {
   const { inspect, requests } = await fixture(t, (request, response) => {
     if (request.url === '/health') response.end(JSON.stringify({ ok: true, version: 1 }))
-    if (request.url === '/diagnostics/startup-ui') response.end(JSON.stringify({ responded: false }))
+    if (request.url === '/diagnostics/startup-ui')
+      response.end(
+        JSON.stringify({
+          responded: false,
+          goMainFrames: [
+            'syscall.(*LazyProc).Call',
+            'github.com/egoist/mygo.NewWindow',
+            'C:/private/photo.go',
+            '/private/photo.go',
+            'main.main'
+          ]
+        })
+      )
   })
   const result = await inspect({ timeoutMs: 1000 })
   assert.equal(result.health.ok, true)
   assert.equal(result.control.error, 'Error')
   assert.equal(result.uiPump.responded, false)
+  assert.deepEqual(result.uiPump.goMainFrames, [
+    'syscall.(*LazyProc).Call',
+    'github.com/egoist/mygo.NewWindow',
+    'main.main'
+  ])
   assert.equal(requests.filter((request) => request.body?.command === 'export-status').length, 1)
   assert.equal(requests.filter((request) => request.path === '/diagnostics/startup-ui').length, 1)
   assert.equal(

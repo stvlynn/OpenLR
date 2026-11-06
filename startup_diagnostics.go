@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"runtime"
 	"sync"
 	"time"
 
@@ -55,7 +56,45 @@ func (t *startupTrace) observeWindow(window *mygo.Window) {
 func (t *startupTrace) serveUIProbe(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), time.Second)
 	defer cancel()
-	json.NewEncoder(w).Encode(map[string]bool{"responded": t.probeUI(ctx, mygo.RunOnMain)})
+	response := struct {
+		Responded    bool     `json:"responded"`
+		GoMainFrames []string `json:"goMainFrames,omitempty"`
+	}{Responded: t.probeUI(ctx, mygo.RunOnMain)}
+	if runtime.GOOS == "windows" && !response.Responded && r.Context().Err() == nil {
+		response.GoMainFrames = mainGoroutineFrames()
+	}
+	json.NewEncoder(w).Encode(response)
+}
+
+// The Windows desktop runs MyGo's event loop on the main goroutine. Export
+// only function names from its Go stack, keeping paths and values private.
+func mainGoroutineFrames() []string {
+	records := make([]runtime.StackRecord, runtime.NumGoroutine())
+	n, ok := runtime.GoroutineProfile(records)
+	if !ok {
+		records = make([]runtime.StackRecord, n)
+		n, ok = runtime.GoroutineProfile(records)
+		if !ok {
+			return nil
+		}
+	}
+	for i := range records[:n] {
+		frames := runtime.CallersFrames(records[i].Stack())
+		var names []string
+		for {
+			frame, more := frames.Next()
+			if frame.Function != "" {
+				names = append(names, frame.Function)
+			}
+			if frame.Function == "main.main" {
+				return names
+			}
+			if !more {
+				break
+			}
+		}
+	}
+	return nil
 }
 
 func (t *startupTrace) probeUI(ctx context.Context, runOnMain func(func())) bool {

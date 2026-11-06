@@ -61,10 +61,18 @@ export async function inspectNativeStartup({
       const response = await get('/diagnostics/startup-ui')
       if (!response.ok) return { status: response.status }
       const body = await response.json()
+      const responded = typeof body?.responded === 'boolean' ? body.responded : null
+      const goMainFrames =
+        responded === false && Array.isArray(body.goMainFrames)
+          ? body.goMainFrames
+              .slice(0, 48)
+              .filter((frame) => identifier(frame, /^[A-Za-z_][A-Za-z0-9_./()[\]*+-]{0,159}$/))
+          : []
       return {
         status: response.status,
-        responded: typeof body?.responded === 'boolean' ? body.responded : null,
-        elapsedMs: Math.round(performance.now() - started)
+        responded,
+        elapsedMs: Math.round(performance.now() - started),
+        ...(goMainFrames.length > 0 && { goMainFrames })
       }
     })()
   ])

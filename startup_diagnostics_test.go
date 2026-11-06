@@ -3,9 +3,11 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"regexp"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -117,7 +119,19 @@ func TestStartupUIProbeReportsWhenDispatchIsStillPending(t *testing.T) {
 	request := httptest.NewRequest(http.MethodGet, "/diagnostics/startup-ui", nil).WithContext(outer)
 	response := httptest.NewRecorder()
 	trace.serveUIProbe(response, request)
-	if outer.Err() != nil || response.Body.String() != "{\"responded\":false}\n" {
+	var result struct {
+		Responded    *bool
+		GoMainFrames []string
+	}
+	err := json.Unmarshal(response.Body.Bytes(), &result)
+	if outer.Err() != nil || err != nil || result.Responded == nil || *result.Responded {
 		t.Fatalf("bounded diagnostic did not report pending UI dispatch: %q, %v", response.Body.String(), outer.Err())
+	}
+	if runtime.GOOS == "windows" {
+		if n := len(result.GoMainFrames); n < 2 || result.GoMainFrames[n-1] != "main.main" {
+			t.Fatalf("expected a Go main stack ending at main.main, got %v", result.GoMainFrames)
+		}
+	} else if len(result.GoMainFrames) != 0 {
+		t.Fatalf("unexpected Go main stack on %s: %v", runtime.GOOS, result.GoMainFrames)
 	}
 }
