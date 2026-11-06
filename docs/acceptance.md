@@ -17,6 +17,14 @@
 
 ## 补充验证
 
+- **`geometry-straighten` Windows 全套终态**。重新构建的 Windows／WebView2 安装包通过 **十九组原生流程**，包含新增真实 Sky 首次下载与推理、完整蒙版与局部曝光像素、共享拉直选点结束／错误保持、HDR 成片与辐照度、视频图像与音轨、双设备同步、文件打开和其他既有适配器检查。日志 `.workspace/geometry-straighten-{build,native}.log`。Sky 的人工天空／非天空区域均值约 0.99997／0.01777，逐通道曝光计算误差不超过一个 8-bit 码值，neutral／undo／原件一致。单独 Sky 检查首次未校准的亮度阈值失败已保留在 `.workspace/native-sky-windows.log`，随后改为完整像素公式校验并通过；没有据此声称原生离线缓存或其他平台 Sky 已验收。macOS AudioToolbox 探针另行验证，尚未成为生产音轨实现。
+
+- **共享几何与拉直会话修复**。Linux 的 HDR 透明输出已定位为默认裁剪经过宽高比往返后产生 `y=-1.4210854715202004e-14`；实际 WebKitGTK 2.52.6 将这次略微越界的绘制变为透明。共享几何现在保留未指定比例的精确矩形，并分别约束指定比例的两条边。`7338f7f` 干净归档叠加该修复后，WSL Linux 重新构建并通过原生集成检查，HDR 不透明亮度样本为 48／171／241，辐照度和原件检查保持。另一个真实 Chrome 复现确认：用户选取第一个拉直点后由 CLI 完成，旧选点状态会让后续点击产生第二次编辑。现在成功保存后由 dispatcher 结束选点，过期 GUI 第二点被拒绝，非法／过期照片命令保留可用参考。Windows／Node 24.9／Chrome 156 的完整配置回归 **377/377、零失败、零跳过**，约 296.1 秒，日志 `.workspace/geometry-straighten-full.log`。当前 Windows 新安装包的全套原生检查另记；不能把这里的 Linux 单项和浏览器结果称为四平台通过。
+
+- **`7338f7f` 远程终态补充**。上述四平台运行已全部结束，四个作业均失败。Intel macOS 已完成严格视频预览、播放／暂停、剪辑定位、旋转保存帧及原件检查，随后实际音轨导出报设备无法编码所有源轨；不再仅根据 AudioDecoder／AudioEncoder 缺失推测此边界。Windows 浏览器 **366/374、8 项可选资源跳过、零失败**，安装包构建完成，但首次 GUI state 再次超时。新增时间线显示窗口创建在 14,368ms，至 30 秒截止没有导航提交或 renderer 启动标记；broker health 200 且会话 PID 匹配。原始日志 `.workspace/video-frame-ci-{mac-intel,windows}.log`。局部成功不构成跨平台验收通过；没有重跑失败作业。
+
+- **`7338f7f` 新增平台失败证据（运行尚未全部结束）**。[Actions 42152929714](https://github.com/stvlynn/OpenLR/actions/runs/42152929714) 的 macOS 15 ARM 作业实际执行了 universal 包。独立生产 poster 探针成功读回并编码 `[180,46,47,255]`，直接／anonymous video 仍为 SecurityError；独立解码两帧成功。严格套件完成视频前的图像／模型／导航检查，视频导入通过，但随后在 `paused.time >= advanced.time` 失败；日志没有保存两者数值，尚不能判定时钟回退幅度或原因，也未到达音轨导出。Linux 完成视频及后续适配器流程后，在新增集成 HDR 成片采样中得到 alpha 0（预期 1）；这与前序 RGBE 辐照度验证分开记录，正在定位。原始日志 `.workspace/video-frame-ci-{mac-arm,linux}.log`。这些失败没有通过重跑替代调查。
+
 - **视频帧读取与完整 Windows 回归**。根据 macOS 的实际 SecurityError，视频帧访问现先检查原生画布读回；只有该安全错误才启用已有 MediaBunny 的独立解码帧。缩略图、预览、保存帧和批量静态导出共用此边界，播放声音与时间仍由原媒体元素负责。延迟帧测试验证暂停、定位、编辑及切换照片后旧帧不能发布；保存帧的文件名时间与像素取自同一快照。Windows／Node 24.9／Chrome 156 的完整配置回归 **374/374、零失败、零跳过**，约 276.2 秒。重新构建的 `video-frame-source` Windows 安装包通过 **十八组原生流程**，其中视频检查实际播放、彩色帧、旋转后的保存图、原件字节及 VP9／Opus 导出的音调与时间范围。日志 `.workspace/video-frame-source-{full,native}.log`。Chrome 中注入安全错误的回归是受控验证，不能替代待执行的 macOS 修复后验收；严格音轨要求没有降低。
 
 - **原生文件打开与更强的图像集成检查**。`f6af855` Windows 包通过实际首次文件参数、第二实例转交、重复打开与私有 profile 重启，所有生成图片的预览／导出像素和原件一致；这不等于 Explorer 关联注册或系统选择器验收。更新后的集成脚本独立解码 panorama PNG，四个场景区平均通道误差为 0／0.15／2.35／3.83，透明边缘正确；RGBE 恢复约 9.33 stops，最大采样误差 2.53%，显示编辑不改变 radiance 导出。Person／Subject／Background 实际覆盖 PNG 通过手工区域和补集检查，局部曝光只改变人物区域。六份合并源的编辑、评级、版本及原件保持，NASA 图原件保持。日志 `.workspace/native-integration-pixels-windows-final.log`；独立 RGBE／合并测试与生命周期测试共 11/11 通过。此轮仅加强验证，没有修改合并或模型算法。
