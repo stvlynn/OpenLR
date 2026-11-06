@@ -8,6 +8,8 @@
 
 `b8cc778` 的双架构冷启动专项从 DMG 复制应用。Launch Services 启动停止的应用并交付首张照片，实际应用 PID 与 CLI 会话一致。两种架构均验证 32×24 和 30×22 预览、导出像素、93 与 90 字节原件以及重复打开的照片 ID。Ubuntu 同一提交通过已安装的 GIO 桌面入口、原生套件和卸载。[冷启动专项](https://github.com/stvlynn/OpenLR/actions/runs/42308944936) · [Ubuntu 安装作业](https://github.com/stvlynn/OpenLR/actions/runs/42308086402/job/128202431475)
 
+`b8cc778` 的可选 Intel 原生对话框步骤在第二次文件夹选择中止。面板已打开，驱动在固定 0.4 秒后还未观察到路径输入框获得焦点。随后 Intel 常规套件通过。驱动改为等待系统报告新的路径输入焦点，同一应用包在两种架构均通过文件夹与保存面板的确认、取消、预览和原件检查。[Intel 原始日志](https://github.com/stvlynn/OpenLR/actions/runs/42308086402/job/128202431414) · [双架构复验](https://github.com/stvlynn/OpenLR/actions/runs/42309763804)
+
 Photos 迁移的 Windows 正式包对照使用公开的 Catalina 导出 XMP 与两张生成 PNG。修复前，一张缺少图库日期，另一张保留了与侧车不同的内嵌日期。修复后，两张都保留侧车的带时区日期，并通过实际 CLI 预览和原件逐字节检查。迁移、CLI 与同步定向回归 **19/19**，普通原生迁移套件通过。[迁移来源及验证边界](../research/catalog-migration.md#apple-export-boundary)
 
 `205cd45` 在本机 Windows Chrome 157.0.8103.38 启用独立色彩和元数据校验，完整浏览器回归 **494/494**，零失败、零跳过，305.9 秒。Windows 和两种 macOS 的托管作业通过。Ubuntu 首次在 APT 下载阶段超时，同一提交的重跑通过 Debian 安装、包内 CLI 接入、实际原生套件与清除。四平台矩阵最终通过。[四平台作业](https://github.com/stvlynn/OpenLR/actions/runs/42298650204) · [Ubuntu 重跑](https://github.com/stvlynn/OpenLR/actions/runs/42298650204/job/128184599226)
