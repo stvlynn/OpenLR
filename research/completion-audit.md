@@ -2,6 +2,8 @@
 
 ## Current requirement audit — 2026-11-06
 
+Terminal update for 2d0f448: Windows, Linux and Intel macOS completed successfully; ARM macOS failed on the metadata-only video import described below. No production rerun replaces it. The clean archive is verified, but the current media failure still prevents overall completion.
+
 The clean 2d0f448 Windows archive now rebuilds from a fresh dependency install and passes independent packaged CLI navigation and organization flows outside the source tree: 311 logged command calls, four watch processes, actual PNG/raw output, strict settings and catalog restart, original bytes and distribution notices. The current four-platform run is still live and must be inspected to completion. This closes the post-repair Windows archive gap; it does not substitute for that run or for the separately stated physical-device and ecosystem boundaries. [Archive evidence](../docs/delivery-review.md#windows-tracked-snapshot-2d0f448) · [Current hosted run](https://github.com/stvlynn/OpenLR/actions/runs/42233934235)
 
 That run has since completed Linux and Intel macOS successfully, but ARM reproduced the metadata-only video import stall in a responsive host. ARM's default-store restart and independent short-audio checks passed. Windows remains live. Completion is therefore still unproven; the next media comparison must include the packaged application context, retaining the failure and previous isolated comparison rather than assuming explicit load is a demonstrated fix. [Media evidence and next comparison](native-video.md#paired-native-readiness-probe)

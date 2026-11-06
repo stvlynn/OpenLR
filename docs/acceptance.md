@@ -4,6 +4,8 @@
 
 ## 自动堆栈视图保护 — 2026-11-06
 
+`2d0f448` 的最终矩阵结果为 Windows、Linux、Intel macOS 成功，ARM macOS 视频导入失败；没有重试覆盖该失败。下方记录中的 Windows 等待状态现已结束，完整终态日志保留于忽略目录 `.workspace/2d0-ci.log`。
+
 干净 `2d0f448` 归档已重新安装依赖并构建 Windows 包。源码目录外的独立单文件 CLI 完成 205 次导航命令、四路 watch 和 106 次目录命令，覆盖五种 viewport、实时图像／数据、最新保护参数、设置与目录重启及原件。十项分发资源逐字节一致。当前提交的四平台 Actions 仍在执行；归档详情见[独立交付验证](delivery-review.md#windows-tracked-snapshot-2d0f448)。
 
 [Actions 42233934235](https://github.com/stvlynn/OpenLR/actions/runs/42233934235) 的 Linux 和 Intel macOS 已成功；ARM 在严格视频流程的首次导入停于元数据就绪，GUI 控制与事件循环仍响应。其独立默认存储重启和三项短音频仍通过。Windows 尚在执行，不能据此宣称四平台全通过。此次失败及后续应用环境对照要求见[视频记录](../research/native-video.md#paired-native-readiness-probe)。
