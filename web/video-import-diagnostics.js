@@ -102,6 +102,9 @@ export function markVideoSeek(trace, stage, video, { event, seekTime } = {}) {
       seekableRanges: video?.seekable.length,
       readyState: video?.readyState,
       networkState: video?.networkState,
+      width: video?.videoWidth,
+      height: video?.videoHeight,
+      duration: video ? (Number.isFinite(video.duration) ? video.duration : null) : undefined,
       mediaErrorCode: video ? (video.error?.code ?? null) : undefined,
       event
     })
