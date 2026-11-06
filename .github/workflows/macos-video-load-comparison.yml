@@ -1,25 +1,23 @@
-name: Apple Silicon production VP9 seek verification
+name: Apple Silicon video export postmortem
 on:
   workflow_dispatch:
     inputs:
       comparison:
-        description: Media workflow
+        description: Diagnostic workflow
         type: choice
-        options: [seek]
-        default: seek
+        options: [trace]
+        default: trace
 permissions:
-  actions: read
   contents: read
 jobs:
-  seek:
+  postmortem:
     runs-on: macos-15
-    timeout-minutes: 30
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v5
-      - name: Retrieve the production revision
-        uses: actions/checkout@v5
+      - uses: actions/checkout@v5
         with:
-          ref: 77412e50525b2a4bd5199248c15885a32372372c
+          ref: 205cd4585084dc6d02471c77d62ad8c6fa6d449e
           path: production
       - uses: actions/setup-node@v5
         with:
@@ -27,30 +25,30 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version-file: production/go.mod
+      - name: Provision the pinned fixture browser
+        run: |
+          mkdir -p build/video-oracle
+          curl --fail --location "https://storage.googleapis.com/chrome-for-testing-public/157.0.8103.38/mac-arm64/chrome-mac-arm64.zip" -o build/video-oracle/chrome.zip
+          ditto -xk build/video-oracle/chrome.zip build/video-oracle
+          echo "OPENLR_VIDEO_PROBE_CHROME=$PWD/build/video-oracle/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing" >> "$GITHUB_ENV"
       - name: Build the unmodified production app
         working-directory: production
         run: |
           npm ci
-          node scripts/desktop.mjs build -o build/video-poster -platform darwin/universal
-      - name: Provision independent fixture tools
-        run: command -v ffmpeg && command -v ffprobe || brew install ffmpeg
-      - name: Retrieve the exact previous media samples
-        uses: actions/download-artifact@v4
-        with:
-          name: video-vp9-handoff-macos-15
-          path: build/prior-poster-formats
-          run-id: 42291957159
-          github-token: ${{ github.token }}
-      - name: Verify production handoffs and repeat failed seeks
-        shell: bash
+          node scripts/desktop.mjs build -o build/release -platform darwin/universal
+      - name: Run the fixed schedule without debugger attachment
+        working-directory: production
+        run: >-
+          node scripts/native-video-export-trials.mjs build/release/darwin-universal/OpenLR.app/Contents/MacOS/OpenLR
+          "$GITHUB_WORKSPACE/build/video-postmortem"
+      - name: Collect delayed system evidence for the owned failed processes
+        if: always()
         run: |
-          mkdir -p build/video-poster-trials
-          cp build/prior-poster-formats/{vp9,vp9-709,vp9-remux,vp9-remux-709}.webm build/video-poster-trials/
-          node scripts/native-video-poster-formats.mjs \
-            production/build/video-poster/darwin-universal/OpenLR.app/Contents/MacOS/OpenLR \
-            build/video-poster-trials 2>&1 | tee build/video-poster-trials/workflow.log
+          if test -f build/video-postmortem/report.json; then
+            node scripts/native-video-postmortem.mjs build/video-postmortem
+          fi
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: video-vp9-production-macos-15
-          path: build/video-poster-trials
+          name: video-postmortem-macos-15
+          path: build/video-postmortem
