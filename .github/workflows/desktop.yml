@@ -4,18 +4,14 @@ permissions:
   contents: read
 jobs:
   photos-export:
-    strategy:
-      fail-fast: false
-      matrix:
-        launch: [option-key, argument-domain, string-preference]
     runs-on: macos-15
-    timeout-minutes: 8
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
         with:
           node-version: 24
-      - name: Inspect Photos on a fresh runner
+      - name: Export generated original and IPTC from Photos 10
         shell: bash
         run: |
           test "$RUNNER_ENVIRONMENT" = github-hosted
@@ -23,12 +19,11 @@ jobs:
             echo 'Photos was running before the experiment'
             exit 1
           fi
-          if find "$HOME/Pictures" -maxdepth 1 -name '*.photoslibrary' 2>/dev/null | grep -q .; then
-            echo 'The runner image already has a default Photos library'
-          fi
           sw_vers
           /usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' /System/Applications/Photos.app/Contents/Info.plist
           export PHOTOS_PROBE="$(mktemp -d "$RUNNER_TEMP/openlr-photos.XXXXXX")"
+          echo "PHOTOS_PROBE=$PHOTOS_PROBE" >> "$GITHUB_ENV"
+          mkdir "$PHOTOS_PROBE/export"
           node --input-type=module <<'NODE'
           import { writeFile } from 'node:fs/promises'
           import path from 'node:path'
@@ -38,27 +33,34 @@ jobs:
             width, height, bits: 8, data: Array.from({ length: width * height }, () => [64, 96, 128]).flat()
           }))
           NODE
-          osacompile -o "$PHOTOS_PROBE/inspect.scpt" scripts/fixtures/photos-inspect.applescript
-          case '${{ matrix.launch }}' in
-            option-key)
-              osascript <<'APPLESCRIPT'
-          tell application "System Events" to key down option
-          try
-              do shell script "/usr/bin/open -b com.apple.Photos"
-              delay 2.0
-          on error errorText number errorNumber
-              tell application "System Events" to key up option
-              error errorText number errorNumber
-          end try
-          tell application "System Events" to key up option
-          APPLESCRIPT
-              ;;
-            argument-domain)
-              open -b com.apple.Photos --args -IPXDefaultShowLibraryChooserOnLaunch true
-              ;;
-            string-preference)
-              defaults write com.apple.Photos IPXDefaultShowLibraryChooserOnLaunch -string true
-              open -b com.apple.Photos
-              ;;
-          esac
-          osascript "$PHOTOS_PROBE/inspect.scpt"
+          osacompile -o "$PHOTOS_PROBE/drive.scpt" scripts/fixtures/drive-photos-export.applescript
+          open -b com.apple.Photos --args -IPXDefaultShowLibraryChooserOnLaunch true
+          sleep 1
+          osascript "$PHOTOS_PROBE/drive.scpt" create "$PHOTOS_PROBE/"
+          for trial in {1..30}; do
+            if test -d "$PHOTOS_PROBE/OpenLR Generated.photoslibrary"; then break; fi
+            sleep 0.2
+          done
+          test -d "$PHOTOS_PROBE/OpenLR Generated.photoslibrary"
+          echo 'Photos created the expected disposable library'
+          sleep 1
+          osascript "$PHOTOS_PROBE/drive.scpt" import "$PHOTOS_PROBE/Generated.png"
+          sleep 1
+          osascript "$PHOTOS_PROBE/drive.scpt" export "$PHOTOS_PROBE/export/" OpenLRGeneratedKeyword
+          for trial in {1..50}; do
+            if test -s "$PHOTOS_PROBE/export/Generated.png" && test -s "$PHOTOS_PROBE/export/Generated.xmp"; then break; fi
+            sleep 0.2
+          done
+          cmp "$PHOTOS_PROBE/Generated.png" "$PHOTOS_PROBE/export/Generated.png"
+          test -s "$PHOTOS_PROBE/export/Generated.xmp"
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - run: npm ci
+      - name: Build the macOS distribution
+        run: node scripts/desktop.mjs build -o build/release -platform darwin/universal
+      - name: Migrate actual Photos output into OpenLR
+        run: |
+          node scripts/fixtures/photos-export-verify.mjs \
+            build/release/darwin-universal/OpenLR.app/Contents/MacOS/OpenLR \
+            "$PHOTOS_PROBE/Generated.png" "$PHOTOS_PROBE/export" OpenLRGeneratedKeyword
