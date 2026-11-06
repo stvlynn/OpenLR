@@ -30,13 +30,8 @@ jobs:
         with:
           go-version-file: go.mod
       - run: npm ci
-      - name: Provision the pinned fixture and verification browser
-        run: |
-          chrome_platform=${{ runner.arch == 'ARM64' && 'mac-arm64' || 'mac-x64' }}
-          mkdir -p build/video-oracle
-          curl --fail --location "https://storage.googleapis.com/chrome-for-testing-public/157.0.8103.38/$chrome_platform/chrome-$chrome_platform.zip" -o build/video-oracle/chrome.zip
-          ditto -xk build/video-oracle/chrome.zip build/video-oracle
-          echo "OPENLR_VIDEO_PROBE_CHROME=$PWD/build/video-oracle/chrome-$chrome_platform/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing" >> "$GITHUB_ENV"
+      - name: Provision independent fixture tools
+        run: command -v ffmpeg && command -v ffprobe || brew install ffmpeg
       - name: Build the comparison control
         run: node scripts/desktop.mjs build -o "build/video-$VIDEO_CONTROL" -platform darwin/universal
       - name: Build the comparison candidate
@@ -108,12 +103,12 @@ jobs:
               for file, original in originals.items():
                   file.write_bytes(original)
           PY
-      - name: Compare actual import, seek, playback, frames and audio export
+      - name: Compare actual import, thumbnail and first seek across formats
         run: >-
-          node scripts/native-video-load-comparison.mjs
+          node scripts/native-video-poster-formats.mjs
           "build/video-$VIDEO_CONTROL/darwin-universal/OpenLR.app/Contents/MacOS/OpenLR"
           "build/video-$VIDEO_CANDIDATE/darwin-universal/OpenLR.app/Contents/MacOS/OpenLR"
-          "build/video-$VIDEO_COMPARISON-trials" "$VIDEO_COMPARISON"
+          "build/video-$VIDEO_COMPARISON-trials"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
