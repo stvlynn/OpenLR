@@ -136,6 +136,25 @@ test('opt-in native seek tracing observes the real event before its awaited call
   assert.ok(records.every(({ operation, elapsedMs }) => operation === 'seek' && Number.isFinite(elapsedMs)))
   assert.doesNotMatch(JSON.stringify(records), /private-seek|blob:|https?:/)
   assert.ok(!JSON.stringify(records).includes(photoId))
+
+  await page.evaluate(async () => {
+    await window.openlr.run('video-play')
+    window.seekRecords = []
+    window.deliverSeek({ id: 'private-pause-request', command: 'video-pause', args: {} })
+  })
+  await page.waitForFunction(() => window.seekReplies['private-pause-request'], null, { timeout: 5000 })
+  const pause = await page.evaluate(() => ({
+    records: window.seekRecords,
+    reply: window.seekReplies['private-pause-request']
+  }))
+  assert.equal(pause.reply.ok, true, pause.reply.error?.message)
+  assert.equal(pause.reply.result.playback.playing, false)
+  const stages = pause.records.map(({ stage }) => stage)
+  for (const stage of ['pause-start', 'pause-frame', 'pause-frame-read', 'seek-completed', 'pause-completed'])
+    assert.ok(stages.includes(stage), JSON.stringify(stages))
+  assert.ok(stages.indexOf('pause-frame-read') < stages.indexOf('seek-completed'))
+  assert.ok(pause.records.every(({ operation }) => operation === 'pause'))
+  assert.doesNotMatch(JSON.stringify(pause.records), /private|blob:|https?:/)
 })
 
 test('origin-restricted video uses decoded frames through live playback, seeking and saved stills', async (t) => {

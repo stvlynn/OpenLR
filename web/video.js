@@ -134,14 +134,23 @@ export async function openVideo(file, diagnostic, seekTrace) {
       seek,
       close,
       frameAt,
-      async pauseFrame(isCurrent) {
+      async pauseFrame(isCurrent, trace) {
+        markVideoSeek(trace, 'pause-start', video)
         const beforePause = video.currentTime
         video.pause()
         const time = Math.max(beforePause, video.currentTime)
-        const image = await frameAt(time)
-        // Anchor a paused clock before it can fall back to the previous seek.
-        if (!closed && isCurrent() && video.paused) await seek(time, true)
-        return !closed && isCurrent() ? image : null
+        try {
+          markVideoSeek(trace, 'pause-frame', video)
+          const image = await frameAt(time)
+          markVideoSeek(trace, 'pause-frame-read', video)
+          // Anchor a paused clock before it can fall back to the previous seek.
+          if (!closed && isCurrent() && video.paused) await seek(time, true, trace)
+          markVideoSeek(trace, 'pause-completed', video)
+          return !closed && isCurrent() ? image : null
+        } catch (error) {
+          markVideoSeek(trace, 'pause-failed', video)
+          throw error
+        }
       },
       async snapshot() {
         const source = await frames()

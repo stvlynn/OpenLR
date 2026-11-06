@@ -5,7 +5,7 @@ import { receiveOpenedFiles } from './file-open.js'
 import { decodeFile, encodeBlob } from './transfer.js'
 import {
   beginNativeVideoImportTrace,
-  beginNativeVideoSeekTrace,
+  beginNativeVideoPlaybackTrace,
   markNativeVideoImport,
   markVideoSeek
 } from './video-import-diagnostics.js'
@@ -81,7 +81,7 @@ async function serveNative(pollMethod, lane) {
       if (!request) continue
       globalThis.openlrStartupMilestone?.(lane + '-renderer-received')
       const videoImportStarted = beginNativeVideoImportTrace(request)
-      const seekTrace = beginNativeVideoSeekTrace(request)
+      const seekTrace = beginNativeVideoPlaybackTrace(request)
       const reply = await dispatch(request.command, request.args ?? {}, request.capture, seekTrace)
       globalThis.openlrStartupMilestone?.(lane + '-dispatch-finished')
       markNativeVideoImport(videoImportStarted, 'renderer-dispatched')

@@ -72,11 +72,12 @@ export function markNativeVideoImport(started, stage) {
   if (started !== undefined) send({ stage, elapsedMs: Math.round(performance.now() - started) })
 }
 
-export function beginNativeVideoSeekTrace(request) {
-  if (!globalThis.openlrDiagnostics || request.command !== 'video-seek') return
+export function beginNativeVideoPlaybackTrace(request) {
+  if (!globalThis.openlrDiagnostics || !['video-seek', 'video-pause'].includes(request.command)) return
   const requestedTime = request.args?.time
   const trace = {
     [videoSeekTrace]: true,
+    operation: request.command === 'video-pause' ? 'pause' : 'seek',
     sequence: ++nextSequence,
     started: performance.now(),
     requestedTime: Number.isFinite(requestedTime) ? requestedTime : null
@@ -90,7 +91,7 @@ export function markVideoSeek(trace, stage, video, { event, seekTime } = {}) {
   try {
     const currentTime = video?.currentTime
     send({
-      operation: 'seek',
+      operation: trace.operation,
       sequence: trace.sequence,
       stage,
       elapsedMs: Math.round(performance.now() - trace.started),

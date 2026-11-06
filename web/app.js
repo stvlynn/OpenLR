@@ -2226,7 +2226,8 @@ async function execute(command, args, context = {}) {
             cancelPlaybackFrames()
             const generation = playbackGeneration
             const image = await media.pauseFrame(
-              () => playingMedia === media && playbackGeneration === generation && selected === p.id
+              () => playingMedia === media && playbackGeneration === generation && selected === p.id,
+              context.seekTrace
             )
             pausedFrame = { media, image }
           } else if (command === 'video-seek') {
