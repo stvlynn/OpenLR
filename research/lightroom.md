@@ -66,7 +66,7 @@ L1 中 `Cmd` / `Option` 同时出现在跨平台资源；本报告只确认资�
 | Develop.lrmodule | `MASKLISTVIEW.LUA` | 31,117,384 / 89,214 | `761ccf578ee8943f8c58fcdde3b1c7ed3fc4751f83138b638b7706b2cd3f3ad4` |
 | Develop.lrmodule | `DEVELOPPOINTCOLORCONTROLLER.LUA` | 30,799,000 / 32,706 | `14d9baa91fe39a427c9e31866a1cfba6d0ef1224c50a63efe4b0bb7353fd006d` |
 
-REA Evidence 在当前服务中 retained，可用 `get_evidence_bundle(detail:"summary", filters:{evidence_id:...})` 和 `inspect_analysis_view` 继续查询。这里保留身份、范围和限制，不把完整 Adobe 载荷提交到项目。
+2026-11-06 的 `get_evidence_bundle(detail:"summary")` 复核返回两条完整保留记录，分别为 R1 与 R3；对应目标身份和 Evidence ID 与上述账本一致。R2 及其摘要仍是先前调查记录，不在此次服务保留列表中。可用按 Evidence ID 筛选的 bundle 和 `inspect_analysis_view` 查询现有记录。这里保留身份、范围和限制，不把完整 Adobe 载荷提交到项目。
 
 ## 覆盖检查与后续验证
 
