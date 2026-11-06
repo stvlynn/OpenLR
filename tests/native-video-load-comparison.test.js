@@ -4,6 +4,7 @@ import {
   videoDecoderOrder,
   videoLoadOrder,
   videoPauseOrder,
+  videoPosterOrder,
   videoTrialOutcome
 } from '../scripts/native-video-load-comparison.mjs'
 
@@ -11,7 +12,8 @@ test('packaged video comparisons each schedule four fixed ABBA blocks', () => {
   for (const [order, control, candidate] of [
     [videoLoadOrder, 'automatic', 'explicit'],
     [videoPauseOrder, 'frame-first', 'anchor-first'],
-    [videoDecoderOrder, 'default-decoder', 'software-decoder']
+    [videoDecoderOrder, 'default-decoder', 'software-decoder'],
+    [videoPosterOrder, 'native-poster', 'decoded-poster']
   ]) {
     assert.equal(order.length, 16)
     for (let offset = 0; offset < order.length; offset += 4) {

@@ -5,7 +5,7 @@ on:
       comparison:
         description: Video behavior to compare
         type: choice
-        options: [load, pause, decoder]
+        options: [load, pause, decoder, poster]
         default: load
 permissions:
   contents: read
@@ -19,8 +19,8 @@ jobs:
     timeout-minutes: 30
     env:
       VIDEO_COMPARISON: ${{ inputs.comparison || 'load' }}
-      VIDEO_CONTROL: ${{ inputs.comparison == 'decoder' && 'default-decoder' || inputs.comparison == 'pause' && 'frame-first' || 'automatic' }}
-      VIDEO_CANDIDATE: ${{ inputs.comparison == 'decoder' && 'software-decoder' || inputs.comparison == 'pause' && 'anchor-first' || 'explicit' }}
+      VIDEO_CONTROL: ${{ inputs.comparison == 'poster' && 'native-poster' || inputs.comparison == 'decoder' && 'default-decoder' || inputs.comparison == 'pause' && 'frame-first' || 'automatic' }}
+      VIDEO_CANDIDATE: ${{ inputs.comparison == 'poster' && 'decoded-poster' || inputs.comparison == 'decoder' && 'software-decoder' || inputs.comparison == 'pause' && 'anchor-first' || 'explicit' }}
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -47,7 +47,7 @@ jobs:
           import subprocess
           comparison = os.environ['VIDEO_COMPARISON']
           source = Path('web/video-frames.js' if comparison == 'decoder' else 'web/video.js')
-          original = source.read_bytes()
+          edits = []
           if comparison == 'decoder':
               marker = b'new CanvasSink(track, { alpha: true })'
               replacement = b"new CanvasSink(track, { alpha: true, decoderOptions: { hardwareAcceleration: 'prefer-software' } })"
@@ -62,17 +62,51 @@ jobs:
                   b'          if (!closed && isCurrent() && video.paused) await seek(time, true, trace)\n'
               )
               marker, replacement = frame + anchor, anchor + frame
+          elif comparison == 'poster':
+              marker = b"""export async function poster(file, diagnostic) {
+            const media = await openVideo(file, diagnostic)
+            try {
+              const frame = await media.frameAt()
+              markVideoImport(diagnostic, 'poster-bitmap', media.video)
+              return { bitmap: await createImageBitmap(frame), duration: media.duration }
+            } finally {
+              media.close()
+            }
+          }
+          """
+              replacement = b"""export async function poster(file, diagnostic) {
+            markVideoImport(diagnostic, 'poster-frame-decoder')
+            const { decodeVideoFrames } = await import('./video-frames.js')
+            const source = await decodeVideoFrames(file)
+            try {
+              const duration = await source.duration()
+              if (!duration) throw Error('No playable video track')
+              const frame = await source.at(0)
+              markVideoImport(diagnostic, 'poster-bitmap')
+              return { bitmap: await createImageBitmap(frame), duration }
+            } finally {
+              source.close()
+            }
+          }
+          """
+              frame = b'      at(time) {\n        const requested = timestamp(time)\n'
+              edits.append((Path('web/video-frames.js'), frame, b'      duration: () => input.computeDuration(),\n' + frame))
           else:
               marker = b'\n          video.src = url\n'
               replacement = marker + b'          video.load()\n'
-          if original.count(marker) != 1:
-              raise RuntimeError('Expected one occurrence of the comparison source block')
+          edits.append((source, marker, replacement))
+          originals = {file: file.read_bytes() for file, _, _ in edits}
+          for file, before, _ in edits:
+              if originals[file].count(before) != 1:
+                  raise RuntimeError(f'Expected one comparison source block in {file}')
           try:
-              source.write_bytes(original.replace(marker, replacement))
+              for file, before, after in edits:
+                  file.write_bytes(originals[file].replace(before, after))
               output = 'build/video-' + os.environ['VIDEO_CANDIDATE']
               subprocess.run(['node', 'scripts/desktop.mjs', 'build', '-o', output, '-platform', 'darwin/universal'], check=True)
           finally:
-              source.write_bytes(original)
+              for file, original in originals.items():
+                  file.write_bytes(original)
           PY
       - name: Compare actual import, seek, playback, frames and audio export
         run: >-

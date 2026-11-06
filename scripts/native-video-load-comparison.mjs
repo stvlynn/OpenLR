@@ -8,6 +8,7 @@ const abbaOrder = (control, candidate) =>
 export const videoLoadOrder = abbaOrder('automatic', 'explicit')
 export const videoPauseOrder = abbaOrder('frame-first', 'anchor-first')
 export const videoDecoderOrder = abbaOrder('default-decoder', 'software-decoder')
+export const videoPosterOrder = abbaOrder('native-poster', 'decoded-poster')
 
 async function main(control, candidate, destination, comparison = 'load') {
   if (!control || !candidate || !destination)
@@ -15,9 +16,10 @@ async function main(control, candidate, destination, comparison = 'load') {
   const order = new Map([
     ['load', videoLoadOrder],
     ['pause', videoPauseOrder],
-    ['decoder', videoDecoderOrder]
+    ['decoder', videoDecoderOrder],
+    ['poster', videoPosterOrder]
   ]).get(comparison)
-  if (!order) throw Error('Choose the load, pause or decoder comparison')
+  if (!order) throw Error('Choose the load, pause, decoder or poster comparison')
   const [controlLabel, candidateLabel] = order
   await runVideoTrials({ apps: { [controlLabel]: control, [candidateLabel]: candidate }, order, destination })
 }
