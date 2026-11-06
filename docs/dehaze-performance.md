@@ -105,6 +105,23 @@ Baseline source copying took 41–42 ms and the two weighted-moment passes took 
 
 Renderer working-set peaks include fixture surfaces and caches and stay near 1.60 GB. Separate GPU process peaks were about 0.50 GB. This isolated Linear test excludes active source corrections, image decode, Original canvas readback, and the thumbnail and catalog commit path. The six runs show neither a latency distribution nor native WebView behavior. Ignored reproduction and evidence are `.workspace/dehaze-cold-breakdown.mjs`, `.json` and `.log`.
 
+### Exact cold-kernel candidates
+
+Each candidate used the `9c8a08a` production kernel as its baseline. For each 24 MP Linear input, four fresh Chrome 156 processes ran baseline, candidate, candidate, baseline. The mixed input changed every 97th column to cycle between zero, fractional and subnormal alpha. Source generation and output comparison were outside the timed interval. Timings below pair the first baseline with the first candidate and the last baseline with the second candidate.
+
+| Candidate and input | Cold preview baseline → candidate (ms) | Target stage baseline → candidate (ms) |
+| --- | ---: | ---: |
+| Offset-index support, opaque | 4873.8 / 4687.3 → 4596.7 / 4580.7 | Moments 2811.0 / 2648.2 → 2500.8 / 2529.3 |
+| Offset-index support, mixed | 4814.0 / 4541.9 → 5228.0 / 5203.8 | Moments 2754.3 / 2695.4 → 3294.6 / 3310.6 |
+| Zero-based support view, opaque | 4806.4 / 4706.6 → 4435.8 / 4383.8 | Moments 2707.6 / 2680.0 → 2380.9 / 2351.4 |
+| Zero-based support view, mixed | 4590.0 / 4632.2 → 4613.3 / 4734.8 | Moments 2693.9 / 2770.8 → 2685.5 / 2844.1 |
+| Tiled vertical minimum, opaque | 4705.6 / 4682.3 → 5121.3 / 4897.5 | Vertical minima 577.2 / 564.7 → 926.1 / 820.4 |
+| Tiled vertical minimum, mixed | 4721.6 / 4710.8 → 4693.7 / 4910.8 | Vertical minima 598.1 / 603.8 → 815.9 / 811.6 |
+
+All three matched both 96,000,000-byte Float32 transmission maps and the 4,367,360 RGBA bytes at each of three strengths in every timed run. Small signed, transparent, fractional and subnormal fixtures also matched. The two support candidates each passed 960 exact crop, rotation, reflection and resize comparisons. The tiled candidate passed 1,920, including partial tile boundaries. First-preview heartbeat gaps ranged from 98.6 to 112.6 ms and renderer working-set peaks from 1.59 to 1.60 GB across the comparisons.
+
+Both support candidates derive the clipped support area only when every alpha is exactly one. Offset indexing slowed the mixed path substantially. The zero-based view reduced that cost, but mixed cold previews still took 23 and 103 ms longer in the observed pairs. The 32-column transpose retained the existing minimum deque but increased both vertical-pass totals. These results favor keeping the existing kernel. The timings cover Linear in the tested Chrome environment. Ignored evidence is under `.workspace/dehaze-opaque-ablation*`, `.workspace/dehaze-opaque-view*` and `.workspace/dehaze-min-tiled*`, with separate `*-correctness.log` files for exact maps and geometry.
+
 ## Original measurement environment
 
 Measured on 2026-11-05, Windows x64, AMD Ryzen 7 7840U (16 logical processors), 30.84 GB installed RAM, Node v24.9.0 and headless Chrome 156.0.8078.80. This is a bounded local measurement, not a cross-platform performance guarantee. [Dehaze](dehaze.md) owns the behavior; [research](../research/dehaze.md) owns the algorithm and prior limitations.
