@@ -17,6 +17,10 @@
 
 ## 补充验证
 
+- **`0c0150c` 远程终态与系统音频能力**。[Actions 42155472309](https://github.com/stvlynn/OpenLR/actions/runs/42155472309) 的 Windows 十九组、Linux 十七组原生流程全部成功，包含修复后的 HDR 成片与新增 Sky 实际模型下载／像素检查。Windows 浏览器 **371/379、8 项可选资源跳过、零失败**。两个 macOS 作业都编译并执行了 AudioToolbox 探针：AAC 48k mono／stereo、44.1k stereo 和 Opus 48k mono／stereo 的真实编码、解码及 Chrome 原始包兼容检查通过；这是系统能力证据，尚未接入产品导出。Opus 的 Apple 解码比原始包少 120 个样本，时间补偿仍在研究。严格视频检查在两端都复现暂停回到最后定位位置：ARM `.35→.545102→.35`，Intel `.35→.599638→.35`，未放宽断言。Sky 的真实推理已在 ARM 及此前视频前的流程中执行；所有平台边界以原作业为准。日志 `.workspace/audio-probe-ci-{windows,linux,macos-arm,macos-intel}.log`。本轮 Windows 启动成功不解释先前间歇超时。
+
+- **UI 主线程诊断与 Linux 持久性补充**。新 Windows `startup-ui` 包实际记录观察器注册完成 37ms、NewWindow 返回 102ms，随后页面正常加载；显式调用隔离会话的诊断得到 UI 线程响应、health 200 和控制通路返回，探针往返约 6ms。重构后的 Windows 导航脚本通过偏好重启、实际全屏尺寸／键盘及原件检查；完整 Go test／vet 与八项定向浏览器／loopback 检查通过。日志 `.workspace/startup-ui-{build,live,navigation}.log`。UI 探针在正常启动时不会后台运行，失败时与原有诊断并行，原截止时间不变。WSL Linux 的两个独立 XDG profile 实际验证初始为空、各自重启、编辑／偏好／原件隔离；组织、导航和选片三个现有脚本随后启用 Linux 重启并通过。该结果使用 `7338f7f` 归档加几何修复包；不是 macOS 持久性或当前新 Go 代码的 Linux 验收。
+
 - **`geometry-straighten` Windows 全套终态**。重新构建的 Windows／WebView2 安装包通过 **十九组原生流程**，包含新增真实 Sky 首次下载与推理、完整蒙版与局部曝光像素、共享拉直选点结束／错误保持、HDR 成片与辐照度、视频图像与音轨、双设备同步、文件打开和其他既有适配器检查。日志 `.workspace/geometry-straighten-{build,native}.log`。Sky 的人工天空／非天空区域均值约 0.99997／0.01777，逐通道曝光计算误差不超过一个 8-bit 码值，neutral／undo／原件一致。单独 Sky 检查首次未校准的亮度阈值失败已保留在 `.workspace/native-sky-windows.log`，随后改为完整像素公式校验并通过；没有据此声称原生离线缓存或其他平台 Sky 已验收。macOS AudioToolbox 探针另行验证，尚未成为生产音轨实现。
 
 - **共享几何与拉直会话修复**。Linux 的 HDR 透明输出已定位为默认裁剪经过宽高比往返后产生 `y=-1.4210854715202004e-14`；实际 WebKitGTK 2.52.6 将这次略微越界的绘制变为透明。共享几何现在保留未指定比例的精确矩形，并分别约束指定比例的两条边。`7338f7f` 干净归档叠加该修复后，WSL Linux 重新构建并通过原生集成检查，HDR 不透明亮度样本为 48／171／241，辐照度和原件检查保持。另一个真实 Chrome 复现确认：用户选取第一个拉直点后由 CLI 完成，旧选点状态会让后续点击产生第二次编辑。现在成功保存后由 dispatcher 结束选点，过期 GUI 第二点被拒绝，非法／过期照片命令保留可用参考。Windows／Node 24.9／Chrome 156 的完整配置回归 **377/377、零失败、零跳过**，约 296.1 秒，日志 `.workspace/geometry-straighten-full.log`。当前 Windows 新安装包的全套原生检查另记；不能把这里的 Linux 单项和浏览器结果称为四平台通过。
