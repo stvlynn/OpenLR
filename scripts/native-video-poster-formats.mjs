@@ -11,15 +11,36 @@ if (!app || !directory) throw Error('Pass the packaged application and report di
 const destination = path.resolve(directory)
 const ff = (tool, ...args) => execFileSync(tool, args, { stdio: ['ignore', 'pipe', 'inherit'] })
 const variants = [
-  ['vp8.webm', 'vp8', 'opus'],
   ['vp9.webm', 'vp9', 'opus'],
-  ['h264.mp4', 'h264', 'aac'],
-  ['h264.mov', 'h264', 'aac'],
-  ['h264.mkv', 'h264', 'aac'],
-  ['vp9-709.webm', 'vp9', 'opus', true],
-  ['h264-709.mp4', 'h264', 'aac', true]
+  ['vp9-remux.webm', 'vp9', 'opus'],
+  ['vp9-remux-709.webm', 'vp9', 'opus', true],
+  ['vp9-709.webm', 'vp9', 'opus', true]
 ]
 await mkdir(destination, { recursive: true })
+const source = path.join(destination, 'vp9.webm')
+const packets = (file) =>
+  ff('ffprobe', '-v', 'error', '-show_entries', 'packet=stream_index,data', '-show_data', '-of', 'json', file)
+const sourcePackets = packets(source)
+for (const [name, options] of [
+  ['vp9-remux.webm', []],
+  ['vp9-remux-709.webm', ['-colorspace', 'bt709']]
+]) {
+  const target = path.join(destination, name)
+  ff('ffmpeg', '-nostdin', '-y', '-v', 'error', '-i', source, '-map', '0', '-c', 'copy', ...options, target)
+  assert.deepEqual(packets(target), sourcePackets, name + ' compressed video and audio packets')
+}
+const timing = (name) =>
+  ff(
+    'ffprobe',
+    '-v',
+    'error',
+    '-show_entries',
+    'packet=stream_index,pts,dts,duration,flags',
+    '-of',
+    'json',
+    path.join(destination, name)
+  )
+assert.deepEqual(timing('vp9-remux.webm'), timing('vp9-remux-709.webm'), 'remuxed packet timing')
 const fixtures = variants.map(([name, expectedVideo, expectedAudio, tagged = false]) => {
   const file = path.join(destination, name)
   const { streams, format } = JSON.parse(
@@ -29,7 +50,7 @@ const fixtures = variants.map(([name, expectedVideo, expectedAudio, tagged = fal
     streams.map((stream) => stream.codec_name),
     [expectedVideo, expectedAudio]
   )
-  if (tagged) assert.equal(streams[0].color_space, 'bt709')
+  assert.equal(streams[0].color_space ?? 'unspecified', tagged ? 'bt709' : 'unspecified')
   const pixelAt = (time) => [
     ...ff(
       'ffmpeg',
@@ -82,13 +103,13 @@ function colorPatch({ data }, [expectedRed, expectedGreen, expectedBlue]) {
   return { count, pixel: count ? [red, green, blue].map((sum) => Math.round(sum / count)) : null }
 }
 
-async function verify(label, app) {
+async function verify(label, app, order) {
   const records = []
   await withNativeWorkspace(
     app,
     async ({ root, call, initial }) => {
       assert.deepEqual(initial.photos, [])
-      for (const fixture of fixtures) {
+      for (const fixture of order) {
         const { name, file, codecs, duration, first, later, matrix } = fixture
         await call('view', '--mode', 'grid')
         await call('search', '--text', name)
@@ -164,13 +185,17 @@ async function verify(label, app) {
 const results = {
   platform: process.platform,
   arch: process.arch,
-  records: await verify('production', app)
+  sweeps: []
 }
-await writeFile(path.join(destination, 'report.json'), JSON.stringify(results, null, 2))
+// Each source occupies each sequence position once, including a cold workspace import.
+for (let index = 0; index < fixtures.length; index++) {
+  const order = fixtures.slice(index).concat(fixtures.slice(0, index))
+  results.sweeps.push(await verify(`sweep-${index + 1}`, app, order))
+  await writeFile(path.join(destination, 'report.json'), JSON.stringify(results, null, 2))
+}
 console.log(JSON.stringify(results))
-for (const record of results.records) {
-  assert.equal(record.accepted, record.name !== 'h264.mkv', record.name + ' import compatibility')
-  if (!record.accepted) continue
+for (const record of results.sweeps.flat()) {
+  assert.equal(record.accepted, true, record.name + ' import compatibility')
   assert.deepEqual(record.size, [96, 64], record.name)
   assert.ok(Math.abs(record.catalogDuration - record.duration) < 0.06, record.name + ' duration')
   assert.ok(record.posterPixels >= 700, record.name + ' first frame thumbnail')

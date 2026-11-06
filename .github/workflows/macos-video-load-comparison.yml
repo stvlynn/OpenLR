@@ -1,17 +1,17 @@
-name: macOS production poster verification
+name: macOS VP9 seek comparison
 on:
   workflow_dispatch:
     inputs:
       comparison:
         description: Media workflow
         type: choice
-        options: [poster]
-        default: poster
+        options: [seek]
+        default: seek
 permissions:
   actions: read
   contents: read
 jobs:
-  poster:
+  seek:
     strategy:
       fail-fast: false
       matrix:
@@ -23,7 +23,7 @@ jobs:
       - name: Retrieve the production revision
         uses: actions/checkout@v5
         with:
-          ref: dad42fe8db5280ee26ed36d7a2eef1aaa322af27
+          ref: 6715e0e25e4ab57bc5430fa983f18035019eec8d
           path: production
       - uses: actions/setup-node@v5
         with:
@@ -45,16 +45,16 @@ jobs:
           path: build/prior-poster-formats
           run-id: 42284746616
           github-token: ${{ github.token }}
-      - name: Verify actual import, thumbnail and first seek across formats
+      - name: Compare native seeks with and without the container color tag
         shell: bash
         run: |
           mkdir -p build/video-poster-trials
-          cp build/prior-poster-formats/*.{webm,mp4,mov,mkv} build/video-poster-trials/
+          cp build/prior-poster-formats/{vp9,vp9-709}.webm build/video-poster-trials/
           node scripts/native-video-poster-formats.mjs \
             production/build/video-poster/darwin-universal/OpenLR.app/Contents/MacOS/OpenLR \
             build/video-poster-trials 2>&1 | tee build/video-poster-trials/workflow.log
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: video-poster-release-${{ matrix.os }}
+          name: video-vp9-seek-${{ matrix.os }}
           path: build/video-poster-trials
