@@ -95,6 +95,11 @@ test('opt-in native seek tracing observes the real event before its awaited call
   assert.ok(loading.some(({ event, readyState }) => event === 'loadedmetadata' && readyState >= 1))
   assert.ok(loading.some(({ event, readyState }) => event === 'loadeddata' && readyState >= 2))
   assert.ok(loading.every(({ mediaErrorCode }) => mediaErrorCode === null))
+  assert.ok(
+    loading.every(
+      (record) => !('duration' in record || 'seekableRanges' in record || 'currentTime' in record)
+    )
+  )
   const loaded = held.records.find(({ stage }) => stage === 'playback-loaded')
   assert.ok(loaded.width > 0 && loaded.height > 0)
   assert.ok(loaded.duration === null || loaded.duration > 0)

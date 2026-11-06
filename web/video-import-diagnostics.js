@@ -89,7 +89,10 @@ export function beginNativeVideoPlaybackTrace(request) {
 export function markVideoSeek(trace, stage, video, { event, seekTime } = {}) {
   if (!trace?.[videoSeekTrace]) return
   try {
-    const currentTime = video?.currentTime
+    // Early timeline queries can change the state of a player that is still loading.
+    const playback = stage === 'playback-load-event' ? undefined : video
+    const currentTime = playback?.currentTime
+    const duration = playback?.duration
     send({
       operation: trace.operation,
       sequence: trace.sequence,
@@ -97,14 +100,14 @@ export function markVideoSeek(trace, stage, video, { event, seekTime } = {}) {
       elapsedMs: Math.round(performance.now() - trace.started),
       requestedTime: trace.requestedTime,
       seekTime,
-      currentTime: video ? (Number.isFinite(currentTime) ? currentTime : null) : undefined,
-      seeking: video?.seeking,
-      seekableRanges: video?.seekable.length,
+      currentTime: playback ? (Number.isFinite(currentTime) ? currentTime : null) : undefined,
+      seeking: playback?.seeking,
+      seekableRanges: playback?.seekable.length,
       readyState: video?.readyState,
       networkState: video?.networkState,
       width: video?.videoWidth,
       height: video?.videoHeight,
-      duration: video ? (Number.isFinite(video.duration) ? video.duration : null) : undefined,
+      duration: playback ? (Number.isFinite(duration) ? duration : null) : undefined,
       mediaErrorCode: video ? (video.error?.code ?? null) : undefined,
       event
     })
