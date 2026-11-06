@@ -84,6 +84,7 @@ on waitForExport(targetProcess)
 end waitForExport
 
 on navigate(targetProcess, destination)
+    set the clipboard to destination
     tell application "System Events"
         if frontmost of targetProcess is not true then error "Photos lost focus"
         set previousFocus to missing value
@@ -91,20 +92,41 @@ on navigate(targetProcess, destination)
             set previousFocus to value of attribute "AXFocusedUIElement" of targetProcess
         end try
         keystroke "g" using {command down, shift down}
+        set pathEntry to missing value
         repeat 30 times
             if frontmost of targetProcess is not true then error "Photos lost focus before Go to Folder"
             try
-                set pathEntry to value of attribute "AXFocusedUIElement" of targetProcess
-                if (role of pathEntry is in {"AXTextField", "AXComboBox"}) and (pathEntry is not previousFocus) then
-                    keystroke "a" using command down
-                    keystroke destination
-                    delay 0.4
-                    key code 36
-                    return
+                set currentFocus to value of attribute "AXFocusedUIElement" of targetProcess
+                if (role of currentFocus is in {"AXTextField", "AXComboBox"}) and (currentFocus is not previousFocus) then
+                    set pathEntry to currentFocus
+                    exit repeat
                 end if
             end try
             delay 0.12
         end repeat
+        if pathEntry is missing value then error "Photos Go to Folder did not focus its path entry"
+        set entryDescription to description of pathEntry
+        if entryDescription is missing value then set entryDescription to "(none)"
+        log ("Photos Go to Folder focus: " & role of pathEntry & " " & entryDescription)
+        keystroke "a" using command down
+        keystroke "v" using command down
+        delay 0.5
+        set enteredPath to value of pathEntry
+        if enteredPath is not destination then
+            set value of pathEntry to destination
+            delay 0.5
+            set enteredPath to value of pathEntry
+        end if
+        if enteredPath is not destination then error "Photos Go to Folder path input did not match"
+        key code 36
+        repeat 30 times
+            set currentFocus to missing value
+            try
+                set currentFocus to value of attribute "AXFocusedUIElement" of targetProcess
+            end try
+            if currentFocus is not pathEntry then return
+            delay 0.12
+        end repeat
     end tell
-    error "Photos Go to Folder did not focus its path entry"
+    error "Photos Go to Folder did not close after confirmation"
 end navigate
