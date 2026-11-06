@@ -111,10 +111,18 @@ export function markVideoSeek(trace, stage, video, { event, seekTime } = {}) {
 }
 
 export function observeVideoSeek(trace, video, seekTime) {
+  return observePlaybackEvents(trace, video, ['seeking', 'seeked', 'error'], 'seek-event', seekTime)
+}
+
+export function observeVideoPlaybackLoad(trace, video) {
+  return observePlaybackEvents(trace, video, mediaEvents, 'playback-load-event')
+}
+
+function observePlaybackEvents(trace, video, names, stage, seekTime) {
   if (!trace) return
   const events = new AbortController()
-  for (const event of ['seeking', 'seeked', 'error'])
-    video.addEventListener(event, () => markVideoSeek(trace, 'seek-event', video, { event, seekTime }), {
+  for (const event of names)
+    video.addEventListener(event, () => markVideoSeek(trace, stage, video, { event, seekTime }), {
       once: true,
       signal: events.signal
     })

@@ -7,6 +7,7 @@ import {
   markVideoImport,
   markVideoSeek,
   observeVideoImportMedia,
+  observeVideoPlaybackLoad,
   observeVideoSeek,
   recordVideoImportState
 } from './video-import-diagnostics.js'
@@ -75,9 +76,14 @@ export async function openVideo(file, diagnostic, seekTrace) {
   }
   try {
     markVideoSeek(seekTrace, 'playback-load', video)
-    await waitForMedia(video, 'loadeddata', () => {
-      video.src = url
-    })
+    const stopObservingLoad = observeVideoPlaybackLoad(seekTrace, video)
+    try {
+      await waitForMedia(video, 'loadeddata', () => {
+        video.src = url
+      })
+    } finally {
+      stopObservingLoad?.()
+    }
     markVideoSeek(seekTrace, 'playback-loaded', video)
     markVideoImport(diagnostic, 'media-duration', video)
     video.width = video.videoWidth

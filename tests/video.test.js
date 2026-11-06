@@ -73,7 +73,7 @@ test('opt-in native seek tracing observes the real event before its awaited call
   assert.equal(held.trusted, true)
   assert.equal(held.reply, undefined)
   assert.deepEqual(
-    held.records.map(({ stage }) => stage),
+    held.records.filter(({ stage }) => stage !== 'playback-load-event').map(({ stage }) => stage),
     [
       'renderer-received',
       'source-original',
@@ -91,6 +91,10 @@ test('opt-in native seek tracing observes the real event before its awaited call
     ]
   )
   const assigned = held.records.find(({ stage }) => stage === 'seek-assigned')
+  const loading = held.records.filter(({ stage }) => stage === 'playback-load-event')
+  assert.ok(loading.some(({ event, readyState }) => event === 'loadedmetadata' && readyState >= 1))
+  assert.ok(loading.some(({ event, readyState }) => event === 'loadeddata' && readyState >= 2))
+  assert.ok(loading.every(({ mediaErrorCode }) => mediaErrorCode === null))
   assert.equal(held.records.find(({ stage }) => stage === 'seek-unchanged').seekTime, 0)
   assert.equal(assigned.requestedTime, 2.35)
   assert.equal(assigned.seekTime, 2.35)
