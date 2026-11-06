@@ -1,0 +1,66 @@
+name: Linux APT mirror probe
+on:
+  workflow_dispatch:
+permissions: {}
+jobs:
+  compare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 7
+    env:
+      LC_ALL: C
+    steps:
+      - name: Compare the same package range on three archive endpoints
+        shell: bash
+        run: |
+          printf 'image_os=%s image_version=%s architecture=%s\n' "${ImageOS:-unknown}" "${ImageVersion:-unknown}" "$(dpkg --print-architecture)"
+          apt-config shell retries Acquire::Retries http_timeout Acquire::http::Timeout https_timeout Acquire::https::Timeout
+
+          # Refresh the stock signed indexes. Keep the runner image's
+          # metadata available if its index refresh is also affected.
+          if ! timeout --kill-after=5s 60s sudo apt-get update -q -o APT::Update::Error-Mode=any; then
+            echo '::warning::APT index refresh did not complete. The selected package may be stale.'
+          fi
+          package=libwebkit2gtk-4.1-0
+          policy=$(apt-cache policy "$package")
+          printf '%s\n' "$policy"
+          candidate=$(awk '$1 == "Candidate:" { print $2 }' <<< "$policy")
+          [[ -n "$candidate" && "$candidate" != '(none)' ]]
+          metadata=$(apt-cache show "$package=$candidate")
+          filename=$(awk '$1 == "Filename:" { print $2; exit }' <<< "$metadata")
+          package_bytes=$(awk '$1 == "Size:" { print $2; exit }' <<< "$metadata")
+          [[ "$filename" =~ ^pool/main/[A-Za-z0-9._+~-]+/[A-Za-z0-9._+~-]+/[A-Za-z0-9._+~-]+\.deb$ ]]
+          range_bytes=4194304
+          range_end=$((range_bytes - 1))
+          [[ "$package_bytes" =~ ^[0-9]+$ && "$package_bytes" -ge "$range_bytes" ]]
+          printf 'package=%s candidate=%s file=%s package_bytes=%s requested_range=0-%s\n' \
+            "$package" "$candidate" "$filename" "$package_bytes" "$range_end"
+
+          completed=0
+          for pass in 1 2; do
+            endpoints=(http://azure.archive.ubuntu.com https://archive.ubuntu.com https://azure.archive.ubuntu.com)
+            if [[ "$pass" == 2 ]]; then
+              endpoints=(https://azure.archive.ubuntu.com https://archive.ubuntu.com http://azure.archive.ubuntu.com)
+            fi
+            for endpoint in "${endpoints[@]}"; do
+              exit_code=0
+              sample=$(curl --disable --silent --show-error --http1.1 \
+                --connect-timeout 5 --max-time 45 --max-filesize "$range_bytes" \
+                --header 'Cache-Control: no-cache' --range "0-$range_end" --output /dev/null \
+                --write-out '%{http_code}|%header{content-range}|%{size_download}|%{time_starttransfer}|%{time_total}|%{speed_download}' \
+                "$endpoint/ubuntu/$filename") || exit_code=$?
+              IFS='|' read -r http content_range bytes first_byte seconds rate <<< "$sample"
+              result=incomparable
+              if [[ "$http" == 206 && "$content_range" == "bytes 0-$range_end/$package_bytes" ]]; then
+                result=partial
+                if [[ "$exit_code" == 0 && "$bytes" == "$range_bytes" ]]; then
+                  result=complete
+                  completed=$((completed + 1))
+                fi
+              fi
+              printf 'pass=%s endpoint=%s curl_exit=%s http=%s content_range=%q bytes=%s first_byte_s=%s total_s=%s bytes_per_s=%s result=%s\n' \
+                "$pass" "$endpoint" "$exit_code" "$http" "$content_range" "$bytes" "$first_byte" "$seconds" "$rate" "$result"
+            done
+          done
+          if [[ "$completed" == 0 ]]; then
+            echo '::warning::No endpoint completed the exact byte range. The probe has no complete throughput samples.'
+          fi
