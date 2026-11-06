@@ -46,6 +46,15 @@ const expectedIds = {
   items: { type: 'string' },
   description: 'Optional exact selected-photo membership guard; order is ignored'
 }
+export const PHOTO_MENU_PHOTO_COMMANDS = Object.freeze([
+  'virtual-copy',
+  'save-frame',
+  'stack',
+  'stack-cover',
+  'stack-toggle',
+  'unstack',
+  'red-eye'
+])
 export const ADJUSTMENT_DRAFT_MESSAGES = Object.freeze({
   numericOnly: 'Choose a numeric adjustment for the draft',
   strokeOnly: 'Choose a brush, linear or radial mask for the draft',
@@ -207,12 +216,14 @@ for (const kind of ['mask', 'repair']) {
 export const definitions = {
   ...localDefinitions,
   cull: entry('Measure focus, clipped exposure and eye detail on selected or specified photos', {
-    ids: { type: 'array', items: { type: 'string' } }
+    ids: { type: 'array', items: { type: 'string' } },
+    expectedIds
   }),
   'red-eye': entry('Correct excess red at detected eyes or a specified original-image point', {
     x: number('Original x', 0, 1),
     y: number('Original y', 0, 1),
-    radius: number('Radius relative to short edge', 0.001, 0.5)
+    radius: number('Radius relative to short edge', 0.001, 0.5),
+    photoId: string('Optional selected-photo guard')
   }),
   enhance: entry(
     'Create a new 8-bit PNG from current edited raster using real local neural denoise or 3x luminance super resolution; not sensor RAW denoising',
@@ -460,12 +471,25 @@ export const definitions = {
     layout: string('Layout. Omit to toggle the current value', { enum: ['square', 'mosaic'] })
   }),
   'select-inverse': entry('Invert selection in the current view'),
-  'virtual-copy': entry('Create a separate edit recipe sharing the original library file'),
-  'save-frame': entry('Save the current edited video frame as a library photo'),
-  stack: entry('Group selected library photos into a stack'),
-  'stack-cover': entry('Use the selected photo as the stack cover'),
-  'stack-toggle': entry('Expand or collapse the active stack'),
-  unstack: entry('Ungroup the current stack'),
+  'virtual-copy': entry('Create a separate edit recipe sharing the original library file', {
+    photoId: string('Optional selected-photo guard')
+  }),
+  'save-frame': entry('Save the current edited video frame as a library photo', {
+    photoId: string('Optional selected-photo guard')
+  }),
+  stack: entry('Group selected library photos into a stack', {
+    expectedIds,
+    photoId: string('Optional selected-photo guard for the stack cover')
+  }),
+  'stack-cover': entry('Use the selected photo as the stack cover', {
+    photoId: string('Optional selected-photo guard')
+  }),
+  'stack-toggle': entry('Expand or collapse the active stack', {
+    photoId: string('Optional selected-photo guard')
+  }),
+  unstack: entry('Ungroup the current stack', {
+    photoId: string('Optional selected-photo guard')
+  }),
   'auto-stack': entry('Group library images by capture interval or visual similarity', {
     by: string('Grouping method', { enum: ['time', 'similarity'] }),
     threshold: {

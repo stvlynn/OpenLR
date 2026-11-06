@@ -8,7 +8,11 @@ import {
   validateColorGradingRecipe
 } from './color-grading.js'
 import { importBatch } from './import-library.js'
-import { ADJUSTMENT_DRAFT_MESSAGES as draftMessages, validateArgs } from './agent-protocol.js'
+import {
+  ADJUSTMENT_DRAFT_MESSAGES as draftMessages,
+  PHOTO_MENU_PHOTO_COMMANDS,
+  validateArgs
+} from './agent-protocol.js'
 import { decodeFile } from './transfer.js'
 import { decodeEditSource } from './edit-source.js'
 import {
@@ -1035,6 +1039,8 @@ async function execute(command, args, context = {}) {
   const p = active()
   if (args.expectedIds !== undefined && command !== 'purge')
     assertSelection(organization.targets(photos), args.expectedIds)
+  if (PHOTO_MENU_PHOTO_COMMANDS.includes(command) && args.photoId !== undefined && args.photoId !== p?.id)
+    throw Error('The selected photo changed')
   if (context.draftSource?.canceled && command !== 'draft-cancel') return null
   if (args.draft && context.draftSource && (!p || p.edit !== context.draftEdit || p.id !== args.photoId))
     return null

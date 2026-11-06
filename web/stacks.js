@@ -1,4 +1,5 @@
 import { matchesCatalogFilters } from './organization.js'
+import { PHOTO_MENU_PHOTO_COMMANDS } from './agent-protocol.js'
 
 export function displayedPhotos(list, open) {
   const covers = new Map(),
@@ -65,6 +66,7 @@ export function smartMatch(photo, rule) {
   return matchesCatalogFilters(photo, rule) && (!rule.text || text.includes(rule.text.toLowerCase()))
 }
 export function stackMenu(run) {
+  let current
   const details = document.createElement('details'),
     summary = document.createElement('summary'),
     menu = document.createElement('div')
@@ -90,7 +92,10 @@ export function stackMenu(run) {
     const b = document.createElement('button')
     b.textContent = label
     b.dataset.action = action
+    b.disabled = true
     b.onclick = async () => {
+      const args = ['stack', 'cull'].includes(action) ? { expectedIds: [...current.selection] } : {}
+      if (PHOTO_MENU_PHOTO_COMMANDS.includes(action)) args.photoId = current.selected
       const closing = run('panel', { name, open: false })
       if (action.startsWith('auto-stack-')) {
         await closing
@@ -104,7 +109,7 @@ export function stackMenu(run) {
         input.value = t ? 5 : 7
         input.max = t ? '86400' : '100'
         dialog.showModal()
-      } else run(action)
+      } else run(action, args)
     }
     menu.append(b)
   }
@@ -119,6 +124,7 @@ export function stackMenu(run) {
     dialog.returnValue = ''
   }
   return (state) => {
+    current = state
     const p = state.photos.find((p) => p.id === state.selected)
     for (const b of menu.children) {
       const action = b.dataset.action

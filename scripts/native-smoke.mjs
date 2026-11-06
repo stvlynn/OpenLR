@@ -1268,7 +1268,8 @@ try {
   const purgeA = (await call('import', purgeSourceA)).added[0],
     purgeB = (await call('import', purgeSourceB)).added[0]
   await call('select', '--id', purgeA)
-  await call('virtual-copy')
+  await assert.rejects(() => call('virtual-copy', '--photoId', purgeB), /selected photo changed/i)
+  await call('virtual-copy', '--photoId', purgeA)
   const retainedCopy = (await call('state')).selected
   await call('select-many', '--ids', JSON.stringify([purgeA, purgeB]))
   await call('delete')

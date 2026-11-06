@@ -196,16 +196,23 @@ await withNativeWorkspace(
     assert.deepEqual(await call('presets'), [...builtIns, preset])
 
     await selectMany(first, second)
-    assert.deepEqual(await call('stack'), { groups: 1, photos: 2 })
+    await assert.rejects(() => call('stack', '--expectedIds', JSON.stringify([first])), /selection changed/i)
+    await assert.rejects(() => call('stack', '--photoId', second), /selected photo changed/i)
+    assert.deepEqual(
+      await call('stack', '--expectedIds', JSON.stringify([second, first]), '--photoId', first),
+      { groups: 1, photos: 2 }
+    )
     const collapsed = await call('state')
     assert.deepEqual(photosIn(collapsed), [first, separate])
-    const stackId = checkStack(await call('stack-toggle'), first, second)
+    for (const command of ['stack-toggle', 'stack-cover', 'unstack'])
+      await assert.rejects(() => call(command, '--photoId', second), /selected photo changed/i)
+    const stackId = checkStack(await call('stack-toggle', '--photoId', first), first, second)
     await select(second)
-    assert.equal(checkStack(await call('stack-cover'), second, first), stackId)
+    assert.equal(checkStack(await call('stack-cover', '--photoId', second), second, first), stackId)
     const changedCover = await call('stack-toggle')
     assert.deepEqual(photosIn(changedCover), [second, separate])
     assert.deepEqual(changedCover.openStacks, [])
-    const unstacked = await call('unstack')
+    const unstacked = await call('unstack', '--photoId', second)
     assert.deepEqual(photosIn(unstacked), [first, second, separate])
     for (const id of [first, second]) {
       assert.equal(row(unstacked, id).stackId, null)

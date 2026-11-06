@@ -18,6 +18,8 @@ test('selection guards validate photo IDs during offline command preview', async
     ['delete'],
     ['restore'],
     ['paste-edits'],
+    ['stack'],
+    ['cull'],
     ['purge']
   ]) {
     assert.throws(

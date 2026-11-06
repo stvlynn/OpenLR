@@ -243,7 +243,8 @@ try {
     for (const key of ['mode', 'selected', 'selection', 'photos', 'playback'])
       assert.deepEqual(afterOriginal[key], beforeStill[key], key)
 
-    const saved = await call('save-frame')
+    await assert.rejects(() => call('save-frame', '--photoId', 'missing-photo'), /selected photo changed/i)
+    const saved = await call('save-frame', '--photoId', beforeStill.selected)
     assert.deepEqual(saved.failed, [])
     assert.equal(saved.added.length, 1)
     const withStill = await call('state')

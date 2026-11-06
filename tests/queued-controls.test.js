@@ -118,6 +118,87 @@ test('queued controls use the intended photo and apply relative actions once', a
     return { page, run, first, second }
   }
 
+  await t.test('Photo menu retains the clicked photo for copies and stack actions', async (t) => {
+    const { page, run, first, second } = await workspace(t)
+    for (const command of ['virtual-copy', 'red-eye', 'stack-cover', 'stack-toggle', 'unstack']) {
+      await run('select', { id: first })
+      if (command === 'stack-cover') {
+        await run('select-many', { ids: [first, second] })
+        await run('stack')
+        await run('stack-toggle')
+      }
+      await run('panel', { name: 'Photo', open: true })
+      const before = await run('state')
+      const control = `[data-action="${command}"]`
+      await holdThumbnail(page, control)
+      await queuePhotoChange(page, second)
+      await page.locator(control).click()
+      assert.equal(await page.evaluate(() => window.catalogThumbnailHold.trustedEvents), 1)
+      await page.evaluate(() => window.catalogThumbnailHold.release())
+      const after = await run('state')
+      assert.equal(after.photos.length, before.photos.length)
+      assert.deepEqual(after.openStacks, before.openStacks)
+      for (const photo of before.photos) {
+        const next = after.photos.find((row) => row.id === photo.id)
+        assert.deepEqual(
+          [next.stackId, next.stackCover, next.originalId, next.virtual, next.edit?.redEyes],
+          [photo.stackId, photo.stackCover, photo.originalId, photo.virtual, photo.edit?.redEyes]
+        )
+      }
+      assert.match(await page.locator('#notice').textContent(), /selected photo changed/i)
+      await assert.rejects(() => run(command, { photoId: first }), /selected photo changed/i)
+    }
+    await run('select', { id: first })
+    await run('virtual-copy', { photoId: first })
+    const copy = (await run('state')).photos.find((photo) => photo.virtual)
+    assert.equal(copy.originalId, first)
+    assert.deepEqual(copy.edit, editOf(await run('state'), first))
+    await page.reload()
+    await page.waitForFunction(() => window.openlr)
+    assert.equal((await run('state')).photos.find((photo) => photo.id === copy.id).originalId, first)
+  })
+
+  await t.test('Photo menu stack and review reject a changed group with the same active photo', async (t) => {
+    const { page, run, first, second } = await workspace(t, [...originals, originals[0]])
+    const third = (await run('state')).photos.find((photo) => photo.name === '2.png').id
+    for (const command of ['stack', 'cull']) {
+      await run('select-many', { ids: [first, second] })
+      await run('panel', { name: 'Photo', open: true })
+      const control = `[data-action="${command}"]`
+      await holdThumbnail(page, control)
+      await page.evaluate(
+        (ids) => {
+          window.openlr.run('edit', { key: 'Contrast', value: 20 })
+          window.openlr.run('select-many', { ids })
+        },
+        [first, second, third]
+      )
+      await page.waitForFunction(() => Boolean(window.catalogThumbnailHold.release))
+      await page.locator(control).click()
+      await page.evaluate(() => window.catalogThumbnailHold.release())
+      const state = await run('state')
+      assert.equal(state.selected, first)
+      assert.ok(state.photos.every((photo) => !photo.stackId && !photo.review))
+      assert.match(await page.locator('#notice').textContent(), /selection changed/i)
+    }
+    await run('select-many', { ids: [first, second] })
+    await assert.rejects(
+      () => run('stack', { expectedIds: [first, second], photoId: second }),
+      /selected photo changed/i
+    )
+    assert.deepEqual(await run('stack', { expectedIds: [second, first], photoId: first }), {
+      groups: 1,
+      photos: 2
+    })
+    const opened = await run('stack-toggle', { photoId: first })
+    assert.equal(opened.photos.find((photo) => photo.stackCover).id, first)
+    await run('select', { id: second })
+    await run('stack-cover', { photoId: second })
+    assert.equal((await run('state')).photos.find((photo) => photo.stackCover).id, second)
+    await run('unstack', { photoId: second })
+    assert.ok((await run('state')).photos.every((photo) => !photo.stackId))
+  })
+
   await t.test('rating and flag controls reject changed selection membership before writing', async (t) => {
     const { page, run, first, second } = await workspace(t)
     for (const [control, field, neutral] of [
@@ -558,6 +639,16 @@ test('queued controls use the intended photo and apply relative actions once', a
       assert.equal((await run('video-toggle', { photoId: second })).playback.playing, true)
       assert.equal((await run('video-pause')).playback.playing, false)
 
+      await run('select', { id: first })
+      await run('panel', { name: 'Photo', open: true })
+      await holdThumbnail(page, '[data-action="save-frame"]')
+      await queuePhotoChange(page, second)
+      await page.locator('[data-action="save-frame"]').click()
+      await page.evaluate(() => window.catalogThumbnailHold.release())
+      assert.equal((await run('state')).photos.length, 2)
+      assert.match(await page.locator('#notice').textContent(), /selected photo changed/i)
+      await assert.rejects(() => run('save-frame', { photoId: first }), /selected photo changed/i)
+
       const position = page.locator('#video-position')
       async function applyTrim() {
         await page.locator('#trim-start').fill('1.1')
@@ -597,6 +688,13 @@ test('queued controls use the intended photo and apply relative actions once', a
       assert.ok(Math.abs(trimmed.playback.time - 1.1) < 1e-5)
       await expectVideoColor(page, 1)
       assert.deepEqual(editOf(await run('undo')), copiedEdit)
+      await run('video-seek', { time: 2.35, photoId: second })
+      const savedFrame = await run('save-frame', { photoId: second })
+      assert.equal(savedFrame.added.length, 1)
+      const frame = await run('state')
+      assert.equal(frame.photos.length, 3)
+      assert.notEqual(frame.selected, second)
+      await expectVideoColor(page, 2)
     }
   )
 })

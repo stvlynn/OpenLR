@@ -121,7 +121,8 @@ await withNativeWorkspace(
     const ordered = [softId, sharpId]
     await run('select-many', { ids: [sharpId, softId] })
     const beforeCull = await state()
-    const { scores } = await run('cull', { ids: ordered })
+    await assert.rejects(() => run('cull', { expectedIds: [sharpId] }), /selection changed/i)
+    const { scores } = await run('cull', { ids: ordered, expectedIds: ordered })
     assert.deepEqual(
       scores.map(({ id }) => id),
       ordered
@@ -163,7 +164,8 @@ await withNativeWorkspace(
     assert.equal(beforeAuto.review, undefined)
     const redInput = await rendered('before-auto-eye')
     assert.deepEqual(redInput, flash)
-    const corrected = await call('red-eye')
+    await assert.rejects(() => call('red-eye', '--photoId', sharpId), /selected photo changed/i)
+    const corrected = await call('red-eye', '--photoId', flashId)
     assert.ok(corrected.eyeRegions >= 2)
     const afterAuto = row(await state(), flashId)
     assert.equal(afterAuto.edit.redEyes.length, corrected.eyeRegions)

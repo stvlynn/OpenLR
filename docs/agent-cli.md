@@ -26,6 +26,8 @@ The shared queue validates command arguments before executing an action or recor
 
 `local-cancel` discards an in-progress brush, gradient or repair stroke and reports `{canceled:boolean}` without changing the selected tool or committed recipe. It shares the GUI Escape action and accepts an optional `--photoId` guard. Pointer cancellation and leaving the editing surface clear the same transient state; see [local tools](local-tools.md).
 
+Photo-menu commands `virtual-copy`, `save-frame`, `red-eye`, `stack-cover`, `stack-toggle` and `unstack` accept an optional `--photoId` guard. `stack` also accepts it for the cover photo, plus `--expectedIds` for group membership. `cull` accepts `--expectedIds` for selection ownership; its existing `ids` still specifies the review order and targets. The GUI supplies these guards before queuing menu closure, and a mismatch writes nothing. No guard is required for ordinary CLI execution-time selection.
+
 Full and summary `state` expose `clipping`, the current workspace highlight/shadow warning toggle. The `clipping` command, Histogram button and J shortcut share this state. Warnings affect the displayed canvas, not exported image pixels or edit recipes. Starting a color sampler clears them.
 
 ### Histogram
