@@ -67,15 +67,15 @@ jobs:
       - name: Retrieve the exact previous media samples
         uses: actions/download-artifact@v4
         with:
-          name: video-poster-macos-15
+          name: video-vp9-handoff-macos-15
           path: build/prior-poster-formats
-          run-id: 42284746616
+          run-id: 42291957159
           github-token: ${{ github.token }}
       - name: Compare native seeks under both player handoff orders
         shell: bash
         run: |
           mkdir -p build/video-poster-trials
-          cp build/prior-poster-formats/{vp9,vp9-709}.webm build/video-poster-trials/
+          cp build/prior-poster-formats/{vp9,vp9-709,vp9-remux,vp9-remux-709}.webm build/video-poster-trials/
           node scripts/native-video-poster-formats.mjs \
             production/build/video-poster/darwin-universal/OpenLR.app/Contents/MacOS/OpenLR \
             production/build/video-handoff/darwin-universal/OpenLR.app/Contents/MacOS/OpenLR \

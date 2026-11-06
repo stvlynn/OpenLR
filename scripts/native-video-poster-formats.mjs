@@ -22,12 +22,8 @@ const source = path.join(destination, 'vp9.webm')
 const packets = (file) =>
   ff('ffprobe', '-v', 'error', '-show_entries', 'packet=stream_index,data', '-show_data', '-of', 'json', file)
 const sourcePackets = packets(source)
-for (const [name, options] of [
-  ['vp9-remux.webm', []],
-  ['vp9-remux-709.webm', ['-colorspace', 'bt709']]
-]) {
+for (const name of ['vp9-remux.webm', 'vp9-remux-709.webm']) {
   const target = path.join(destination, name)
-  ff('ffmpeg', '-nostdin', '-y', '-v', 'error', '-i', source, '-map', '0', '-c', 'copy', ...options, target)
   assert.deepEqual(packets(target), sourcePackets, name + ' compressed video and audio packets')
 }
 const timing = (name) =>
@@ -190,10 +186,10 @@ const results = {
 }
 // Keep both arms balanced across run order and each source's position in a fresh workspace.
 for (const [arm, app, start] of [
-  ['control', control, 0],
   ['release-first', candidate, 0],
-  ['release-first', candidate, 2],
-  ['control', control, 2]
+  ['control', control, 0],
+  ['control', control, 2],
+  ['release-first', candidate, 2]
 ]) {
   for (let index = start; index < start + 2; index++) {
     const order = fixtures.slice(index).concat(fixtures.slice(0, index))
