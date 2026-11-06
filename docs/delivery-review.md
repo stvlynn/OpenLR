@@ -2,6 +2,16 @@
 
 Reviewed through 2026-11-06 on Windows and WSL Linux. This is delivery evidence, not an overall completeness claim.
 
+## Windows tracked snapshot `640ac85`
+
+A fresh Git ZIP archive identified `640ac85355314131acfcedd0e6de6a87510afc93` in its comment. The extracted tree contained no dependencies, generated bindings or CLI, or build output. Node 24.9.0 and npm 11.6.0 installed 62 packages with `npm ci` and reported zero vulnerabilities. MyGo 0.7.4 used the external Go 1.27.3 toolchain and shared Go caches to build the Windows/amd64 application and generate the NSIS installer. The live run used the unpacked application.
+
+The copied `openlr.mjs` ran alone in an OS temporary directory outside the project, with no ancestor `node_modules` and with `NODE_PATH` and `NODE_OPTIONS` unset. Offline schema and dry runs verified relative selection, guarded playback and a non-packet-aligned trim. Export discovery listed WebM and MP4. An esbuild parse found one source input and six Node builtin imports.
+
+The isolated app began with an empty catalog and imported two generated PNGs. The copied CLI verified next and previous selection, no wrap at the end, and rejection of still-image playback and a stale edit target. GDI+ decoded the Linear Exposure 1 preview and export as identical 507-byte, 40×40 PNGs. The center RGBA changed from `[64,96,128,255]` to `[90,133,176,255]`. The live workspace capture was 1783×1154 and 82,283 bytes. Undo restored the Linear-only recipe and the exact baseline preview bytes. The 118-byte original export matched its source, and both input files retained their bytes. The host and temporary CLI were cleaned up.
+
+Ten direct byte comparisons verified the packaged CLI, icon, AGPL text, five component licenses, third-party notices and source notice. The six vendored Opus notice files were present in the archive. The archive, harness and logs are under ignored `.workspace/delivery-640ac85-*` paths. [Packaged source link](https://github.com/stvlynn/OpenLR)
+
 ## Windows tracked snapshot `07ce383`
 
 A fresh Git ZIP archive identified `07ce383e31a4f7f6b9f2a902cbeec387a441ca5c` in its comment. The extracted tree began without dependencies, generated bindings and CLI resources, or build output. Node 24.9.0 and npm 11.6.0 installed 62 packages with `npm ci`, which reported zero vulnerabilities. MyGo 0.7.4 used the external Go 1.27.3 toolchain and shared caches to build the Windows/amd64 application and NSIS installer.
