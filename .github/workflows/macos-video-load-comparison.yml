@@ -5,7 +5,7 @@ on:
       comparison:
         description: Video behavior to compare
         type: choice
-        options: [load, pause]
+        options: [load, pause, decoder]
         default: load
 permissions:
   contents: read
@@ -19,8 +19,8 @@ jobs:
     timeout-minutes: 30
     env:
       VIDEO_COMPARISON: ${{ inputs.comparison || 'load' }}
-      VIDEO_CONTROL: ${{ inputs.comparison == 'pause' && 'frame-first' || 'automatic' }}
-      VIDEO_CANDIDATE: ${{ inputs.comparison == 'pause' && 'anchor-first' || 'explicit' }}
+      VIDEO_CONTROL: ${{ inputs.comparison == 'decoder' && 'default-decoder' || inputs.comparison == 'pause' && 'frame-first' || 'automatic' }}
+      VIDEO_CANDIDATE: ${{ inputs.comparison == 'decoder' && 'software-decoder' || inputs.comparison == 'pause' && 'anchor-first' || 'explicit' }}
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -45,9 +45,13 @@ jobs:
           import os
           from pathlib import Path
           import subprocess
-          source = Path('web/video.js')
+          comparison = os.environ['VIDEO_COMPARISON']
+          source = Path('web/video-frames.js' if comparison == 'decoder' else 'web/video.js')
           original = source.read_bytes()
-          if os.environ['VIDEO_COMPARISON'] == 'pause':
+          if comparison == 'decoder':
+              marker = b'new CanvasSink(track, { alpha: true })'
+              replacement = b"new CanvasSink(track, { alpha: true, decoderOptions: { hardwareAcceleration: 'prefer-software' } })"
+          elif comparison == 'pause':
               frame = (
                   b"          markVideoSeek(trace, 'pause-frame', video)\n"
                   b'          const image = await frameAt(time)\n'

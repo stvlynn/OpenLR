@@ -1,15 +1,17 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+  videoDecoderOrder,
   videoLoadOrder,
   videoPauseOrder,
   videoTrialOutcome
 } from '../scripts/native-video-load-comparison.mjs'
 
-test('load and pause comparisons each schedule four fixed ABBA blocks', () => {
+test('packaged video comparisons each schedule four fixed ABBA blocks', () => {
   for (const [order, control, candidate] of [
     [videoLoadOrder, 'automatic', 'explicit'],
-    [videoPauseOrder, 'frame-first', 'anchor-first']
+    [videoPauseOrder, 'frame-first', 'anchor-first'],
+    [videoDecoderOrder, 'default-decoder', 'software-decoder']
   ]) {
     assert.equal(order.length, 16)
     for (let offset = 0; offset < order.length; offset += 4) {

@@ -132,6 +132,7 @@ export async function openVideo(file, diagnostic, seekTrace) {
         markVideoImport(diagnostic, 'frame-access', video)
         if (nativeVideoPixelsReadable(video)) return null
         markVideoImport(diagnostic, 'frame-decode')
+        markVideoSeek(seekTrace, 'playback-frame-decoder')
         const { decodeVideoFrames } = await import('./video-frames.js')
         return decodeVideoFrames(file)
       })()
