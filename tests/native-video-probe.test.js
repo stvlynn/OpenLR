@@ -4,7 +4,77 @@ import { EventEmitter } from 'node:events'
 import { syncBuiltinESMExports } from 'node:module'
 import test from 'node:test'
 import { promisify } from 'node:util'
-import { reportClock, runProbeHost } from '../scripts/native-video-origin-probe.mjs'
+import { reportClock, reportReadiness, runProbeHost } from '../scripts/native-video-origin-probe.mjs'
+import { makePng } from './fixtures/png.mjs'
+
+test('video readiness retains a metadata-only failure and validates frame and playback evidence', () => {
+  const media = { readyState: 1, networkState: 1, width: 96, height: 64, mediaErrorCode: null }
+  const observations = ['load-requested', 'loadedmetadata', 'suspend'].map((phase, elapsedMs) => ({
+    phase,
+    elapsedMs,
+    ...media
+  }))
+  const result = {
+    stage: 'media-load',
+    errorName: 'Error',
+    observations,
+    sampleTimes: [],
+    nativeRead: [],
+    frames: []
+  }
+  assert.deepEqual(reportReadiness(result).observations, observations)
+  assert.equal(reportReadiness(result).verified, false)
+  assert.throws(
+    () => reportReadiness({ ...result, observations: [...observations, observations[1]] }),
+    /repeated readiness phase/
+  )
+
+  for (const phase of [
+    'loadeddata',
+    'frame-decode',
+    'first-frame',
+    'seek-requested',
+    'seek-completed',
+    'seek-frame',
+    'play-requested',
+    'play-started',
+    'play-advanced'
+  ])
+    observations.push({ phase, elapsedMs: observations.length, ...media, readyState: 4 })
+  const frame = (time, rgb) => {
+    const data = new Uint8Array(96 * 64 * 3)
+    for (let i = 0; i < data.length; i += 3) data.set(rgb, i)
+    const png = makePng({ width: 96, height: 64, bits: 8, colorType: 2, data })
+    return {
+      time,
+      size: [96, 64],
+      read: { value: [...rgb, 255] },
+      encode: { value: Buffer.from(png).toString('base64') }
+    }
+  }
+  const red = frame(0, [180, 46, 45])
+  const blue = frame(2.35, [44, 61, 198])
+  const complete = {
+    stage: 'complete',
+    observations,
+    sampleTimes: [0, 2.35],
+    nativeRead: [{ errorName: 'SecurityError' }, { errorName: 'SecurityError' }],
+    frames: [red, blue],
+    playback: { started: 2.35, advanced: 2.51, playedDuration: 0.16 }
+  }
+  assert.equal(reportReadiness(complete).verified, true)
+  assert.equal(
+    reportReadiness({ ...complete, frames: [red, { ...blue, encode: red.encode }] }).verified,
+    false
+  )
+  assert.equal(reportReadiness({ ...complete, sampleTimes: [0, 0] }).verified, false)
+  assert.equal(reportReadiness({ ...complete, nativeRead: [red.read, red.read] }).verified, false)
+  assert.equal(
+    reportReadiness({ ...complete, playback: { started: 0, advanced: 0.2, playedDuration: 0.2 } }).verified,
+    false
+  )
+  assert.throws(() => reportReadiness({ ...complete, playback: undefined }), /Missing playback observation/)
+})
 
 test('video pause probe requires post-seek and post-frame observations when a rewind is repaired', () => {
   const playing = { time: 0.54, paused: false },

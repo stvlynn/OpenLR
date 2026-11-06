@@ -14,7 +14,10 @@ async function generatedVideo() {
   const server = await serveWorkspace()
   let browser
   try {
-    browser = await chromium.launch({ channel: process.env.CHROME_CHANNEL || 'chrome' })
+    const executablePath = process.env.OPENLR_VIDEO_PROBE_CHROME
+    browser = await chromium.launch(
+      executablePath ? { executablePath } : { channel: process.env.CHROME_CHANNEL || 'chrome' }
+    )
     const page = await browser.newPage()
     await page.route(server.url + '/', (route) =>
       route.fulfill({ contentType: 'text/html', body: '<title>Video fixture generator</title>' })
@@ -89,12 +92,7 @@ function reportCandidate(candidate, times, stages) {
     assert.equal(frames.length, times.length, 'Candidate omitted frames')
   } else checkError(errorName)
   if (blobOrigin !== undefined) assert.ok(['same', 'opaque', 'different'].includes(blobOrigin))
-  if (readyState !== undefined) {
-    assert.ok(Number.isInteger(readyState) && readyState >= 0 && readyState <= 4)
-    assert.ok(Number.isInteger(networkState) && networkState >= 0 && networkState <= 3)
-    assert.ok([width, height].every((value) => Number.isSafeInteger(value) && value >= 0))
-    assert.ok([null, 1, 2, 3, 4].includes(mediaErrorCode))
-  }
+  if (readyState !== undefined) checkMediaState(candidate)
   return {
     stage,
     errorName,
@@ -106,6 +104,12 @@ function reportCandidate(candidate, times, stages) {
     mediaErrorCode,
     frames: frames.map((frame, index) => reportFrame(frame, times[index]))
   }
+}
+function checkMediaState({ readyState, networkState, width, height, mediaErrorCode }) {
+  assert.ok(Number.isInteger(readyState) && readyState >= 0 && readyState <= 4)
+  assert.ok(Number.isInteger(networkState) && networkState >= 0 && networkState <= 3)
+  assert.ok([width, height].every((value) => Number.isSafeInteger(value) && value >= 0))
+  assert.ok([null, 1, 2, 3, 4].includes(mediaErrorCode))
 }
 const times = [0, 2.35]
 const elementStages = ['complete', 'media-load', 'media-duration', 'seek', 'draw']
@@ -136,6 +140,88 @@ const clockCandidates = [
 ]
 const clockPhases = ['started', 'advanced', 'beforePause', 'immediate', 'pauseEvent', 'animationFrame']
 const restorePhases = ['restored', 'restoredAfterFrame']
+const readinessCandidates = ['readiness-auto', 'readiness-load']
+const readinessOrder = [...readinessCandidates, ...readinessCandidates.toReversed()]
+const readinessPhases = new Set([
+  'load-requested',
+  'loadstart',
+  'loadedmetadata',
+  'suspend',
+  'loadeddata',
+  'stalled',
+  'error',
+  'frame-decode',
+  'first-frame',
+  'seek-requested',
+  'seek-completed',
+  'seek-frame',
+  'play-requested',
+  'play-started',
+  'play-advanced'
+])
+
+export function reportReadiness(result) {
+  const report = reportCandidate(result, times, [
+    'complete',
+    'media-load',
+    'frame-decode',
+    'seek',
+    'draw',
+    'play',
+    'advance'
+  ])
+  assert.ok(Array.isArray(result.observations))
+  assert.ok(Array.isArray(result.sampleTimes) && result.sampleTimes.length <= times.length)
+  assert.ok(result.sampleTimes.every((time) => Number.isFinite(time) && time >= 0))
+  assert.ok(Array.isArray(result.nativeRead) && result.nativeRead.length <= result.sampleTimes.length)
+  const nativeRead = result.nativeRead.map((value, index) =>
+    checkFrameOperation(value, index === 0 ? 0 : 2, (pixel) => pixel)
+  )
+  const seen = new Set()
+  const observations = result.observations.map((value) => {
+    const { phase, elapsedMs, readyState, networkState, width, height, mediaErrorCode } = value
+    assert.ok(readinessPhases.has(phase) && !seen.has(phase), 'Invalid or repeated readiness phase')
+    assert.ok(Number.isFinite(elapsedMs) && elapsedMs >= 0)
+    checkMediaState(value)
+    seen.add(phase)
+    return { phase, elapsedMs, readyState, networkState, width, height, mediaErrorCode }
+  })
+  let playback
+  let verified = false
+  if (report.stage === 'complete') {
+    assert.equal(result.sampleTimes.length, times.length, 'Missing actual frame position')
+    assert.equal(nativeRead.length, times.length, 'Missing native frame observation')
+    assert.ok(result.playback, 'Missing playback observation')
+    for (const phase of [
+      'load-requested',
+      'loadeddata',
+      'frame-decode',
+      'first-frame',
+      'seek-requested',
+      'seek-completed',
+      'seek-frame',
+      'play-requested',
+      'play-started',
+      'play-advanced'
+    ])
+      assert.ok(seen.has(phase), `Missing readiness phase ${phase}`)
+    const { started, advanced, playedDuration } = result.playback
+    assert.ok([started, advanced, playedDuration].every((value) => Number.isFinite(value) && value >= 0))
+    playback = { started, advanced, playedDuration }
+    const loaded = observations.find(({ phase }) => phase === 'loadeddata')
+    verified =
+      loaded.readyState >= 2 &&
+      result.sampleTimes.every((time, index) => Math.abs(time - times[index]) <= 0.025) &&
+      report.frames.every(
+        (frame) => frame.matchesFixtureSize && frame.read.matchesFixture && frame.encode.matchesFixture
+      ) &&
+      nativeRead.every((frame) => frame.matchesFixture || frame.errorName === 'SecurityError') &&
+      started >= result.sampleTimes[1] - 0.025 &&
+      advanced > started &&
+      playedDuration > 0
+  }
+  return { ...report, observations, sampleTimes: result.sampleTimes, nativeRead, playback, verified }
+}
 
 export function reportClock(result, candidate) {
   const { stage, errorName, frameSource, playedDuration, observationMs, requestedDelayMs } = result
@@ -205,13 +291,16 @@ function sanitize(report, candidate) {
   }
   assert.ok(['opaque', 'tuple'].includes(context.documentOrigin), 'Missing renderer origin')
   const frame = candidates[candidate]
+  const readiness = readinessCandidates.includes(candidate)
   return {
-    [frame ? 'nativeVideoOrigin' : 'nativeVideoClock']: 'candidate',
+    [readiness ? 'nativeVideoReadiness' : frame ? 'nativeVideoOrigin' : 'nativeVideoClock']: 'candidate',
     candidate,
     context: { ...capabilities, documentOrigin: context.documentOrigin },
-    result: frame
-      ? reportCandidate(report.result, frame.times, frame.stages)
-      : reportClock(report.result, candidate)
+    result: readiness
+      ? reportReadiness(report.result)
+      : frame
+        ? reportCandidate(report.result, frame.times, frame.stages)
+        : reportClock(report.result, candidate)
   }
 }
 
@@ -268,8 +357,14 @@ function profileEnvironment(profile) {
 
 async function main(executable, mode) {
   if (!executable) throw Error('Pass a built video origin probe executable')
-  if (mode !== undefined && mode !== '--playback') throw Error('Expected --playback or no mode')
-  const names = mode ? clockCandidates : Object.keys(candidates)
+  if (mode !== undefined && mode !== '--playback' && mode !== '--readiness')
+    throw Error('Expected --playback, --readiness, or no mode')
+  const names =
+    mode === '--readiness'
+      ? readinessOrder
+      : mode === '--playback'
+        ? clockCandidates
+        : Object.keys(candidates)
   const temp = await realpath(tmpdir()),
     prefix = 'olr-vp-',
     root = await mkdtemp(path.join(temp, prefix))
@@ -281,24 +376,29 @@ async function main(executable, mode) {
     const deadline = performance.now() + names.length * 15000
     const failed = []
     let frameReadMs
-    for (const candidate of names) {
+    for (const [index, candidate] of names.entries()) {
       const profilePrefix = `${candidate}-`
       const profile = await mkdtemp(path.join(root, profilePrefix))
+      const trial = mode === '--readiness' ? index + 1 : undefined
+      const label = trial === undefined ? candidate : `trial ${trial}: ${candidate}`
+      let hostStarted
       try {
         const report = path.join(profile, 'report.json')
         const timeout = Math.min(15000, Math.floor(deadline - performance.now()))
         if (timeout <= 0) throw Error('Aggregate video origin probe deadline expired before launch')
-        console.error(`Video origin probe candidate: ${candidate}`)
+        console.error(`Video origin probe candidate: ${label}`)
         const args = [frontend, fixture, report, candidate]
         if (candidate === 'clock-delay' || candidate === 'clock-seek') {
           if (frameReadMs === undefined)
             throw Error('Detached frame-read interval unavailable for the paired delay')
           args.push(String(frameReadMs))
         }
+        hostStarted = performance.now()
         await runProbeHost(path.resolve(executable), args, {
           env: profileEnvironment(profile),
           timeout
         })
+        const hostElapsedMs = Math.round(performance.now() - hostStarted)
         const contents = await readFile(report, 'utf8').catch((error) => {
           if (error.code === 'ENOENT') throw Error('Video origin probe host exited without a report')
           throw error
@@ -313,20 +413,30 @@ async function main(executable, mode) {
               'Delay does not match detached frame read'
             )
         }
-        console.log(JSON.stringify(sanitized))
+        console.log(JSON.stringify(trial === undefined ? sanitized : { trial, hostElapsedMs, ...sanitized }))
       } catch (error) {
-        console.error(`Video origin probe ${candidate} incomplete: ${error.message}`)
+        const elapsed =
+          trial !== undefined && hostStarted !== undefined
+            ? ` after ${Math.round(performance.now() - hostStarted)}ms host time`
+            : ''
+        console.error(`Video origin probe ${label} incomplete${elapsed}: ${error.message}`)
         if (error instanceof ProbeHostUnconfirmedError) {
           retainRoot = true
           throw new Error(`Video origin probe ${candidate} could not be stopped`, { cause: error })
         }
-        failed.push(new Error(`${candidate}: ${error.message}`, { cause: error }))
+        failed.push(new Error(`${label}: ${error.message}`, { cause: error }))
       } finally {
         if (!retainRoot) await removeDirectory(profile, root, profilePrefix)
       }
     }
     if (failed.length) throw new AggregateError(failed, 'Incomplete video origin probe candidates')
-    console.log(JSON.stringify({ [mode ? 'nativeVideoClock' : 'nativeVideoOrigin']: 'complete' }))
+    const kind =
+      mode === '--readiness'
+        ? 'nativeVideoReadiness'
+        : mode === '--playback'
+          ? 'nativeVideoClock'
+          : 'nativeVideoOrigin'
+    console.log(JSON.stringify({ [kind]: 'complete' }))
   } finally {
     if (retainRoot)
       console.error(`Video origin probe retained its temporary directory ${path.basename(root)}`)

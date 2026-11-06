@@ -62,6 +62,26 @@ func (p *VideoProbe) Fixture() probeFixture {
 	return p.fixture
 }
 
+func (p *VideoProbe) Readiness(phase string, elapsedMS, readyState, networkState, width, height, errorCode int) error {
+	if p.fixture.Candidate != "readiness-auto" && p.fixture.Candidate != "readiness-load" {
+		return errors.New("readiness observation outside its candidate")
+	}
+	switch phase {
+	case "load-requested", "loadstart", "loadedmetadata", "suspend", "loadeddata", "stalled", "error",
+		"frame-decode", "first-frame", "seek-requested", "seek-completed", "seek-frame",
+		"play-requested", "play-started", "play-advanced":
+	default:
+		return errors.New("invalid readiness observation phase")
+	}
+	if elapsedMS < 0 || readyState < 0 || readyState > 4 || networkState < 0 || networkState > 3 ||
+		width < 0 || height < 0 || errorCode < 0 || errorCode > 4 {
+		return errors.New("invalid readiness observation values")
+	}
+	log.Printf("Video readiness probe: %s %s elapsed_ms=%d ready=%d network=%d width=%d height=%d error_code=%d",
+		p.fixture.Candidate, phase, elapsedMS, readyState, networkState, width, height, errorCode)
+	return nil
+}
+
 func (p *VideoProbe) Finish(report string) error {
 	if !json.Valid([]byte(report)) {
 		return errors.New("video origin probe returned invalid JSON")
@@ -83,7 +103,7 @@ func main() {
 	}
 	candidate := os.Args[4]
 	switch candidate {
-	case "direct", "poster", "anonymous", "decoded",
+	case "direct", "poster", "anonymous", "decoded", "readiness-auto", "readiness-load",
 		"clock-detached", "clock-attached", "clock-frame-stream", "clock-restore", "clock-delay", "clock-seek":
 	default:
 		log.Fatal("Invalid video origin probe candidate")

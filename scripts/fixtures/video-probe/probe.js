@@ -1,4 +1,5 @@
 import { openVideo, poster } from './video.js'
+import { decodeVideoFrames } from './video-frames.js'
 import { render, toBlob } from './render.js'
 import { ALL_FORMATS, BlobSource, CanvasSink, Input } from './vendor/mediabunny/mediabunny.mjs'
 
@@ -48,6 +49,15 @@ async function capture(canvas, time) {
   return { time, size: [width, height], read, encode }
 }
 
+function readElementPixel(video) {
+  const canvas = document.createElement('canvas')
+  canvas.width = video.videoWidth
+  canvas.height = video.videoHeight
+  const context = canvas.getContext('2d')
+  context.drawImage(video, 0, 0)
+  return Array.from(context.getImageData(canvas.width >> 1, canvas.height >> 1, 1, 1).data)
+}
+
 function stage(value) {
   return globalThis.mygo.call('VideoProbe.Stage', value)
 }
@@ -81,15 +91,20 @@ function waitMedia(video, event, start) {
   })
 }
 
-async function openAnonymous(file, report) {
+async function openProbeElement(file, report, { anonymous, explicitLoad, observe } = {}) {
   const video = document.createElement('video'),
     url = URL.createObjectURL(file)
   video.preload = 'auto'
   video.playsInline = true
   video.muted = true
-  video.crossOrigin = 'anonymous'
+  if (anonymous) video.crossOrigin = 'anonymous'
   report.blobOrigin = originKind(url)
+  const events = observe && new AbortController()
+  if (events)
+    for (const event of ['loadstart', 'loadedmetadata', 'suspend', 'loadeddata', 'stalled', 'error'])
+      video.addEventListener(event, () => observe(event, video), { once: true, signal: events.signal })
   const close = () => {
+    events?.abort()
     video.pause()
     video.removeAttribute('src')
     video.load()
@@ -97,7 +112,9 @@ async function openAnonymous(file, report) {
   }
   try {
     await waitMedia(video, 'loadeddata', () => {
+      observe?.('load-requested', video)
       video.src = url
+      if (explicitLoad) video.load()
     })
     video.width = video.videoWidth
     video.height = video.videoHeight
@@ -139,6 +156,89 @@ function elementPath(name, file, open) {
 
 const animationFrame = () => new Promise((resolve) => requestAnimationFrame(resolve))
 
+async function waitPlaybackAdvance(video, started, cursor) {
+  while (!video.paused && video.currentTime < started + 0.15) {
+    if (cursor) await cursor.at(video.currentTime)
+    await animationFrame()
+  }
+  if (video.paused) throw Error('Playback ended before advancing')
+}
+
+function playedDuration(video) {
+  return Array.from(
+    { length: video.played.length },
+    (_, index) => video.played.end(index) - video.played.start(index)
+  ).reduce((sum, duration) => sum + duration, 0)
+}
+
+function readinessPath(name, file, explicitLoad) {
+  return candidate(name, async (report) => {
+    let started
+    report.observations = []
+    report.sampleTimes = []
+    report.nativeRead = []
+    const observe = (phase, video) => {
+      const now = performance.now()
+      started ??= now
+      const elapsedMs = Math.round(now - started)
+      const { readyState, networkState, width, height, mediaErrorCode } = mediaState(video)
+      report.observations.push({ phase, elapsedMs, readyState, networkState, width, height, mediaErrorCode })
+      void globalThis.mygo
+        .call(
+          'VideoProbe.Readiness',
+          phase,
+          elapsedMs,
+          readyState,
+          networkState,
+          width,
+          height,
+          mediaErrorCode ?? 0
+        )
+        .catch(() => {})
+    }
+    report.stage = 'media-load'
+    const media = await openProbeElement(file, report, { explicitLoad, observe })
+    const { video } = media
+    let source
+    try {
+      Object.assign(report, mediaState(video))
+      report.stage = 'frame-decode'
+      observe('frame-decode', video)
+      source = await decodeVideoFrames(file)
+      for (const time of times) {
+        if (time !== 0) {
+          report.stage = 'seek'
+          observe('seek-requested', video)
+          await media.seek(time)
+          observe('seek-completed', video)
+        }
+        report.stage = 'draw'
+        observe(time === 0 ? 'first-frame' : 'seek-frame', video)
+        const currentTime = video.currentTime
+        report.sampleTimes.push(currentTime)
+        report.nativeRead.push(await outcome(() => readElementPixel(video)))
+        const frame = await source.at(currentTime)
+        report.frames.push(await capture(render(frame, {}, 240), time))
+      }
+      report.stage = 'play'
+      observe('play-requested', video)
+      video.muted = false
+      await video.play()
+      const playbackStart = video.currentTime
+      observe('play-started', video)
+      report.stage = 'advance'
+      await waitPlaybackAdvance(video, playbackStart)
+      const advanced = video.currentTime
+      observe('play-advanced', video)
+      video.pause()
+      report.playback = { started: playbackStart, advanced, playedDuration: playedDuration(video) }
+    } finally {
+      source?.close()
+      media.close()
+    }
+  })
+}
+
 function playbackPath(name, file, { attach, stream, restore, forceSeek, delayMs } = {}) {
   return candidate(name, async (report) => {
     const reads = (report.reads = {})
@@ -161,11 +261,7 @@ function playbackPath(name, file, { attach, stream, restore, forceSeek, delayMs 
       if (stream) cursor = await media.playbackFrames()
 
       report.stage = 'advance'
-      while (!video.paused && video.currentTime < started + 0.15) {
-        if (cursor) await cursor.at(video.currentTime)
-        await animationFrame()
-      }
-      if (video.paused) throw Error('Playback ended before pause observation')
+      await waitPlaybackAdvance(video, started, cursor)
       read('advanced')
 
       report.stage = 'pause'
@@ -206,10 +302,7 @@ function playbackPath(name, file, { attach, stream, restore, forceSeek, delayMs 
         stopped = read('afterFrame').time
       }
       report.observationMs = performance.now() - observationStart
-      report.playedDuration = Array.from(
-        { length: video.played.length },
-        (_, index) => video.played.end(index) - video.played.start(index)
-      ).reduce((sum, duration) => sum + duration, 0)
+      report.playedDuration = playedDuration(video)
       if (restore && stopped < position) {
         report.stage = 'restore'
         await media.seek(position)
@@ -244,6 +337,8 @@ const context = {
   audioEncoder: typeof AudioEncoder === 'function'
 }
 const paths = {
+  'readiness-auto': () => readinessPath(name, file, false),
+  'readiness-load': () => readinessPath(name, file, true),
   'clock-detached': () => playbackPath(name, file),
   'clock-delay': () => playbackPath(name, file, { delayMs }),
   'clock-seek': () => playbackPath(name, file, { forceSeek: true, delayMs }),
@@ -261,7 +356,8 @@ const paths = {
         bitmap.close()
       }
     }),
-  anonymous: () => elementPath('anonymous', file, openAnonymous),
+  anonymous: () =>
+    elementPath('anonymous', file, (input, report) => openProbeElement(input, report, { anonymous: true })),
   decoded: () =>
     candidate('decoded', async (report) => {
       report.stage = 'demux'

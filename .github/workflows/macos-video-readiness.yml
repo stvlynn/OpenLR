@@ -1,0 +1,37 @@
+name: macOS video readiness probe
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  paired-readiness:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15-intel, macos-15]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - run: npm ci
+      - name: Provision the pinned fixture browser
+        run: |
+          chrome_platform=${{ runner.arch == 'ARM64' && 'mac-arm64' || 'mac-x64' }}
+          mkdir -p build/readiness-oracle
+          curl --fail --location "https://storage.googleapis.com/chrome-for-testing-public/157.0.8103.38/$chrome_platform/chrome-$chrome_platform.zip" -o build/readiness-oracle/chrome.zip
+          ditto -xk build/readiness-oracle/chrome.zip build/readiness-oracle
+          echo "OPENLR_VIDEO_PROBE_CHROME=$PWD/build/readiness-oracle/chrome-$chrome_platform/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing" >> "$GITHUB_ENV"
+      - name: Build the isolated MyGo fixture
+        env:
+          CGO_ENABLED: '0'
+        run: |
+          go build -tags mygo_noinspector -ldflags '-X github.com/egoist/mygo.production=1' -o build/video-origin-probe ./scripts/fixtures/video-probe
+      - name: Compare automatic preload and explicit initial load
+        timeout-minutes: 3
+        run: node scripts/native-video-origin-probe.mjs build/video-origin-probe --readiness
