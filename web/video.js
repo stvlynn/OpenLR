@@ -71,7 +71,7 @@ function nativeVideoPixelsReadable(video) {
   }
 }
 
-export async function openVideo(file, diagnostic, seekTrace) {
+export async function openVideo(file, diagnostic, seekTrace, preparePoster = false) {
   markVideoImport(diagnostic, 'media-load')
   const url = URL.createObjectURL(file),
     video = document.createElement('video'),
@@ -99,7 +99,15 @@ export async function openVideo(file, diagnostic, seekTrace) {
   try {
     markVideoSeek(seekTrace, 'playback-load', video)
     const stopObservingLoad = observeVideoPlaybackLoad(seekTrace, video)
+    let frameCallback, frameTimer
     try {
+      let presented, resolvePresentation
+      if (preparePoster && typeof video.requestVideoFrameCallback === 'function') {
+        presented = new Promise((resolve) => {
+          resolvePresentation = resolve
+        })
+        frameCallback = video.requestVideoFrameCallback(() => resolvePresentation(true))
+      }
       await waitForMedia(
         video,
         'loadeddata',
@@ -108,7 +116,17 @@ export async function openVideo(file, diagnostic, seekTrace) {
         },
         lifetime.signal
       )
+      if (presented) {
+        // WebKit can report loadeddata before the native first frame can be copied.
+        // An inactive window may never send the callback, so retain the ready-frame path.
+        frameTimer = setTimeout(resolvePresentation, 2000, false)
+        await waitForMedia(video, null, () => presented, lifetime.signal)
+        const arrived = await presented
+        markVideoImport(diagnostic, arrived ? 'poster-frame-presented' : 'poster-frame-timeout', video)
+      }
     } finally {
+      clearTimeout(frameTimer)
+      if (frameCallback !== undefined) video.cancelVideoFrameCallback(frameCallback)
       stopObservingLoad?.()
     }
     markVideoSeek(seekTrace, 'playback-loaded', video)
@@ -213,7 +231,7 @@ export async function openVideo(file, diagnostic, seekTrace) {
   }
 }
 export async function poster(file, diagnostic) {
-  const media = await openVideo(file, diagnostic)
+  const media = await openVideo(file, diagnostic, undefined, globalThis.openlrNativePlatform === 'darwin')
   try {
     const frame = await media.frameAt()
     markVideoImport(diagnostic, 'poster-bitmap', media.video)

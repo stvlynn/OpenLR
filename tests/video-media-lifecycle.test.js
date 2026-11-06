@@ -16,6 +16,75 @@ test('video media waits release their listeners and settle on close', { timeout:
   await page.goto(server.url)
   const bytes = Array.from(await makeVideoFixture(page))
 
+  await t.test('the macOS poster waits for presentation and releases its callback', async () => {
+    const result = await page.evaluate(async (bytes) => {
+      const { openVideo, poster } = await import('/video.js')
+      const file = new File([Uint8Array.from(bytes)], 'poster.webm', { type: 'video/webm' })
+      const prototype = HTMLVideoElement.prototype
+      const { requestVideoFrameCallback, cancelVideoFrameCallback } = prototype
+      const registrations = [],
+        cancellations = []
+      let present, loaded
+      prototype.requestVideoFrameCallback = function (callback) {
+        const handle = registrations.length
+        registrations.push(this.hasAttribute('src'))
+        present = callback
+        loaded = new Promise((resolve) => this.addEventListener('loadeddata', resolve, { once: true }))
+        return handle
+      }
+      prototype.cancelVideoFrameCallback = (handle) => cancellations.push(handle)
+      globalThis.openlrNativePlatform = 'darwin'
+      try {
+        const media = await openVideo(file)
+        media.close()
+        let settled = false
+        const pending = poster(file).then((result) => {
+          settled = true
+          return result
+        })
+        const trusted = (await loaded).isTrusted
+        await new Promise((resolve) => setTimeout(resolve, 0))
+        const settledBeforePresentation = settled
+        present()
+
+        function pixel({ bitmap }) {
+          const canvas = new OffscreenCanvas(1, 1)
+          const context = canvas.getContext('2d')
+          context.drawImage(bitmap, 0, 0, 1, 1)
+          bitmap.close()
+          return Array.from(context.getImageData(0, 0, 1, 1).data)
+        }
+        const afterPresentation = pixel(await pending)
+        const afterTimeout = pixel(await poster(file))
+        const rejected = await poster(new File(['invalid'], 'invalid.webm', { type: 'video/webm' })).then(
+          () => false,
+          () => true
+        )
+        return {
+          registrations,
+          cancellations,
+          trusted,
+          settledBeforePresentation,
+          afterPresentation,
+          afterTimeout,
+          rejected
+        }
+      } finally {
+        delete globalThis.openlrNativePlatform
+        prototype.requestVideoFrameCallback = requestVideoFrameCallback
+        prototype.cancelVideoFrameCallback = cancelVideoFrameCallback
+      }
+    }, bytes)
+    assert.deepEqual(result.registrations, [false, false, false])
+    assert.deepEqual(result.cancellations, [0, 1, 2])
+    assert.equal(result.trusted, true)
+    assert.equal(result.settledBeforePresentation, false)
+    assert.equal(result.rejected, true)
+    for (const [red, green, blue, alpha] of [result.afterPresentation, result.afterTimeout]) {
+      assert.ok(red > 130 && green < 100 && blue < 100 && alpha === 255)
+    }
+  })
+
   await t.test('closing an in-flight native seek rejects the pending operation', async () => {
     const result = await page.evaluate(async (bytes) => {
       const { openVideo } = await import('/video.js')

@@ -58,7 +58,10 @@ func main() {
 			page.Session = mygo.NewEphemeralSession()
 		}
 		if desktop.startup != nil {
-			page.PreloadScript = "globalThis.openlrDiagnostics = true"
+			page.PreloadScript = "globalThis.openlrDiagnostics = true\n"
+		}
+		if runtime.GOOS == "darwin" {
+			page.PreloadScript += "globalThis.openlrNativePlatform = 'darwin'\n"
 		}
 		desktop.startup.mark("window-requested")
 		window = mygo.NewWindow(mygo.WindowOptions{
