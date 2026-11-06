@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict'
-import { execFile } from 'node:child_process'
+import { execFile, spawn } from 'node:child_process'
 import { once } from 'node:events'
 import { access, mkdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
+import { createInterface } from 'node:readline'
 import { setTimeout as delay } from 'node:timers/promises'
+import { pathToFileURL } from 'node:url'
 import { promisify } from 'node:util'
 import { makePng } from '../tests/fixtures/png.mjs'
 import { readPng } from '../web/png.js'
@@ -11,16 +13,50 @@ import { withNativeWorkspace } from './native-workspace.mjs'
 
 const executable = process.argv[2]
 const mac = process.platform === 'darwin'
-if (!executable || (!mac && process.platform !== 'win32'))
-  throw Error('Pass a packaged Windows or macOS executable')
+const linux = process.platform === 'linux'
+const desktopEntry = process.argv[3]
+const coldLauncher = mac && process.argv[3] === '--macos-cold' && process.argv[4]
+if (!executable || (linux ? !desktopEntry : !mac && process.platform !== 'win32'))
+  throw Error('Pass a packaged executable and, on Linux, the desktop entry')
+if (mac && process.argv[3] === '--macos-cold' && !coldLauncher)
+  throw Error('Pass the compiled Launch Services helper')
 const exec = promisify(execFile)
 const bundle = mac && path.resolve(path.dirname(executable), '../..')
 if (mac) {
   assert.equal(path.extname(bundle), '.app')
   const { stdout } = await exec('/usr/bin/plutil', [
-    '-extract', 'CFBundleDocumentTypes', 'json', '-o', '-', path.join(bundle, 'Contents/Info.plist')
+    '-extract',
+    'CFBundleDocumentTypes',
+    'json',
+    '-o',
+    '-',
+    path.join(bundle, 'Contents/Info.plist')
   ])
   assert.ok(JSON.parse(stdout).some((type) => type.CFBundleTypeExtensions?.includes('png')))
+}
+
+function launchCold({ executable, args, env }) {
+  assert.equal(args.length, 1)
+  const child = spawn(path.resolve(coldLauncher), [executable, args[0]], {
+    env,
+    stdio: ['pipe', 'pipe', 'inherit']
+  })
+  child.stdin.on('error', () => {})
+  const output = createInterface({ input: child.stdout })
+  const ready = Promise.race([
+    once(output, 'line').then(([line]) => {
+      output.close()
+      assert.match(line, /^[1-9][0-9]*$/)
+      return Number(line)
+    }),
+    once(child, 'close').then(([code]) => {
+      throw Error('Launch Services exited before reporting the application PID (code ' + code + ')')
+    }),
+    delay(40_000, null, { ref: false }).then(() => {
+      throw Error('Launch Services did not report the application PID')
+    })
+  ])
+  return { child, ready, stop: () => child.stdin.end() }
 }
 
 const fixtures = [
@@ -47,7 +83,7 @@ async function prepare({ root }) {
     )
     await writeFile(fixture.file, fixture.bytes)
   }
-  return mac ? [] : [fixtures[0].file]
+  return (mac || linux) && !coldLauncher ? [] : [fixtures[0].file]
 }
 
 await withNativeWorkspace(
@@ -107,12 +143,15 @@ await withNativeWorkspace(
     async function forward(fixture) {
       if (mac) await exec('/usr/bin/open', ['-a', bundle, fixture.file], { timeout: 8000 })
       else {
-        const secondary = launchSecondary([fixture.name], source)
+        const input = fixture === first ? fixture.file : pathToFileURL(fixture.file).href
+        const secondary = linux
+          ? launchSecondary(['launch', path.resolve(desktopEntry), input], source, '/usr/bin/gio')
+          : launchSecondary([fixture.name], source)
         assert.deepEqual(
           await Promise.race([
             once(secondary, 'close'),
             delay(5000, undefined, { ref: false }).then(() => {
-              throw Error('Second instance did not exit')
+              throw Error('File open launcher did not exit')
             })
           ]),
           [0, null]
@@ -121,7 +160,7 @@ await withNativeWorkspace(
       }
       assert.equal(await readPid(), pid)
     }
-    if (mac) {
+    if ((mac || linux) && !coldLauncher) {
       assert.deepEqual(initial.photos, [])
       await forward(first)
     }
@@ -137,8 +176,11 @@ await withNativeWorkspace(
     await forward(second)
     assert.equal((await opened(second, 2)).id, secondPhoto.id)
     assert.equal(await readPid(), pid)
+    await call('search', '--text', mac ? 'CAFÉ' : 'CAFE\u0301')
+    const matches = (await call('photos')).photos.map(({ id }) => id)
+    assert.deepEqual(matches, [secondPhoto.id])
 
-    if (!mac) {
+    if (!mac && !linux) {
       const reopened = await restart()
       assert.deepEqual(new Set(reopened.photos.map(({ id }) => id)), new Set([firstPhoto.id, secondPhoto.id]))
       for (const [fixture, id] of [
@@ -152,7 +194,11 @@ await withNativeWorkspace(
     console.log(
       JSON.stringify({
         nativeFileOpen: 'passed',
-        delivery: mac ? 'Launch Services to a running app' : 'executable arguments',
+        delivery: linux
+          ? 'GIO desktop entry to a running app'
+          : mac
+            ? coldLauncher ? 'Launch Services cold then warm' : 'Launch Services to a running app'
+            : 'executable arguments',
         first: {
           input: 'absolute path with spaces',
           dimensions: [first.width, first.height],
@@ -160,16 +206,21 @@ await withNativeWorkspace(
           bytes: first.bytes.length
         },
         second: {
-          input: mac ? 'absolute Unicode path' : 'relative Unicode path from second working directory',
+          input: linux
+            ? 'Unicode file URL'
+            : mac
+              ? 'absolute Unicode path'
+              : 'relative Unicode path from second working directory',
           dimensions: [second.width, second.height],
           rgb: second.rgb,
           bytes: second.bytes.length
         },
         primarySessionRetained: true,
         duplicateRetainedId: true,
-        persistentReload: mac ? undefined : true
+        unicodeSearch: true,
+        persistentReload: mac || linux ? undefined : true
       })
     )
   },
-  { persistent: !mac, prepare, env: { OPENLR_DIAGNOSTICS: '1' } }
+  { persistent: !mac && !linux, prepare, env: { OPENLR_DIAGNOSTICS: '1' }, launch: coldLauncher ? launchCold : undefined }
 )
