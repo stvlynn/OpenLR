@@ -69,7 +69,7 @@ node scripts/desktop.mjs build -o build/release -platform linux/amd64
 xvfb-run -a dbus-run-session -- node scripts/native-suite.mjs build/release/linux-amd64/openlr
 ```
 
-Install Chrome from its official Linux distribution before the version check if absent. Set `OPENLR_TEST_METADATA=1` when the independent [ExifTool oracle](export-metadata.md) has been provisioned, so missing validation tools fail visibly. Xvfb runs the real GTK/WebKit application and IPC bridge; it does not establish physical display, GPU, native chooser, signing or macOS behavior. Application test sessions use isolated temporary catalogs.
+Install Chrome from its official Linux distribution before the version check if absent. Set `OPENLR_TEST_METADATA=1` when the independent [ExifTool oracle](export-metadata.md) has been provisioned, so missing validation tools fail visibly. Hosted Xvfb verification uses `--no-install-recommends` for its three Ubuntu packages after a paired comparison and full native run. Xvfb verifies the real GTK/WebKit application and IPC bridge in a virtual X server, with isolated test catalogs. Physical displays, GPU drivers, system choosers, signing and macOS have separate verification scopes. [APT comparison](../research/linux-dependencies.md#apt-recommendations-comparison)
 
 ## Windows file-open verification
 
