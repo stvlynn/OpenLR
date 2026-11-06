@@ -1,18 +1,19 @@
-name: Apple Silicon video export postmortem
+name: Apple Silicon playback element attachment comparison
 on:
   workflow_dispatch:
     inputs:
       comparison:
-        description: Diagnostic workflow
+        description: Media behavior to compare
         type: choice
-        options: [trace]
-        default: trace
+        options: [attachment]
+        default: attachment
 permissions:
+  actions: read
   contents: read
 jobs:
-  postmortem:
+  attachment:
     runs-on: macos-15
-    timeout-minutes: 25
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
       - uses: actions/checkout@v5
@@ -36,19 +37,29 @@ jobs:
         run: |
           npm ci
           node scripts/desktop.mjs build -o build/release -platform darwin/universal
-      - name: Run the fixed schedule without debugger attachment
+      - name: Build the connected playback candidate
         working-directory: production
-        run: >-
-          node scripts/native-video-export-trials.mjs build/release/darwin-universal/OpenLR.app/Contents/MacOS/OpenLR
-          "$GITHUB_WORKSPACE/build/video-postmortem"
-      - name: Collect delayed system evidence for the owned failed processes
-        if: always()
         run: |
-          if test -f build/video-postmortem/report.json; then
-            node scripts/native-video-postmortem.mjs build/video-postmortem
-          fi
+          node ../scripts/native-video-attachment.mjs apply
+          node scripts/desktop.mjs build -o build/connected -platform darwin/universal
+      - name: Retrieve the exact fixture from the ordinary failure
+        uses: actions/download-artifact@v4
+        with:
+          name: video-postmortem-macos-15
+          run-id: 42299659571
+          github-token: ${{ github.token }}
+          path: build/prior
+      - name: Compare detached and connected playback on the same fixture
+        working-directory: production
+        run: |
+          output="$GITHUB_WORKSPACE/build/video-attachment"
+          mkdir -p "$output"
+          cp ../build/prior/fixture.webm "$output/fixture.webm"
+          node ../scripts/native-video-attachment.mjs compare \
+            build/release/darwin-universal/OpenLR.app/Contents/MacOS/OpenLR \
+            build/connected/darwin-universal/OpenLR.app/Contents/MacOS/OpenLR "$output"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: video-postmortem-macos-15
-          path: build/video-postmortem
+          name: video-attachment-macos-15
+          path: build/video-attachment
