@@ -8,6 +8,7 @@ on:
         options: [load, pause, decoder, poster]
         default: load
 permissions:
+  actions: read
   contents: read
 jobs:
   comparison:
@@ -20,7 +21,7 @@ jobs:
     env:
       VIDEO_COMPARISON: ${{ inputs.comparison || 'load' }}
       VIDEO_CONTROL: ${{ inputs.comparison == 'poster' && 'native-poster' || inputs.comparison == 'decoder' && 'default-decoder' || inputs.comparison == 'pause' && 'frame-first' || 'automatic' }}
-      VIDEO_CANDIDATE: ${{ inputs.comparison == 'poster' && 'decoded-poster' || inputs.comparison == 'decoder' && 'software-decoder' || inputs.comparison == 'pause' && 'anchor-first' || 'explicit' }}
+      VIDEO_CANDIDATE: ${{ inputs.comparison == 'poster' && 'canvas-poster' || inputs.comparison == 'decoder' && 'software-decoder' || inputs.comparison == 'pause' && 'anchor-first' || 'explicit' }}
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -58,34 +59,16 @@ jobs:
               )
               marker, replacement = frame + anchor, anchor + frame
           elif comparison == 'poster':
-              marker = b"""export async function poster(file, diagnostic) {
-            const media = await openVideo(file, diagnostic)
-            try {
-              const frame = await media.frameAt()
-              markVideoImport(diagnostic, 'poster-bitmap', media.video)
-              return { bitmap: await createImageBitmap(frame), duration: media.duration }
-            } finally {
-              media.close()
-            }
-          }
+              marker = b"    return { bitmap: await createImageBitmap(frame), duration: media.duration }\n"
+              replacement = b"""    let image = frame
+              if (frame === media.video) {
+                image = document.createElement('canvas')
+                image.width = media.video.videoWidth
+                image.height = media.video.videoHeight
+                image.getContext('2d').drawImage(frame, 0, 0)
+              }
+              return { bitmap: await createImageBitmap(image), duration: media.duration }
           """
-              replacement = b"""export async function poster(file, diagnostic) {
-            markVideoImport(diagnostic, 'poster-frame-decoder')
-            const { decodeVideoFrames } = await import('./video-frames.js')
-            const source = await decodeVideoFrames(file)
-            try {
-              const duration = await source.duration()
-              if (!duration) throw Error('No playable video track')
-              const frame = await source.at(0)
-              markVideoImport(diagnostic, 'poster-bitmap')
-              return { bitmap: await createImageBitmap(frame), duration }
-            } finally {
-              source.close()
-            }
-          }
-          """
-              frame = b'      at(time) {\n        const requested = timestamp(time)\n'
-              edits.append((Path('web/video-frames.js'), frame, b'      duration: () => input.computeDuration(),\n' + frame))
           else:
               marker = b'\n          video.src = url\n'
               replacement = marker + b'          video.load()\n'
@@ -103,6 +86,19 @@ jobs:
               for file, original in originals.items():
                   file.write_bytes(original)
           PY
+      - name: Retrieve the exact previous media samples
+        if: inputs.comparison == 'poster'
+        uses: actions/download-artifact@v4
+        with:
+          name: video-poster-${{ matrix.os }}
+          path: build/prior-poster-formats
+          run-id: 42284746616
+          github-token: ${{ github.token }}
+      - name: Use the same media samples for both packages
+        if: inputs.comparison == 'poster'
+        run: |
+          mkdir -p build/video-poster-trials
+          cp build/prior-poster-formats/*.{webm,mp4,mov,mkv} build/video-poster-trials/
       - name: Compare actual import, thumbnail and first seek across formats
         run: >-
           node scripts/native-video-poster-formats.mjs

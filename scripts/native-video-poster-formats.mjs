@@ -11,54 +11,17 @@ if (!control || !candidate || !directory) throw Error('Pass the two poster packa
 const destination = path.resolve(directory)
 const ff = (tool, ...args) => execFileSync(tool, args, { stdio: ['ignore', 'pipe', 'inherit'] })
 const variants = [
-  ['vp8.webm', 'libvpx', 'libopus', 'vp8', 'opus'],
-  ['vp9.webm', 'libvpx-vp9', 'libopus', 'vp9', 'opus'],
-  ['h264.mp4', 'libx264', 'aac', 'h264', 'aac'],
-  ['h264.mov', 'libx264', 'aac', 'h264', 'aac'],
-  ['h264.mkv', 'libx264', 'aac', 'h264', 'aac'],
-  ['vp9-709.webm', 'libvpx-vp9', 'libopus', 'vp9', 'opus', true],
-  ['h264-709.mp4', 'libx264', 'aac', 'h264', 'aac', true]
+  ['vp8.webm', 'vp8', 'opus'],
+  ['vp9.webm', 'vp9', 'opus'],
+  ['h264.mp4', 'h264', 'aac'],
+  ['h264.mov', 'h264', 'aac'],
+  ['h264.mkv', 'h264', 'aac'],
+  ['vp9-709.webm', 'vp9', 'opus', true],
+  ['h264-709.mp4', 'h264', 'aac', true]
 ]
 await mkdir(destination, { recursive: true })
-const fixtures = variants.map(([name, video, audio, expectedVideo, expectedAudio, tagged = false]) => {
+const fixtures = variants.map(([name, expectedVideo, expectedAudio, tagged = false]) => {
   const file = path.join(destination, name)
-  ff(
-    'ffmpeg',
-    '-v',
-    'error',
-    '-nostdin',
-    '-f',
-    'lavfi',
-    '-i',
-    "color=0xe03865:s=96x64:r=10:d=1.2,drawbox=color=0x2159db:t=fill:enable='gte(t,0.6)'",
-    '-f',
-    'lavfi',
-    '-i',
-    'sine=frequency=440:sample_rate=48000:duration=1.2',
-    '-c:v',
-    video,
-    '-threads',
-    '1',
-    '-pix_fmt',
-    'yuv420p',
-    '-c:a',
-    audio,
-    ...(tagged
-      ? [
-          '-vf',
-          'scale=in_color_matrix=bt601:out_color_matrix=bt709',
-          '-colorspace',
-          'bt709',
-          '-color_primaries',
-          'bt709',
-          '-color_trc',
-          'bt709',
-          '-color_range',
-          'tv'
-        ]
-      : []),
-    file
-  )
   const { streams, format } = JSON.parse(
     ff('ffprobe', '-v', 'error', '-show_streams', '-show_format', '-of', 'json', file)
   )
@@ -180,6 +143,12 @@ async function verify(label, app) {
         try {
           const { playback } = await call('video-seek', '--time', '0.25')
           record.firstSeek = playback?.time
+          const preview = await call('preview', '--output', path.join(root, 'preview-' + name + '.png'))
+          const display = readPng(await readFile(preview.path))
+          const center = (Math.floor(display.height / 2) * display.width + Math.floor(display.width / 2)) * 4
+          record.detailColor = Array.from(display.data.subarray(center, center + 3), (value) =>
+            Math.round(value * 255)
+          )
         } catch (error) {
           record.seekError = error.message
         }
@@ -194,7 +163,7 @@ const results = {
   platform: process.platform,
   arch: process.arch,
   control: await verify('native', control),
-  candidate: await verify('decoded', candidate)
+  candidate: await verify('canvas', candidate)
 }
 await writeFile(path.join(destination, 'report.json'), JSON.stringify(results, null, 2))
 console.log(JSON.stringify(results))
