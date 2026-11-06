@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { execFile } from 'node:child_process'
-import { readFile, writeFile } from 'node:fs/promises'
+import { readFile, realpath, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { promisify } from 'node:util'
 import { makePng } from '../tests/fixtures/png.mjs'
@@ -29,17 +29,25 @@ await withNativeWorkspace(
     const invoke = async (...args) => {
       const { stdout } = await run(process.execPath, [installedCli, ...args, '--session', session], {
         cwd: root,
+        env: { ...process.env, OPENLR_APP: '' },
         timeout: 32000
       })
       return JSON.parse(stdout)
     }
     const input = path.join(root, 'Installed fixture.png')
+    const discovery = await invoke('open', '--dry-run')
+    assert.equal(discovery.dryRun, true)
+    assert.equal(await realpath(discovery.executable), await realpath(executable))
+    assert.equal(discovery.session, session)
     await writeFile(input, source)
     await invoke('import', input)
     const state = await invoke('state')
     assert.equal(state.photos.length, 1)
     assert.equal(state.photos[0].name, 'Installed fixture.png')
     await invoke('select', '--id', state.photos[0].id)
+    const attached = await invoke('open')
+    assert.equal(attached.launched, false)
+    assert.equal(attached.state.photo.id, state.photos[0].id)
     const preview = await invoke('preview', '--output', path.join(root, 'preview.png'))
     const { width, height, data } = readPng(await readFile(preview.path))
     assert.deepEqual([width, height], [32, 24])
@@ -61,6 +69,7 @@ await withNativeWorkspace(
     console.log(
       JSON.stringify({
         installedCli: 'passed',
+        discoveredAndAttached: true,
         dimensions: [width, height],
         rgb,
         originalBytes: source.length

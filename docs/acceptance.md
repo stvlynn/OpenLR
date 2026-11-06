@@ -4,6 +4,10 @@
 
 ## 桌面验收与交付快照 — 2026-11-07
 
+`5599804` 的四平台托管验收已全部通过，包含 Windows NSIS 安装、随包 CLI 和卸载，Ubuntu 安装后的完整原生套件，以及两种 macOS 的 DMG 复制检查。Windows 浏览器 480 项通过、8 项可选资源跳过、零失败。[完整矩阵](https://github.com/stvlynn/OpenLR/actions/runs/42278480431)
+
+旧随包 CLI 在首个状态请求超时后会启动第二进程，并把现有工作区的结果标为该进程启动成功。修复后，两个受控 loopback 时序均返回已有会话，重建的 Windows 包也通过实际冷启动、会话进程 ID 比对、再次接入、预览像素与原件读回。[CLI 启动行为](agent-cli.md)
+
 Ubuntu 专项通过 APT 实际安装 `.deb`，从 `/usr/bin/openlr` 执行完整 Xvfb 原生套件，验证了视频导出、随包 CLI、桌面入口和清除后的文件状态。Intel 与 Apple Silicon macOS 均从实际 DMG 复制应用，卸载磁盘镜像后运行复制件和随包 CLI。三项安装专项均读回 32×24 预览及 93 字节原件。[Ubuntu 安装专项](https://github.com/stvlynn/OpenLR/actions/runs/42277094106) · [macOS DMG 专项](https://github.com/stvlynn/OpenLR/actions/runs/42277396982)
 
 后续 `b0eb03a` 的 Windows 浏览器任务有一项草稿等待超时，另一项视频处理用例在导入后未找到照片，原断言未读取导入失败清单。两份原始用例在本机使用同版 Chrome 156.0.8078.80 单独运行时 8/8 通过，尚未定位间歇原因。视频用例现先断言导入结果，Windows 浏览器失败也会保留失败状态，同时继续独立的原生构建与安装检查。[Windows 托管日志](https://github.com/stvlynn/OpenLR/actions/runs/42276151274/job/128092863907)

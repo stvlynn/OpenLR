@@ -226,7 +226,7 @@ export async function connect(filename) {
     config.version !== 1
   )
     throw new Error('Invalid local GUI agent session')
-  return { url, token: config.token }
+  return { url, token: config.token, pid: config.pid }
 }
 
 const mimeTypes = {
@@ -262,18 +262,11 @@ async function importPayload(files) {
   return result
 }
 
-async function launchWorkspace(request) {
-  const state = () =>
-    execute({ command: 'state', args: { summary: true }, session: request.session, timeout: 4 })
-  if (!request.dryRun) {
-    try {
-      return { launched: false, state: await state() }
-    } catch {}
-  }
+async function workspaceExecutable(app) {
   const name =
     process.platform === 'win32' ? 'OpenLR.exe' : process.platform === 'darwin' ? 'OpenLR' : 'openlr'
-  const paths = request.app
-    ? [path.resolve(request.app)]
+  const paths = app
+    ? [path.resolve(app)]
     : [
         fileURLToPath(new URL('../' + name, import.meta.url)),
         fileURLToPath(new URL('../../MacOS/' + name, import.meta.url)),
@@ -291,38 +284,98 @@ async function launchWorkspace(request) {
           )
         )
       ]
-  let executable
   for (const candidate of paths) {
     try {
-      if ((await stat(candidate)).isFile()) {
-        executable = candidate
-        break
-      }
+      if ((await stat(candidate)).isFile()) return candidate
     } catch {}
   }
-  if (!executable) throw Error('Cannot locate OpenLR. Pass --app with the desktop executable path.')
-  if (request.dryRun) return { dryRun: true, executable, session: request.session }
-  const host = spawn(executable, [], {
-    detached: true,
-    stdio: 'ignore',
-    windowsHide: true,
-    env: { ...process.env, OPENLR_AGENT_FILE: request.session }
-  })
-  let launchError
-  host.once('error', (error) => {
-    launchError = error
-  })
-  host.unref()
+  throw Error('Cannot locate OpenLR. Pass --app with the desktop executable path.')
+}
+
+async function agentAvailable(session) {
+  try {
+    const { url, token } = await connect(session)
+    const response = await fetch(new URL('/health', url), {
+      headers: { Authorization: 'Bearer ' + token },
+      signal: AbortSignal.timeout(4000)
+    })
+    const health = await response.json()
+    return response.ok && health.ok === true && health.version === 1
+  } catch {
+    return false
+  }
+}
+
+async function launchWorkspace({ session, app, dryRun }) {
+  if (dryRun) return { dryRun: true, executable: await workspaceExecutable(app), session }
+  const readState = async () => {
+    const connection = await connect(session)
+    const { result } = await requestAgent(connection, {
+      command: 'state',
+      args: { summary: true },
+      timeout: 4
+    })
+    return { state: result, pid: connection.pid }
+  }
+  try {
+    const { state } = await readState()
+    return { launched: false, state }
+  } catch {}
+
+  // The broker can answer health checks while the current renderer is starting.
+  let host, launchError
+  if (!(await agentAvailable(session))) {
+    host = spawn(await workspaceExecutable(app), [], {
+      detached: true,
+      stdio: 'ignore',
+      windowsHide: true,
+      env: { ...process.env, OPENLR_AGENT_FILE: session }
+    })
+    host.once('error', (error) => {
+      launchError = error
+    })
+    host.unref()
+  }
   const until = Date.now() + 45000
   while (Date.now() < until) {
     if (launchError) throw launchError
     try {
-      return { launched: true, pid: host.pid, state: await state() }
+      const { state, pid } = await readState()
+      // Another primary can publish its session during a concurrent launch.
+      return host?.pid && host.pid === pid ? { launched: true, pid, state } : { launched: false, state }
     } catch {}
-    if (host.exitCode !== null || host.signalCode) throw Error('OpenLR exited before the workspace connected')
+    if (host && (host.exitCode !== null || host.signalCode))
+      throw Error('OpenLR exited before the workspace connected')
     await delay(150)
   }
-  throw Error('The desktop started but its workspace is still unavailable')
+  throw Error(
+    host
+      ? 'The desktop started but its workspace is still unavailable'
+      : 'The running OpenLR workspace is still unavailable'
+  )
+}
+
+async function requestAgent(connection, { command, args, capture, timeout }) {
+  let response
+  try {
+    response = await fetch(new URL('/command', connection.url), {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + connection.token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ command, args, capture: Boolean(capture) }),
+      signal: timeout ? AbortSignal.timeout(Math.round(timeout * 1000)) : undefined
+    })
+  } catch (error) {
+    throw new Error('Cannot reach the live OpenLR GUI agent: ' + (error.cause?.message || error.message))
+  }
+  const envelope = await response.json()
+  if (!response.ok || !envelope.ok) {
+    const error = new Error(
+      envelope.error?.message || envelope.error || 'Agent returned HTTP ' + response.status
+    )
+    if (envelope.error?.details) error.details = envelope.error.details
+    throw error
+  }
+  return envelope
 }
 export async function execute(request) {
   if (Object.hasOwn(request, 'local')) return request.local
@@ -353,25 +406,7 @@ export async function execute(request) {
     if (rule.localFile && typeof args[key] === 'string') args[key] = (await importPayload([args[key]]))[0]
   if (command === 'sync' && !args.password && process.env.OPENLR_DAV_PASSWORD)
     args.password = process.env.OPENLR_DAV_PASSWORD
-  let response
-  try {
-    response = await fetch(new URL('/command', connection.url), {
-      method: 'POST',
-      headers: { Authorization: 'Bearer ' + connection.token, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ command, args, capture: Boolean(capture) }),
-      signal: request.timeout ? AbortSignal.timeout(Math.round(request.timeout * 1000)) : undefined
-    })
-  } catch (error) {
-    throw new Error('Cannot reach the live OpenLR GUI agent: ' + (error.cause?.message || error.message))
-  }
-  const envelope = await response.json()
-  if (!response.ok || !envelope.ok) {
-    const error = new Error(
-      envelope.error?.message || envelope.error || 'Agent returned HTTP ' + response.status
-    )
-    if (envelope.error?.details) error.details = envelope.error.details
-    throw error
-  }
+  const envelope = await requestAgent(connection, { command, args, capture, timeout: request.timeout })
   const result = envelope.result
   if (capture) {
     if (!envelope.frame) throw Error('The desktop did not return a workspace image')

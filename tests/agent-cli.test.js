@@ -74,6 +74,44 @@ test('offline discovery and dry runs validate real command arguments', async () 
   assert.throws(() => parse(['state', '--unexpected', 'true']), /Unknown option/)
 })
 
+for (const [description, healthy] of [
+  ['open waits for a healthy broker when the existing renderer is still starting', true],
+  ['open reports attachment when an existing workspace answers after a launch attempt', false]
+]) {
+  test(description, async (t) => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), 'openlr-agent-open-'))
+    const session = path.join(directory, 'agent.json')
+    const requests = []
+    const server = createServer((request, response) => {
+      assert.equal(request.headers.authorization, 'Bearer existing')
+      request.resume()
+      requests.push(request.url)
+      response.setHeader('Content-Type', 'application/json')
+      if (request.url === '/health') response.end(JSON.stringify({ ok: healthy, version: 1 }))
+      else if (requests.length > 1) response.end(JSON.stringify({ ok: true, result: { selected: 'photo' } }))
+    })
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+    t.after(async () => {
+      server.closeAllConnections()
+      await new Promise((resolve) => server.close(resolve))
+      await rm(directory, { recursive: true, force: true })
+    })
+    await writeFile(
+      session,
+      JSON.stringify({
+        version: 1,
+        url: 'http://127.0.0.1:' + server.address().port,
+        token: 'existing',
+        pid: process.pid
+      })
+    )
+    const executable = healthy ? path.join(directory, 'missing-executable') : process.execPath
+    const result = await execute(parse(['open', '--session', session, '--app', executable]))
+    assert.deepEqual(result, { launched: false, state: { selected: 'photo' } })
+    assert.deepEqual(requests, ['/command', '/health', '/command'])
+  })
+}
+
 test('watch observes only read-only state or export progress and preserves null/results/capture', async (t) => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'openlr-export-watch-'))
   t.after(() => rm(directory, { recursive: true, force: true }))

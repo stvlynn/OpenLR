@@ -1,4 +1,4 @@
-import { open, readFile, readdir } from 'node:fs/promises'
+import { open, readdir } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import path from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
@@ -31,10 +31,9 @@ export async function inspectNativeStartup({
   let connection
   try {
     connection = await connect(session)
-    const descriptor = JSON.parse(await readFile(session, 'utf8'))
     result.session = {
       valid: true,
-      matchesHost: Number.isSafeInteger(host.pid) && host.pid > 0 && descriptor.pid === host.pid
+      matchesHost: Number.isSafeInteger(host.pid) && host.pid > 0 && connection.pid === host.pid
     }
     if (!result.session.matchesHost) return result
   } catch (error) {

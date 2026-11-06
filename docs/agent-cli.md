@@ -5,6 +5,7 @@ OpenLR exposes the same command queue to its controls, a browser automation API,
 The command workflow is inspired by [Cloudflare's cf agent guidance](https://developers.cloudflare.com/cf/agents/): discover commands, inspect their inputs, preview requests, and return machine-readable results. No Cloudflare dependency, account, or code is used.
 
 ```powershell
+node cli/openlr.mjs open
 node cli/openlr.mjs cli search "adjust exposure"
 node cli/openlr.mjs schema edit
 node cli/openlr.mjs edit --key Exposure --value 0.5 --dry-run
@@ -16,7 +17,9 @@ node cli/openlr.mjs preview --output preview.png
 node cli/openlr.mjs export --format image/png --output edited.png
 ```
 
-Run the native OpenLR GUI before commands that read or change live state. `cli search`, `schema`, `--help`, and `--dry-run` work without it. `web/agent-protocol.js` owns the command definitions used by discovery and validation. `web/app.js` owns the implementation and the serialized command queue.
+Open the native GUI directly or use `open` before commands that read or change live state. From a packaged CLI, `open --dry-run` resolves the adjacent executable without launching it or contacting the GUI. Use `--app` to specify a different executable location. If the local broker is reachable and its renderer is still starting, `open` waits for that workspace. It returns `launched: false` with the existing workspace state. A new launch returns `launched: true` and the PID only when the responding session belongs to the started process.
+
+`cli search`, `schema`, `--help`, and `--dry-run` work without a running GUI. `web/agent-protocol.js` owns the command definitions used by discovery and validation. `web/app.js` owns the implementation and the serialized command queue.
 
 The shared queue validates command arguments before executing an action or recording history. This also applies to direct `window.openlr.run` calls, so invalid crop coordinates or non-finite movement cannot corrupt the live draft through browser automation.
 
