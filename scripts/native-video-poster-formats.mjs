@@ -6,8 +6,9 @@ import { setTimeout as delay } from 'node:timers/promises'
 import { readPng } from '../web/png.js'
 import { withNativeWorkspace } from './native-workspace.mjs'
 
-const [app, directory] = process.argv.slice(2)
-if (!app || !directory) throw Error('Pass the packaged application and report directory')
+const [control, candidate, directory] = process.argv.slice(2)
+if (!control || !candidate || !directory)
+  throw Error('Pass both packaged applications and the report directory')
 const destination = path.resolve(directory)
 const ff = (tool, ...args) => execFileSync(tool, args, { stdio: ['ignore', 'pipe', 'inherit'] })
 const variants = [
@@ -187,14 +188,22 @@ const results = {
   arch: process.arch,
   sweeps: []
 }
-// Each source occupies each sequence position once, including a cold workspace import.
-for (let index = 0; index < fixtures.length; index++) {
-  const order = fixtures.slice(index).concat(fixtures.slice(0, index))
-  results.sweeps.push(await verify(`sweep-${index + 1}`, app, order))
-  await writeFile(path.join(destination, 'report.json'), JSON.stringify(results, null, 2))
+// Keep both arms balanced across run order and each source's position in a fresh workspace.
+for (const [arm, app, start] of [
+  ['control', control, 0],
+  ['release-first', candidate, 0],
+  ['release-first', candidate, 2],
+  ['control', control, 2]
+]) {
+  for (let index = start; index < start + 2; index++) {
+    const order = fixtures.slice(index).concat(fixtures.slice(0, index))
+    const records = await verify(`${arm}-${index + 1}`, app, order)
+    results.sweeps.push({ arm, index, records })
+    await writeFile(path.join(destination, 'report.json'), JSON.stringify(results, null, 2))
+  }
 }
 console.log(JSON.stringify(results))
-for (const record of results.sweeps.flat()) {
+for (const record of results.sweeps.flatMap(({ records }) => records)) {
   assert.equal(record.accepted, true, record.name + ' import compatibility')
   assert.deepEqual(record.size, [96, 64], record.name)
   assert.ok(Math.abs(record.catalogDuration - record.duration) < 0.06, record.name + ' duration')
