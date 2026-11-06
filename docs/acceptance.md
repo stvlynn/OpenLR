@@ -4,7 +4,9 @@
 
 ## 桌面验收与交付快照 — 2026-11-07
 
-`dad42fe` 在本机 Windows Chrome 启用独立色彩和元数据校验，完整浏览器回归 **491/491，零失败、零跳过**，297.8 秒。两种 macOS 正式包对照均验证六种可播放样本的首帧缩略图和原件字节。Intel 的跳转也全部通过，Apple Silicon 在一条 BT.709 VP9 的 0.25 秒跳转收到原生解码错误。后续 `6715e0e` 的定向浏览器回归 **10/10**，覆盖旧视频缩略图重建、原件和编辑参数保留，以及 RAW 缓存和视频操作。该提交的完整四平台矩阵另行运行。[正式包专项](https://github.com/stvlynn/OpenLR/actions/runs/42289483649) · [旧缓存修复矩阵](https://github.com/stvlynn/OpenLR/actions/runs/42290137975)
+`6715e0e` 在本机 Windows Chrome 启用独立色彩和元数据校验，完整浏览器回归 **492/492，零失败、零跳过**，308.8 秒。包括旧视频缩略图重建、原件和编辑参数保留，以及 RAW 缓存和视频操作。[旧缓存修复矩阵](https://github.com/stvlynn/OpenLR/actions/runs/42290137975)
+
+`dad42fe` 的四平台托管矩阵全部通过。Windows 托管浏览器 483 项通过、零失败、8 项可选资源跳过，实际 NSIS 安装及卸载、六种文件关联和随包 CLI 也通过。两种 macOS 正式包的独立对照均验证六个可播放样本的首帧缩略图和原件字节。Intel 的跳转全部通过，Apple Silicon 在一条 BT.709 VP9 的 0.25 秒跳转收到原生解码错误。Ubuntu 托管发行包另行通过 GTK Portal 的目录选择和保存，实际 D-Bus 前端和后端均有记录。[四平台矩阵](https://github.com/stvlynn/OpenLR/actions/runs/42289203264) · [正式包视频专项](https://github.com/stvlynn/OpenLR/actions/runs/42289483649) · [Portal 目录选择](local-folders.md#verification) · [Portal 保存](export-settings.md#verification)
 
 `d2f15aa` 的四平台托管验收全部通过。Windows 浏览器 482 项通过、零失败、8 项可选资源跳过，安装包和三项短音频也通过。Ubuntu 完成实际 Debian 安装后的原生套件，两种 macOS 完成 DMG 复制和原生验收。独立冷启动专项在两种 macOS 均由随包 CLI 启动复制件，核对会话 PID、再次接入、4×3 预览、73 字节原件和清理。[四平台结果](https://github.com/stvlynn/OpenLR/actions/runs/42281028302) · [macOS 冷启动结果](https://github.com/stvlynn/OpenLR/actions/runs/42282761330)
 
