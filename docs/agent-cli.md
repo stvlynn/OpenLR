@@ -20,6 +20,8 @@ Run the native OpenLR GUI before commands that read or change live state. `cli s
 
 The shared queue validates command arguments before executing an action or recording history. This also applies to direct `window.openlr.run` calls, so invalid crop coordinates or non-finite movement cannot corrupt the live draft through browser automation.
 
+`rate`, `flag`, `keywords`, `label`, `capture-time`, `membership`, `delete`, `restore` and `paste-edits` accept `--expectedIds '["PHOTO_ID", "OTHER_ID"]'` to require that exact selected group when the queued command executes. A changed membership rejects without writing; order is ignored. Their GUI controls supply this guard. `rename` instead accepts a single active `photoId` guard. Without it, commands continue to use execution-time selection, including auto-advance.
+
 `local-cancel` discards an in-progress brush, gradient or repair stroke and reports `{canceled:boolean}` without changing the selected tool or committed recipe. It shares the GUI Escape action and accepts an optional `--photoId` guard. Pointer cancellation and leaving the editing surface clear the same transient state; see [local tools](local-tools.md).
 
 Full and summary `state` expose `clipping`, the current workspace highlight/shadow warning toggle. The `clipping` command, Histogram button and J shortcut share this state. Warnings affect the displayed canvas, not exported image pixels or edit recipes. Starting a color sampler clears them.

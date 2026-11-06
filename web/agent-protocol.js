@@ -41,6 +41,11 @@ const entry = (summary, properties = {}, required = [], extra = {}) => ({
 })
 const edits = Object.assign({}, ...Object.values(controls))
 const draftMode = { type: 'boolean', description: 'Stage a temporary change without saving it' }
+const expectedIds = {
+  type: 'array',
+  items: { type: 'string' },
+  description: 'Optional exact selected-photo membership guard; order is ignored'
+}
 export const ADJUSTMENT_DRAFT_MESSAGES = Object.freeze({
   numericOnly: 'Choose a numeric adjustment for the draft',
   strokeOnly: 'Choose a brush, linear or radial mask for the draft',
@@ -219,18 +224,16 @@ export const definitions = {
   ),
   rename: entry(
     'Rename the selected imported library photo',
-    { name: string('File name, including extension') },
+    { name: string('File name, including extension'), photoId: string('Optional selected-photo guard') },
     ['name']
   ),
-  'capture-time': entry('Set capture time on selected photos', { time: string('ISO date and time') }, [
-    'time'
-  ]),
+  'capture-time': entry(
+    'Set capture time on selected photos',
+    { time: string('ISO date and time'), expectedIds },
+    ['time']
+  ),
   purge: entry('Permanently remove the selected deleted library photos, releasing unreferenced originals', {
-    expectedIds: {
-      type: 'array',
-      items: { type: 'string' },
-      description: 'Optional exact selected-photo membership guard; order is ignored'
-    }
+    expectedIds
   }),
   'mask-overlay': entry(
     'Show, hide or toggle the selected mask coverage overlay without changing photo pixels',
@@ -358,7 +361,10 @@ export const definitions = {
   ),
   label: entry(
     'Set a color label on the selected photos',
-    { value: string('Empty clears the color', { enum: ['', 'red', 'yellow', 'green', 'blue', 'purple'] }) },
+    {
+      value: string('Empty clears the color', { enum: ['', 'red', 'yellow', 'green', 'blue', 'purple'] }),
+      expectedIds
+    },
     ['value']
   ),
   'lens-profiles': entry('List the bundled licensed Lensfun rectilinear profiles', {
@@ -762,25 +768,28 @@ export const definitions = {
   ),
   membership: entry(
     'Toggle selected photo membership in an album',
-    { album: string('Album ID from state') },
+    { album: string('Album ID from state'), expectedIds },
     ['album']
   ),
   rate: entry(
     'Set the selected photo star rating',
-    { value: number('Star rating', 0, 5, { type: 'integer' }), advance: { type: 'boolean' } },
+    { value: number('Star rating', 0, 5, { type: 'integer' }), advance: { type: 'boolean' }, expectedIds },
     ['value']
   ),
   flag: entry(
     'Set picked, rejected, or unflagged',
     {
       value: string('Empty string clears the flag', { enum: ['pick', 'reject', ''] }),
-      advance: { type: 'boolean' }
+      advance: { type: 'boolean' },
+      expectedIds
     },
     ['value']
   ),
-  keywords: entry('Set keywords on the selected photo', { value: string('Keywords text') }, ['value']),
-  delete: entry('Move the selected photo to Deleted without removing its original'),
-  restore: entry('Restore the selected photo from Deleted'),
+  keywords: entry('Set keywords on the selected photo', { value: string('Keywords text'), expectedIds }, [
+    'value'
+  ]),
+  delete: entry('Move the selected photo to Deleted without removing its original', { expectedIds }),
+  restore: entry('Restore the selected photo from Deleted', { expectedIds }),
   'copy-edits': entry('Copy active-photo edits for pasting to the selected group', {
     photoId: string('Optional active-photo guard for the copy source'),
     keys: {
@@ -789,7 +798,7 @@ export const definitions = {
       description: 'Optional edit keys to copy; omit for the entire recipe'
     }
   }),
-  'paste-edits': entry('Paste copied edits to every selected photo, with per-photo undo'),
+  'paste-edits': entry('Paste copied edits to every selected photo, with per-photo undo', { expectedIds }),
   'version-save': entry(
     'Save a named immutable edit snapshot on the active photo',
     { name: string('Version name') },
@@ -1200,7 +1209,7 @@ export function validateArgs(command, args) {
     (args.id === undefined || args.path.some((index) => index !== 0 && index !== 1))
   )
     throw Error('A component path requires a root ID and zero/one indexes')
-  if (command === 'purge' && args.expectedIds?.some((id) => typeof id !== 'string'))
+  if (args.expectedIds?.some((id) => typeof id !== 'string'))
     throw Error('expectedIds must contain photo IDs')
   if (command === 'album-rule') validateSmartRule(args.rule)
   if (command === 'repair-source') {

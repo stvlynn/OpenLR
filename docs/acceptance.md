@@ -2,9 +2,15 @@
 
 对照目标为本机 Adobe Lightroom 9.4 云桌面版。REA 证据来自可执行文件及其资源；登录后的 Windows 运行观察已核对裁剪、蒙版入口及导出设置，见 [运行记录](../research/lightroom.md#登录后的-windows-运行观察)。当前仍未建立全部功能逐屏、逐像素的 Adobe 对照。静态入口、独立实现及实际通过的测试分别记录。
 
+## 批量元数据的目标校验 — 2026-11-06
+
+实际复现了旧界面的星级和相册归属操作在排队切换照片后写到新照片的问题。星级、旗标、关键词、颜色标签、拍摄时间、相册归属、删除／恢复与粘贴编辑现共用精确选择成员校验；重命名使用单张照片校验。GUI 提交预期目标，CLI 可用同样的可选参数，普通无保护参数命令和自动前进保持原有语义。
+
+Windows／Chrome 156.0.8078.80 完整配置回归 **471/471，零失败、零跳过**，346.8 秒；17 项队列专项通过真实键盘和鼠标验证目标替换与多选扩展。随后扩展的 ID 元素类型校验及新增离线用例单独通过 **10/10 CLI 测试**。最终重建的 Windows 包通过实际 CLI 组织流程、重启持久化、预设像素和三份原件字节检查；安装器生成，未执行安装。打包单文件 CLI 的离线预览包含新参数。跨平台验证仍待此次提交后的 Actions。见[复现与验证](../research/command-interaction-inventory.md#queued-rating-and-flag-ownership--2026-11-06)及[批量契约](catalog-organization.md)。
+
 ## Photos 与 Inspector viewport — 2026-11-06
 
-后续 `ba97bfe` 的 [Actions 42199076678](https://github.com/stvlynn/OpenLR/actions/runs/42199076678) 已通过 Windows、Intel macOS 和 ARM64 macOS。Windows 浏览器 **453 通过、8 项可选资源跳过、零失败**；Photos 截图完全一致，Inspector 最大差异为一个 8-bit 码值，没有像素超限。打包、二十组普通原生流程及三项独立短音频检查通过，包括重复文件转交和两个侧栏。Linux 此时仍在依赖安装，尚未执行该次产品检查；此前 `9fc50ae` 已通过相同产品代码和原生脚本的 Linux 全套，后续差异是文档及浏览器截图比较。历史失败保留，成功运行不证明间歇问题的原因。侧栏四平台数据见[记录](../research/panel-viewport.md)。
+后续 `ba97bfe` 的 [Actions 42199076678](https://github.com/stvlynn/OpenLR/actions/runs/42199076678) 已通过 Windows、Intel macOS 和 ARM64 macOS。Windows 浏览器 **453 通过、8 项可选资源跳过、零失败**；Photos 截图完全一致，Inspector 最大差异为一个 8-bit 码值，没有像素超限。打包、二十组普通原生流程及三项独立短音频检查通过，包括重复文件转交和两个侧栏。Linux 作业最终在依赖安装阶段耗尽 30 分钟并取消，未执行该次编译或产品检查；此前 `9fc50ae` 已通过相同产品代码和原生脚本的 Linux 全套，后续差异是文档及浏览器截图比较。历史失败保留，成功运行不证明间歇问题的原因。侧栏四平台数据见[记录](../research/panel-viewport.md)。
 
 干净 `9fc50ae` 归档已独立构建 Windows 包，并通过复制到源码树外的单文件 CLI 执行 205 次命令和四次 watch，会话覆盖五种 viewport、实际 PNG、状态和原件；十项分发资源字节检查通过。见[归档交付](delivery-review.md#windows-tracked-snapshot-9fc50ae)。[手动 Mac 对照实验](https://github.com/stvlynn/OpenLR/actions/runs/42201873706)的八次独立宿主均通过首帧、实际定位、解码 PNG 和播放进度检查。自动预载与显式加载都未重现普通导入超时，结果不足以证明后者更优，因此保留产品加载路径；详细时序和实验边界见[视频记录](../research/native-video.md#paired-native-readiness-probe)。
 

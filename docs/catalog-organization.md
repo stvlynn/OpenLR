@@ -4,6 +4,8 @@ The [research record](../research/catalog-organization.md) separates Lightroom d
 
 ## Selection and batch actions
 
+The rating, flag, keywords, color label, capture time, album membership, Delete/Restore and Paste edits controls capture their selected photo IDs when activated. If queued work changes that membership before the command executes, the action reports that the selection changed and writes nothing. The corresponding CLI commands accept the same optional `expectedIds` array; order is ignored. Omitting it retains execution-time selection and existing auto-advance behavior. This guard also detects an added or removed batch member while the active photo stays the same. Rename targets one active photo and accepts an optional `photoId` guard, which its GUI input supplies.
+
 Click a photo to make it the single selection and active editor image. Ctrl/Command-click toggles it in the selection. Shift-click selects the visible range from the anchor; Ctrl/Command-Shift extends that range. Select all and Ctrl/Command-A select the current filtered view. Clear selection empties the selection. Filtering and changing scopes prevent hidden photographs from staying selected.
 
 The outlined active photo supplies the editor, preview, single-photo CLI export, copy source, and versions. GUI Export and Export again process the selected group when more than one photo is selected; see [batch export](batch-export.md). Star rating, flag, keywords, album membership, Delete/Restore, and Paste edits apply to the selected group. A slider change changes only the active photo. Batch writes finish one photo at a time; a failure reports the completed count and stops, rather than pretending the whole group was updated.

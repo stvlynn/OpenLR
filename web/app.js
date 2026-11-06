@@ -58,7 +58,7 @@ import { exportSelection, BATCH_EXPORT_MESSAGES } from './batch-export.js'
 import { ExportProgress, EXPORT_PROGRESS_MESSAGES } from './export-progress.js'
 import { getImageWorkerDiagnostics } from './image-worker.js'
 import { EXPORT_FORMATS } from './formats.js'
-import { Organization, namedVersion, findVersion, PURGE_MESSAGES } from './organization.js'
+import { Organization, namedVersion, findVersion, PURGE_MESSAGES, assertSelection } from './organization.js'
 import { validateSmartRule, sameSmartRule, SMART_ALBUM_MESSAGES } from './smart-album-rule.js'
 import { mountOrganization } from './organization-ui.js'
 import { COPY_MESSAGES } from './copy-options.js'
@@ -1026,6 +1026,8 @@ const exportProgress = new ExportProgress((job) => {
 })
 async function execute(command, args, context = {}) {
   const p = active()
+  if (args.expectedIds !== undefined && command !== 'purge')
+    assertSelection(organization.targets(photos), args.expectedIds)
   if (context.draftSource?.canceled && command !== 'draft-cancel') return null
   if (args.draft && context.draftSource && (!p || p.edit !== context.draftEdit || p.id !== args.photoId))
     return null
@@ -2026,6 +2028,7 @@ async function execute(command, args, context = {}) {
           break
         }
         case 'rename': {
+          if (args.photoId !== undefined && args.photoId !== p.id) throw Error('The selected photo changed')
           if (local.state()) throw Error('Rename local originals in their source folder')
           const name = String(args.name || '').trim()
           if (
@@ -2039,11 +2042,7 @@ async function execute(command, args, context = {}) {
         }
         case 'purge': {
           const targets = organization.targets(photos)
-          if (args.expectedIds !== undefined) {
-            const expected = new Set(args.expectedIds)
-            if (expected.size !== targets.length || targets.some((photo) => !expected.has(photo.id)))
-              throw Error(PURGE_MESSAGES.changedSelection)
-          }
+          assertSelection(targets, args.expectedIds, PURGE_MESSAGES.changedSelection)
           if (local.state() || !targets.length || targets.some((photo) => !photo.deleted))
             throw Error('Select deleted library photos')
           const ids = new Set(targets.map((photo) => photo.id)),
@@ -2540,6 +2539,9 @@ function notice(text) {
 function act(cmd, args, context) {
   return run(cmd, args, undefined, context).catch((e) => notice(e.message))
 }
+function actSelection(command, args = {}) {
+  return act(command, { ...args, expectedIds: organization.targets(photos).map((p) => p.id) })
+}
 function gestureAdjustment(command, source, change) {
   if (!change) return act('draft-cancel', { id: '' }, { draftSource: source })
   return act(
@@ -2748,12 +2750,12 @@ $('remove-mask').onclick = () => {
 }
 $('sample').onclick = () => act('sample-tool')
 $('pair').onclick = () => act('compare-pair')
-$('rate').onchange = (e) => act('rate', { value: Number(e.target.value) })
-$('flag').onchange = (e) => act('flag', { value: e.target.value })
-$('keywords').onchange = (e) => act('keywords', { value: e.target.value })
-$('color-label').onchange = (e) => act('label', { value: e.target.value })
-$('rename-photo').onchange = (e) => act('rename', { name: e.target.value })
-$('capture-time').onchange = (e) => act('capture-time', { time: e.target.value })
+$('rate').onchange = (e) => actSelection('rate', { value: Number(e.target.value) })
+$('flag').onchange = (e) => actSelection('flag', { value: e.target.value })
+$('keywords').onchange = (e) => actSelection('keywords', { value: e.target.value })
+$('color-label').onchange = (e) => actSelection('label', { value: e.target.value })
+$('rename-photo').onchange = (e) => act('rename', { name: e.target.value, photoId: selected })
+$('capture-time').onchange = (e) => actSelection('capture-time', { time: e.target.value })
 let purgeSelection = null
 $('purge').onclick = () => {
   purgeSelection = organization.targets(photos).map((photo) => photo.id)
@@ -2766,8 +2768,8 @@ $('purge-dialog').onclose = (e) => {
   if (e.target.returnValue === 'ok' && expectedIds) act('purge', { expectedIds })
   e.target.returnValue = ''
 }
-$('delete').onclick = () => act(active()?.deleted ? 'restore' : 'delete')
-$('membership').onchange = (e) => act('membership', { album: e.target.value })
+$('delete').onclick = () => actSelection(active()?.deleted ? 'restore' : 'delete')
+$('membership').onchange = (e) => actSelection('membership', { album: e.target.value })
 $('compare').onclick = () => act('compare')
 $('preset-list').onchange = (e) => {
   $('preset-delete').disabled = presets.builtIn(e.target.value)

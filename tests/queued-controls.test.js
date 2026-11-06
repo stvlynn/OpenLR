@@ -117,6 +117,107 @@ test('queued controls use the intended photo and apply relative actions once', a
     return { page, run, first, second }
   }
 
+  await t.test('rating and flag controls reject changed selection membership before writing', async (t) => {
+    const { page, run, first, second } = await workspace(t)
+    for (const [control, field, neutral] of [
+      ['#rate', 'rating', 0],
+      ['#flag', 'flag', '']
+    ]) {
+      for (const ids of [[second], [first, second]]) {
+        await run('select', { id: first })
+        await holdThumbnail(page, control, 'change')
+        await page.evaluate((ids) => {
+          window.openlr.run('edit', { key: 'Contrast', value: 20 })
+          window.openlr.run('select-many', { ids })
+        }, ids)
+        await page.waitForFunction(() => Boolean(window.catalogThumbnailHold.release))
+        await page.locator(control).press('ArrowDown')
+        assert.equal(await page.evaluate(() => window.catalogThumbnailHold.trustedEvents), 1)
+        await page.evaluate(() => window.catalogThumbnailHold.release())
+        const state = await run('state')
+        assert.deepEqual(
+          state.photos.map((p) => p[field]),
+          [neutral, neutral]
+        )
+        assert.match(await page.locator('#notice').textContent(), /selection changed/i)
+      }
+    }
+    await run('select-many', { ids: [first, second] })
+    await run('rate', { value: 3, expectedIds: [second, first] })
+    await run('flag', { value: 'pick', expectedIds: [first, second] })
+    await assert.rejects(() => run('rate', { value: 5, expectedIds: [first] }), /selection changed/i)
+    await assert.rejects(() => run('flag', { value: 'reject', expectedIds: [first] }), /selection changed/i)
+    assert.ok((await run('state')).photos.every((p) => p.rating === 3 && p.flag === 'pick'))
+    await page.reload()
+    await page.waitForFunction(() => window.openlr)
+    assert.ok((await run('state')).photos.every((p) => p.rating === 3 && p.flag === 'pick'))
+    const before = await run('state')
+    const [advanceFrom, advanceTo] = before.photos.map((p) => p.id)
+    await run('select', { id: advanceFrom })
+    await run('rate', { value: 2, advance: true })
+    const advanced = await run('state')
+    assert.equal(advanced.photos.find((p) => p.id === advanceFrom).rating, 2)
+    assert.equal(advanced.selected, advanceTo)
+  })
+
+  await t.test('batch metadata controls reject queued replacement and expanded selections', async (t) => {
+    for (const [control, action, event] of [
+      ['#membership', 'arrow', 'change'],
+      ['#keywords', 'text', 'change'],
+      ['#color-label', 'arrow', 'change'],
+      ['#capture-time', 'date', 'change'],
+      ['#delete', 'click', 'click'],
+      ['#paste-edits', 'click', 'click'],
+      ['#rename-photo', 'text', 'change']
+    ]) {
+      await t.test(control, async (t) => {
+        const { page, run, first, second } = await workspace(t)
+        await run('album', { name: 'Queue target' })
+        await run('edit', { key: 'Exposure', value: 1 })
+        await run('copy-edits')
+        await run('reset')
+        await run('select-many', { ids: [first, second] })
+        await run('capture-time', { time: '2024-06-12T15:30:00.000Z' })
+        const metadata = (s) =>
+          s.photos.map(({ id, name, keywords, label, albums, metadata, deleted }) => ({
+            id,
+            name,
+            keywords,
+            label,
+            albums,
+            metadata,
+            deleted
+          }))
+        for (const ids of control === '#rename-photo' ? [[second]] : [[second], [first, second]]) {
+          await run('select', { id: first })
+          await run('panel', { name: 'Info', open: true })
+          const before = metadata(await run('state'))
+          await holdThumbnail(page, control, event)
+          await page.evaluate((ids) => {
+            window.openlr.run('edit', { key: 'Contrast', value: 20 })
+            window.openlr.run('select-many', { ids })
+          }, ids)
+          await page.waitForFunction(() => Boolean(window.catalogThumbnailHold.release))
+          if (action === 'click') await page.locator(control).click()
+          else if (action === 'text') {
+            await page.locator(control).fill('changed')
+            await page.locator(control).press('Tab')
+          } else await page.locator(control).press(action === 'date' ? 'ArrowUp' : 'ArrowDown')
+          assert.equal(await page.evaluate(() => window.catalogThumbnailHold.trustedEvents), 1)
+          await page.evaluate(() => window.catalogThumbnailHold.release())
+          const after = await run('state')
+          assert.deepEqual(metadata(after), before)
+          assert.equal(editOf(after, second).Exposure, undefined)
+          assert.equal(editOf(after, first).Exposure, undefined)
+          assert.match(
+            await page.locator('#notice').textContent(),
+            /selection changed|selected photo changed/i
+          )
+        }
+      })
+    }
+  })
+
   await t.test('two rapid turns and flips each apply once with independent pixels and history', async (t) => {
     const { page, run, first } = await workspace(t)
     for (const [button, expected] of [

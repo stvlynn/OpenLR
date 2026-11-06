@@ -6,6 +6,16 @@ import { hasToneCurveEffect, validateToneCurveRecipe } from './tone-curves.js'
 export const PURGE_MESSAGES = {
   changedSelection: 'The selection changed; choose Delete permanently again'
 }
+export const SELECTION_MESSAGES = {
+  changed: 'The selection changed; try the action again'
+}
+
+export function assertSelection(targets, expectedIds, message = SELECTION_MESSAGES.changed) {
+  if (expectedIds === undefined) return
+  const expected = new Set(expectedIds)
+  if (expected.size !== targets.length || targets.some((photo) => !expected.has(photo.id)))
+    throw Error(message)
+}
 
 export const CATALOG_FLAG_VALUES = ['any', 'pick', 'reject', 'unflagged']
 export const CATALOG_EDIT_VALUES = ['any', 'yes', 'no']

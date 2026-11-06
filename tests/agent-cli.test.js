@@ -7,6 +7,28 @@ import path from 'node:path'
 import { spawn } from 'node:child_process'
 import { parse, execute, watch } from '../cli/openlr.mjs'
 
+test('selection guards validate photo IDs during offline command preview', async () => {
+  for (const args of [
+    ['rate', '--value', '3'],
+    ['flag', '--value', 'pick'],
+    ['keywords', '--value', 'ridge'],
+    ['label', '--value', 'red'],
+    ['capture-time', '--time', '2024-06-12T15:30:00.000Z'],
+    ['membership', '--album', 'album'],
+    ['delete'],
+    ['restore'],
+    ['paste-edits'],
+    ['purge']
+  ]) {
+    assert.throws(
+      () => parse([...args, '--expectedIds', '[1]', '--dry-run']),
+      /expectedIds must contain photo IDs/
+    )
+    const result = await execute(parse([...args, '--expectedIds', '["b","a"]', '--dry-run']))
+    assert.deepEqual(result.request.args.expectedIds, ['b', 'a'])
+  }
+})
+
 test('offline discovery and dry runs validate real command arguments', async () => {
   assert.equal(
     (

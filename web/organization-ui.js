@@ -21,7 +21,7 @@ export function mountOrganization(run) {
   const copy = button('Copy edits', () => run('copy-edits'))
   copy.id = 'copy-edits'
   const chooseCopy = mountCopyOptions(run, () => current?.selected)
-  const paste = button('Paste edits', () => run('paste-edits'))
+  const paste = button('Paste edits', () => run('paste-edits', { expectedIds: [...current.selection] }))
   paste.id = 'paste-edits'
   const selectedActions = element('div', { className: 'selection-actions' })
   selectedActions.append(clear, copy, chooseCopy, paste)

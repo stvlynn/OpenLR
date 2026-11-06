@@ -70,12 +70,42 @@ await withNativeWorkspace(
     assert.deepEqual(photosIn(await sortBy('name')), [first, second, separate])
     assert.deepEqual(photosIn(await call('search', '--text', 'BRACKET')), [first, second])
     assert.deepEqual((await call('select-all')).selection, [first, second])
+    const expectedIds = JSON.stringify([second, first])
+    await call('rate', '--value', '3', '--expectedIds', expectedIds)
+    await call('flag', '--value', 'pick', '--expectedIds', expectedIds)
+    await assert.rejects(
+      () => call('rate', '--value', '5', '--expectedIds', JSON.stringify([first])),
+      /selection changed/i
+    )
+    await assert.rejects(
+      () => call('flag', '--value', 'reject', '--expectedIds', JSON.stringify([first])),
+      /selection changed/i
+    )
+    const guarded = await call('state')
+    for (const id of [first, second]) {
+      assert.equal(row(guarded, id).rating, 3)
+      assert.equal(row(guarded, id).flag, 'pick')
+    }
+    await call('rate', '--value', '0')
+    await call('flag', '--value', '')
     const keywords = 'Highland, Test ridge'
     const firstTime = '2024-06-12T15:30:00.000Z',
       secondTime = '2024-06-12T15:30:02.000Z'
-    await call('label', '--value', 'purple')
-    await call('keywords', '--value', keywords)
-    const batch = await call('capture-time', '--time', firstTime)
+    for (const args of [
+      ['label', '--value', 'red'],
+      ['keywords', '--value', 'wrong target'],
+      ['capture-time', '--time', firstTime],
+      ['delete'],
+      ['restore'],
+      ['paste-edits']
+    ])
+      await assert.rejects(
+        () => call(...args, '--expectedIds', JSON.stringify([first])),
+        /selection changed/i
+      )
+    await call('label', '--value', 'purple', '--expectedIds', expectedIds)
+    await call('keywords', '--value', keywords, '--expectedIds', expectedIds)
+    const batch = await call('capture-time', '--time', firstTime, '--expectedIds', expectedIds)
     for (const id of [first, second]) {
       assert.equal(row(batch, id).label, 'purple')
       assert.equal(row(batch, id).keywords, keywords)
@@ -98,7 +128,11 @@ await withNativeWorkspace(
     await call('capture-time', '--time', '2024-06-12T15:31:00.000Z')
     await select(second)
     await call('capture-time', '--time', secondTime)
-    const renamed = await call('rename', '--name', 'ridge-renamed.png')
+    await assert.rejects(
+      () => call('rename', '--name', 'wrong.png', '--photoId', first),
+      /selected photo changed/i
+    )
+    const renamed = await call('rename', '--name', 'ridge-renamed.png', '--photoId', second)
     assert.equal(row(renamed, second).name, 'ridge-renamed.png')
     assert.notEqual(row(renamed, separate).label, 'purple')
     assert.notEqual(row(renamed, separate).keywords, keywords)
@@ -109,7 +143,11 @@ await withNativeWorkspace(
     const album = await call('album', '--name', 'Draft collection')
     const removedAlbum = await call('album', '--name', 'Temporary collection')
     await selectMany(first, second)
-    await call('membership', '--album', album.id)
+    await assert.rejects(
+      () => call('membership', '--album', album.id, '--expectedIds', JSON.stringify([first])),
+      /selection changed/i
+    )
+    await call('membership', '--album', album.id, '--expectedIds', expectedIds)
     await call('membership', '--album', removedAlbum.id)
     const renamedAlbum = await call('album-rename', '--id', album.id, '--name', 'Ridge collection')
     const retainedAlbum = { ...album, name: 'Ridge collection' }
@@ -124,10 +162,10 @@ await withNativeWorkspace(
     for (const id of [first, second]) assert.deepEqual(row(albumDeleted, id).albums, [album.id])
 
     await selectMany(first, second)
-    assert.deepEqual(photosIn(await call('delete')), [separate])
+    assert.deepEqual(photosIn(await call('delete', '--expectedIds', expectedIds)), [separate])
     assert.deepEqual(photosIn(await call('scope', '--id', 'trash')), [first, second])
     await call('select-all')
-    assert.deepEqual((await call('restore')).photos, [])
+    assert.deepEqual((await call('restore', '--expectedIds', expectedIds)).photos, [])
     const restored = await call('scope', '--id', album.id)
     assert.deepEqual(photosIn(restored), [first, second])
     for (const photo of restored.photos) assert.equal(photo.deleted, false)
