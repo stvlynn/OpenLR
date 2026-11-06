@@ -2,6 +2,10 @@ name: macOS ARM video export crash trace
 on:
   workflow_dispatch:
     inputs:
+      compare_audio_trace:
+        description: Compare native audio logging in sixteen ABBA trials without LLDB
+        type: boolean
+        default: false
       debugger:
         description: Attach LLDB to the owned host
         type: boolean
@@ -36,11 +40,11 @@ jobs:
           echo "OPENLR_VIDEO_PROBE_CHROME=$PWD/build/video-oracle/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing" >> "$GITHUB_ENV"
       - name: Build the ordinary native distribution
         run: node scripts/desktop.mjs build -o build/release -platform darwin/universal
-      - name: Observe eight predetermined video export trials
+      - name: Observe predetermined video export trials
         timeout-minutes: 15
         env:
           OPENLR_DIAGNOSTICS: '1'
-          OPENLR_TRACE_MODE: ${{ inputs.debugger && (inputs.scope == 'workflow' && '--lldb-workflow' || '--lldb') || '' }}
+          OPENLR_TRACE_MODE: ${{ inputs.compare_audio_trace && '--compare-audio-trace' || (inputs.debugger && (inputs.scope == 'workflow' && '--lldb-workflow' || '--lldb') || '') }}
         run: node scripts/native-video-export-trials.mjs build/release/darwin-universal/OpenLR.app/Contents/MacOS/OpenLR build/video-export-trials $OPENLR_TRACE_MODE
       - uses: actions/upload-artifact@v4
         if: always()

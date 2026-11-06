@@ -293,7 +293,7 @@ type NativeAudio struct{ manager *nativeAudioManager }
 var nativeAudioTraceSequence atomic.Uint64
 
 func traceNativeAudio(operation string) func() {
-	if os.Getenv("OPENLR_DIAGNOSTICS") != "1" {
+	if os.Getenv("OPENLR_DIAGNOSTICS") != "1" || os.Getenv("OPENLR_AUDIO_DIAGNOSTICS") == "0" {
 		return func() {}
 	}
 	sequence := nativeAudioTraceSequence.Add(1)

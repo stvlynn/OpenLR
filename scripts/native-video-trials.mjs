@@ -28,7 +28,7 @@ export function videoTrialOutcome(code, signal, log) {
   }
 }
 
-export async function runVideoTrials({ apps, order, destination, args = [] }) {
+export async function runVideoTrials({ apps, order, destination, args = [], environments = {} }) {
   await mkdir(destination, { recursive: true })
   const trials = []
   for (const [index, candidate] of order.entries()) {
@@ -41,7 +41,7 @@ export async function runVideoTrials({ apps, order, destination, args = [] }) {
         process.execPath,
         ['scripts/native-video-smoke.mjs', path.resolve(apps[candidate]), ...args],
         {
-          env: { ...process.env, OPENLR_DIAGNOSTICS: '1' },
+          env: { ...process.env, OPENLR_DIAGNOSTICS: '1', ...environments[candidate] },
           stdio: ['ignore', output.fd, output.fd],
           windowsHide: true
         }
