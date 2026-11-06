@@ -139,14 +139,15 @@ function elementPath(name, file, open) {
 
 const animationFrame = () => new Promise((resolve) => requestAnimationFrame(resolve))
 
-function playbackPath(name, file, { attach, stream, restore, delayMs } = {}) {
+function playbackPath(name, file, { attach, stream, restore, forceSeek, delayMs } = {}) {
   return candidate(name, async (report) => {
     const reads = (report.reads = {})
     report.stage = 'media-load'
     const media = await openVideo(file, report),
       { video } = media
     let cursor
-    const read = (phase) => (reads[phase] = { time: video.currentTime, paused: video.paused })
+    const read = (phase) =>
+      (reads[phase] = { time: video.currentTime, paused: video.paused, seeking: video.seeking })
     try {
       if (attach) document.body.append(video)
       report.stage = 'seek'
@@ -174,8 +175,17 @@ function playbackPath(name, file, { attach, stream, restore, delayMs } = {}) {
       const position = read('beforePause').time
       video.pause()
       read('immediate')
+      let seeked
+      if (forceSeek) {
+        seeked = new Promise((resolve) => {
+          video.addEventListener('seeked', () => resolve(read('seeked')), { once: true })
+        })
+        video.currentTime = position
+        read('seekRequested')
+      }
       cursor?.close()
       await paused
+      if (seeked) await seeked
       await animationFrame()
       read('animationFrame')
 
@@ -186,6 +196,10 @@ function playbackPath(name, file, { attach, stream, restore, delayMs } = {}) {
         report.requestedDelayMs = delayMs
         await new Promise((resolve) => setTimeout(resolve, delayMs))
         stopped = read('afterDelay').time
+        if (forceSeek) {
+          await media.frameAt()
+          read('afterFrame')
+        }
       } else {
         report.stage = 'frame-access'
         await media.frameAt()
@@ -232,6 +246,7 @@ const context = {
 const paths = {
   'clock-detached': () => playbackPath(name, file),
   'clock-delay': () => playbackPath(name, file, { delayMs }),
+  'clock-seek': () => playbackPath(name, file, { forceSeek: true, delayMs }),
   'clock-attached': () => playbackPath(name, file, { attach: true }),
   'clock-frame-stream': () => playbackPath(name, file, { stream: true }),
   'clock-restore': () => playbackPath(name, file, { restore: true }),

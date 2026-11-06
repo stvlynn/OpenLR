@@ -54,6 +54,14 @@ test('the elapsed playback control requires a clock read after the paired delay'
     }
   }
   assert.equal(reportClock(result, 'clock-delay').requestedDelayMs, 14)
+  result.reads.seekRequested = { ...paused, seeking: true }
+  result.reads.seeked = { ...paused, seeking: false }
+  result.reads.afterFrame = { ...paused, seeking: false }
+  assert.deepEqual(reportClock(result, 'clock-seek').reads, result.reads)
+  delete result.reads.seeked
+  assert.throws(() => reportClock(result, 'clock-seek'), /Missing playback read seeked/)
+  delete result.reads.seekRequested
+  delete result.reads.afterFrame
   delete result.reads.afterDelay
   assert.throws(() => reportClock(result, 'clock-delay'), /Missing playback read afterDelay/)
 })

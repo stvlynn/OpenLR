@@ -129,6 +129,7 @@ const candidates = {
 const clockCandidates = [
   'clock-detached',
   'clock-delay',
+  'clock-seek',
   'clock-attached',
   'clock-frame-stream',
   'clock-restore'
@@ -138,8 +139,9 @@ const restorePhases = ['restored', 'restoredAfterFrame']
 
 export function reportClock(result, candidate) {
   const { stage, errorName, frameSource, playedDuration, observationMs, requestedDelayMs } = result
-  const isDelay = candidate === 'clock-delay'
+  const isDelay = candidate === 'clock-delay' || candidate === 'clock-seek'
   const requiredPhases = [...clockPhases, isDelay ? 'afterDelay' : 'afterFrame']
+  if (candidate === 'clock-seek') requiredPhases.push('seekRequested', 'seeked', 'afterFrame')
   const stages = [
     'complete',
     'media-load',
@@ -164,6 +166,10 @@ export function reportClock(result, candidate) {
     assert.ok(Number.isFinite(read.time) && read.time >= 0)
     assert.equal(typeof read.paused, 'boolean')
     reads[phase] = { time: read.time, paused: read.paused }
+    if (read.seeking !== undefined) {
+      assert.equal(typeof read.seeking, 'boolean')
+      reads[phase].seeking = read.seeking
+    }
   }
   if (stage === 'complete' || observationMs !== undefined)
     assert.ok(Number.isFinite(observationMs) && observationMs >= 0, 'Missing playback observation interval')
@@ -272,7 +278,7 @@ async function main(executable, mode) {
     const fixture = path.join(root, 'fixture.webm'),
       frontend = fileURLToPath(new URL('../web/', import.meta.url))
     await writeFile(fixture, await generatedVideo())
-    const deadline = performance.now() + 75000
+    const deadline = performance.now() + names.length * 15000
     const failed = []
     let frameReadMs
     for (const candidate of names) {
@@ -284,7 +290,7 @@ async function main(executable, mode) {
         if (timeout <= 0) throw Error('Aggregate video origin probe deadline expired before launch')
         console.error(`Video origin probe candidate: ${candidate}`)
         const args = [frontend, fixture, report, candidate]
-        if (candidate === 'clock-delay') {
+        if (candidate === 'clock-delay' || candidate === 'clock-seek') {
           if (frameReadMs === undefined)
             throw Error('Detached frame-read interval unavailable for the paired delay')
           args.push(String(frameReadMs))
@@ -300,7 +306,7 @@ async function main(executable, mode) {
         const sanitized = sanitize(JSON.parse(contents), candidate)
         if (sanitized.result.stage === 'complete') {
           if (candidate === 'clock-detached') frameReadMs = sanitized.result.observationMs
-          if (candidate === 'clock-delay')
+          if (candidate === 'clock-delay' || candidate === 'clock-seek')
             assert.equal(
               sanitized.result.requestedDelayMs,
               frameReadMs,

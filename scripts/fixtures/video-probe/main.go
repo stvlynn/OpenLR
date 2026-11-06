@@ -84,14 +84,14 @@ func main() {
 	candidate := os.Args[4]
 	switch candidate {
 	case "direct", "poster", "anonymous", "decoded",
-		"clock-detached", "clock-attached", "clock-frame-stream", "clock-restore", "clock-delay":
+		"clock-detached", "clock-attached", "clock-frame-stream", "clock-restore", "clock-delay", "clock-seek":
 	default:
 		log.Fatal("Invalid video origin probe candidate")
 	}
 	var delay *float64
-	if candidate == "clock-delay" {
+	if candidate == "clock-delay" || candidate == "clock-seek" {
 		if len(os.Args) != 6 {
-			log.Fatal("The clock-delay candidate needs a measured frame-read interval")
+			log.Fatal("The paired candidate needs a measured frame-read interval")
 		}
 		milliseconds, err := strconv.ParseFloat(os.Args[5], 64)
 		if err != nil || math.IsNaN(milliseconds) || milliseconds < 0 || milliseconds > 15000 {
@@ -99,7 +99,7 @@ func main() {
 		}
 		delay = &milliseconds
 	} else if len(os.Args) != 5 {
-		log.Fatal("Only the clock-delay candidate accepts a frame-read interval")
+		log.Fatal("Only paired delay candidates accept a frame-read interval")
 	}
 	bytes, err := os.ReadFile(os.Args[2])
 	if err != nil {
