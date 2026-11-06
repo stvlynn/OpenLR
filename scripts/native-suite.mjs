@@ -27,6 +27,7 @@ run(go, ['build', '-o', editor, './scripts/fixtures/editor'])
 run(go, ['build', '-o', share, './cmd/openlr-share'])
 for (const [name, ...args] of [
   ['native-smoke'],
+  ...(process.platform === 'win32' ? [['native-sync-smoke']] : []),
   ['native-organization-smoke'],
   ['native-mask-smoke'],
   ['native-local-tools-smoke'],

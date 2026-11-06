@@ -21,6 +21,7 @@ export async function withNativeWorkspace(
   const call = (...args) => execute(parse([...args, '--session', session, '--timeout', '30']))
   let host, exited
   async function start() {
+    if (host) throw Error('Native workspace host is already started or its exit is unconfirmed')
     const startedAt = performance.now()
     let launchError, sessionAt, requestAt
     // MyGo falls back to a shared single-instance socket when its runtime path is too long.
@@ -88,8 +89,11 @@ export async function withNativeWorkspace(
         throw Error('Host did not exit')
       })
     ])
-    host = null
-    await rm(session, { force: true })
+    try {
+      await rm(session, { force: true })
+    } finally {
+      host = null
+    }
   }
 
   let primaryFailure = false
@@ -101,6 +105,8 @@ export async function withNativeWorkspace(
       call,
       initial,
       profile: path.join(root, 'webview2'),
+      start,
+      stop,
       restart: async () => {
         await stop()
         return start()
@@ -116,13 +122,17 @@ export async function withNativeWorkspace(
     } catch (error) {
       cleanupFailures.push(error)
     }
-    try {
-      const cleanup = await realpath(root)
-      assert.equal(path.dirname(cleanup), temp)
-      assert.ok(path.basename(cleanup).startsWith(prefix))
-      await rm(cleanup, { recursive: true, force: true, maxRetries: 6, retryDelay: 200 })
-    } catch (error) {
-      cleanupFailures.push(error)
+    if (host) {
+      console.error('Native workspace retained in the system temporary directory', path.basename(root))
+    } else {
+      try {
+        const cleanup = await realpath(root)
+        assert.equal(path.dirname(cleanup), temp)
+        assert.ok(path.basename(cleanup).startsWith(prefix))
+        await rm(cleanup, { recursive: true, force: true, maxRetries: 6, retryDelay: 200 })
+      } catch (error) {
+        cleanupFailures.push(error)
+      }
     }
     if (cleanupFailures.length) {
       if (!primaryFailure) throw new AggregateError(cleanupFailures, 'Native workspace cleanup failed')

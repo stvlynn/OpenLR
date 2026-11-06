@@ -14,3 +14,5 @@ The development tests use a local DAV transport and two isolated libraries. No p
 
 Run `node --test tests/sync.test.js` for two-device conflict, reload persistence, same-version field merging, envelope promotion, and unsupported-version rejection checks in Chrome. Earlier-client rejection follows the previous client's existing `remote.version !== 1` guard; the tests exercise the new protocol rather than running an archived application binary.
 
+On Windows, `node scripts/native-sync-smoke.mjs /path/to/OpenLR.exe` alternates two private persistent WebView2 profiles against a loopback DAV fixture. It checks the actual native transport, received original bytes and rendered edits, album/preset transfer, independent field merging, same-field conflict and explicit resolution. A competing HTTP client advances the manifest ETag during a native conditional PUT; the resulting 412 must leave local edits and baseline intact across restart. Both devices then converge without uploading the immutable original again. The standard native suite includes this workflow on Windows; it does not establish other-platform persistent profiles or a production WebDAV provider's behavior.
+

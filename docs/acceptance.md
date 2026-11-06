@@ -17,6 +17,10 @@
 
 ## 补充验证
 
+- **双设备原生同步**。两个隔离的持久 Windows WebView2 profile 通过实际 CLI／Go DAV 适配器交替同步，B 下载 A 的原件并复现 `[85,102,132]` 编辑像素、相册和预设。独立字段合并后为 `[101,119,154]`；同字段冲突保持负曝光 `[60,73,95]` 和远端清单，直到明确选择。独立 HTTP 写入先取得 201，使进行中的原生条件写入得到 412；失败与重启后本地编辑仍在，显式再次同步才合并并收敛到 `[119,140,180]`。93 字节生成原件上传一次，各端原件逐字节一致。`native-sync-smoke` 在 `db34e33` Windows 包上通过，使用当前已验证的 start/stop 测试生命周期；不是实际云服务或其他平台持久性验收。
+
+- **`3dbc68d` 远程终态**。[Actions 42146852141](https://github.com/stvlynn/OpenLR/actions/runs/42146852141) 的 Linux 构建和十六组原生流程全部成功，含首次模型下载、深度、增强、选片与 VP9／Opus 实际输出。Linux 深度与增强的独立像素统计和 Windows 一致，选片重启标记明确为 false；Xvfb 结果不代表物理显示器。Windows 浏览器检查和安装包构建完成，但首次原生 state 超时：会话 133ms 发布且 PID 匹配，HTTP health 200，控制命令也未回复，尚未导入照片。macOS universal 构建成功，独立视频探针未生成报告，严格原生套件没有开始；没有任何候选解码路径的 macOS 结论。三份日志保留在 `.workspace/expanded-ci-{linux,windows,macos}.log`。不重跑失败作业来替代原因调查。
+
 - **`db34e33` 远程终态与视频定位**。[Actions 42115637990](https://github.com/stvlynn/OpenLR/actions/runs/42115637990) 的 Windows、Linux 构建和十二组原生流程成功；macOS Intel 在视频导入失败。新增诊断实际报告 `thumbnail-encode`／`SecurityError`，媒体 readyState 4、96×64、无媒体错误，说明媒体加载和 poster 创建已完成。MIME 修正没有消除此错误。该 WKWebView 有视频 WebCodecs，却没有 AudioDecoder／AudioEncoder；音轨导出尚未执行，不能据此声称通过。原始诊断和候选路径研究见[原生视频](../research/native-video.md)。
 
 - **新增原生图像验收**。四项独立 Windows WebView2 检查使用 `db34e33` 安装包和隔离会话：`native-local-tools-smoke` 验证布尔蒙版、组件选择、真实覆盖层、克隆／修复及撤销；`native-depth-smoke` 首次下载模型并推理，深度范围内改变 117,880 像素、范围外保持，焦内 98,401 像素保持，远景纹理下降；`native-enhance-smoke` 的降噪 MSE 从 205.42 降至 93.08，实际 72×48 编辑源生成 216×144 超分 PNG，独立插值对照证明不是普通放大；`native-culling-smoke` 实际 YuNet 检出双眼，清晰／模糊对照分数 886.97／7.79，红眼红通道 245→26，187 个变化像素全部位于检测区域。各脚本核对实际输出和原件字节。持久性重启目前仅 Windows 执行；其他平台与合并后的全套结果另记。

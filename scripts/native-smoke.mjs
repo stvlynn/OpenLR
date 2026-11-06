@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
-import { createServer } from 'node:http'
 import { mkdtemp, mkdir, readdir, readFile, writeFile, access, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -19,6 +18,7 @@ import { readPng } from '../web/png.js'
 import { defaultOptions as avifOptions } from '../web/vendor/codecs/avif/meta.js'
 import { readExifTool } from '../tests/exiftool.mjs'
 import { inspectNativeStartup } from './native-startup-diagnostics.mjs'
+import { startDavFixture } from './native-dav-fixture.mjs'
 
 const executable = process.argv[2]
 if (!executable) throw Error('Pass the path to a built OpenLR executable')
@@ -995,36 +995,8 @@ try {
   )
   const sample = await call('export', '--format', 'image/tiff', '--output', path.join(root, 'astronaut.tif'))
   assert.ok((await readFile(sample.path)).length > 100000)
-  const objects = new Map()
-  const dav = createServer(async (req, res) => {
-    const stored = objects.get(req.url)
-    if (req.method === 'GET') {
-      if (!stored) {
-        res.writeHead(404).end()
-        return
-      }
-      res.writeHead(200, { ETag: stored.tag }).end(stored.bytes)
-      return
-    }
-    if (req.method !== 'PUT') {
-      res.writeHead(405).end()
-      return
-    }
-    if (
-      (req.headers['if-none-match'] === '*' && stored) ||
-      (req.headers['if-match'] && req.headers['if-match'] !== stored?.tag)
-    ) {
-      res.writeHead(412).end()
-      return
-    }
-    const chunks = []
-    for await (const chunk of req) chunks.push(chunk)
-    objects.set(req.url, { tag: '"' + crypto.randomUUID() + '"', bytes: Buffer.concat(chunks) })
-    res.writeHead(201).end()
-  })
-  await new Promise((resolve) => dav.listen(0, '127.0.0.1', resolve))
+  const { endpoint, objects, close: closeDav } = await startDavFixture()
   try {
-    const endpoint = 'http://127.0.0.1:' + dav.address().port + '/library/'
     const synced = await call('sync', '--endpoint', endpoint)
     assert.equal(synced.synced, true)
     const manifest = JSON.parse(objects.get('/library/openlr-manifest.json').bytes)
@@ -1032,8 +1004,7 @@ try {
     assert.deepEqual(objects.get('/library/openlr-' + launch.added[0] + '.original').bytes, data)
     assert.equal((await call('sync', '--endpoint', endpoint)).uploaded, 0)
   } finally {
-    dav.closeAllConnections()
-    dav.close()
+    await closeDav()
   }
   const rangePixels = new Uint8Array(40 * 40 * 3)
   for (let offset = 0; offset < rangePixels.length; offset += 3) rangePixels.set([64, 96, 128], offset)
