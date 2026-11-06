@@ -17,7 +17,8 @@ test('origin-restricted video uses decoded frames through live playback, seeking
       drawImage = CanvasRenderingContext2D.prototype.drawImage,
       getImageData = CanvasRenderingContext2D.prototype.getImageData,
       createImageBitmap = globalThis.createImageBitmap,
-      toBlob = HTMLCanvasElement.prototype.toBlob
+      toBlob = HTMLCanvasElement.prototype.toBlob,
+      toDataURL = HTMLCanvasElement.prototype.toDataURL
     const restricted = (source) => source instanceof HTMLVideoElement || tainted.has(source)
     const securityError = () => new DOMException('Unreadable video pixels', 'SecurityError')
     CanvasRenderingContext2D.prototype.drawImage = function (source, ...args) {
@@ -32,6 +33,10 @@ test('origin-restricted video uses decoded frames through live playback, seeking
     HTMLCanvasElement.prototype.toBlob = function (...args) {
       if (tainted.has(this)) throw securityError()
       return toBlob.apply(this, args)
+    }
+    HTMLCanvasElement.prototype.toDataURL = function (...args) {
+      if (tainted.has(this)) throw securityError()
+      return toDataURL.apply(this, args)
     }
     globalThis.createImageBitmap = async (source, ...args) => {
       const bitmap = await createImageBitmap(source, ...args)
@@ -197,7 +202,7 @@ test('opt-in video import diagnostics distinguish bitmap and thumbnail failures 
     const file = new File([target.buffer], 'private-clip.webm', { type: 'video/webm' }),
       diagnosticCalls = [],
       bitmap = globalThis.createImageBitmap,
-      toBlob = HTMLCanvasElement.prototype.toBlob
+      toDataURL = HTMLCanvasElement.prototype.toDataURL
     let diagnosticBehavior
     globalThis.mygo = {
       call(method, value) {
@@ -221,7 +226,7 @@ test('opt-in video import diagnostics distinguish bitmap and thumbnail failures 
       globalThis.openlrDiagnostics = true
       const bitmapFailure = await imported()
       globalThis.createImageBitmap = bitmap
-      HTMLCanvasElement.prototype.toBlob = function () {
+      HTMLCanvasElement.prototype.toDataURL = function () {
         throw new DOMException('Private thumbnail failure', 'SecurityError')
       }
       const thumbnailFailure = await imported()
@@ -252,7 +257,7 @@ test('opt-in video import diagnostics distinguish bitmap and thumbnail failures 
       delete globalThis.openlrDiagnostics
       delete globalThis.mygo
       globalThis.createImageBitmap = bitmap
-      HTMLCanvasElement.prototype.toBlob = toBlob
+      HTMLCanvasElement.prototype.toDataURL = toDataURL
     }
   })
   assert.equal(result.optedOutCalls, 0)

@@ -5,7 +5,8 @@ import { processingVersion, PROCESS_MESSAGES } from './process-version.js'
 import { isVideo, poster } from './video.js'
 import { metadata } from './metadata.js'
 import { readXmp } from './xmp.js'
-import { renderPrepared as render, toBlob } from './render.js'
+import { renderPrepared as render } from './render.js'
+import { encodeThumbnail } from './encode.js'
 
 const importErrorNames = new Set([
   'SecurityError',
@@ -120,7 +121,7 @@ export async function importBatch(files, { photos, album, readOriginal, update, 
         if (diagnostic) diagnostic.stage = 'thumbnail-render'
         const thumbnail = await render(image, settings.edit || {}, 240)
         if (diagnostic) diagnostic.stage = 'thumbnail-encode'
-        Object.assign(p, { thumbnail: await toBlob(thumbnail), ...photoPreviewVersions(file) })
+        Object.assign(p, { thumbnail: encodeThumbnail(thumbnail), ...photoPreviewVersions(file) })
         if (diagnostic) diagnostic.stage = 'catalog-write'
         await addPhoto(p, file)
         photos.push(p)

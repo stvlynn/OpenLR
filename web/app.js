@@ -50,6 +50,7 @@ import { CropSurface } from './crop-surface.js'
 import { CROP_GUIDES, CROP_GUIDE_MESSAGES } from './crop-guides.js'
 import { drawHistogram, histogram, autoExposure, HISTOGRAM_MESSAGES } from './histogram.js'
 import { controls, renderPrepared as render, renderFramePrepared as renderFrame, toBlob } from './render.js'
+import { encodeThumbnail } from './encode.js'
 import { saveExport, beginExportFolder } from './desktop.js'
 import { preparePhotoExport } from './photo-export.js'
 import { exportSelection, BATCH_EXPORT_MESSAGES } from './batch-export.js'
@@ -358,7 +359,7 @@ function refreshThumbnail(photo, img) {
             try {
               image = await decodeEditSource((await original(photo.id)).file, photo.edit)
               const cache = {
-                thumbnail: await toBlob(await render(image, photo.edit, 240)),
+                thumbnail: encodeThumbnail(await render(image, photo.edit, 240)),
                 width: image.width,
                 height: image.height,
                 ...versions
@@ -815,7 +816,7 @@ async function preparePhoto(p, changes) {
   const next = { ...p, ...changes }
   if (changes.edit) {
     const image = await source(p.id, changes.edit)
-    next.thumbnail = await toBlob(await render(image, changes.edit, 240))
+    next.thumbnail = encodeThumbnail(await render(image, changes.edit, 240))
     next.width = image.width
     next.height = image.height
     Object.assign(next, photoPreviewVersions(p))

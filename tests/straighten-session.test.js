@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { chromium } from 'playwright-core'
 import { serveWorkspace } from './browser-server.mjs'
+import { holdCatalogThumbnail } from './catalog-thumbnail-hold.mjs'
 
 async function workspace(t) {
   const server = await serveWorkspace()
@@ -92,24 +93,18 @@ test('a successful explicit straighten completes the active reference and reject
   await assert.rejects(run('straighten', { ...args, end: args.start }), /distinct points/)
   assert.deepEqual((await run('state')).straightenTool, picking)
 
+  await holdCatalogThumbnail(page)
   await page.evaluate((args) => {
-    const toBlob = HTMLCanvasElement.prototype.toBlob
     const race = (window.straightenRace = { canvas: document.querySelector('#stage canvas') })
-    HTMLCanvasElement.prototype.toBlob = function (callback, ...options) {
-      if (this.width !== 240) return toBlob.call(this, callback, ...options)
-      HTMLCanvasElement.prototype.toBlob = toBlob
-      // Hold completion of the real straighten thumbnail while the old stage remains interactive.
-      return toBlob.call(this, (blob) => (race.release = () => callback(blob)), ...options)
-    }
     race.done = window.openlr.run('straighten', args)
   }, args)
-  await page.waitForFunction(() => Boolean(window.straightenRace.release))
+  await page.waitForFunction(() => Boolean(window.catalogThumbnailHold.release))
   assert.ok(
     await page.evaluate(() => window.straightenRace.canvas === document.querySelector('#stage canvas'))
   )
   await click(0.68, 0.7)
   const completed = await page.evaluate(async () => {
-    window.straightenRace.release()
+    window.catalogThumbnailHold.release()
     return window.straightenRace.done
   })
   const rotation = (-Math.atan2(0.2 * 160, 0.5 * 240) * 180) / Math.PI

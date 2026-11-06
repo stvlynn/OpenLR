@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { chromium } from 'playwright-core'
 import { serveWorkspace } from './browser-server.mjs'
+import { holdCatalogThumbnail } from './catalog-thumbnail-hold.mjs'
 import { makePng } from './fixtures/png.mjs'
 import { makeVideoFixture } from './fixtures/video.mjs'
 
@@ -62,22 +63,17 @@ async function expectVideoColor(page, channel) {
   )
 }
 
-async function holdThumbnail(page, control, type = 'click', edge = 240) {
+async function holdThumbnail(page, control, type = 'click') {
+  await holdCatalogThumbnail(page)
   await page.evaluate(
-    ({ control, type, edge }) => {
-      const toBlob = HTMLCanvasElement.prototype.toBlob
-      const hold = (window.controlHold = { release: null, trustedEvents: 0 })
+    ({ control, type }) => {
+      const hold = window.catalogThumbnailHold
+      hold.trustedEvents = 0
       document.querySelector(control).addEventListener(type, (event) => {
         if (event.isTrusted) hold.trustedEvents++
       })
-      HTMLCanvasElement.prototype.toBlob = function (callback, ...args) {
-        if (Math.max(this.width, this.height) !== edge) return toBlob.call(this, callback, ...args)
-        HTMLCanvasElement.prototype.toBlob = toBlob
-        // Keep the real encoder and delay only delivery of its completed thumbnail.
-        return toBlob.call(this, (blob) => (hold.release = () => callback(blob)), ...args)
-      }
     },
-    { control, type, edge }
+    { control, type }
   )
 }
 
@@ -86,7 +82,7 @@ async function queuePhotoChange(page, id) {
     window.openlr.run('edit', { key: 'Contrast', value: 20 })
     if (id) window.openlr.run('select', { id })
   }, id)
-  await page.waitForFunction(() => Boolean(window.controlHold.release))
+  await page.waitForFunction(() => Boolean(window.catalogThumbnailHold.release))
 }
 
 test('queued controls use the intended photo and apply relative actions once', async (t) => {
@@ -129,10 +125,10 @@ test('queued controls use the intended photo and apply relative actions once', a
     ]) {
       await holdThumbnail(page, button)
       await page.locator(button).click()
-      await page.waitForFunction(() => Boolean(window.controlHold.release))
+      await page.waitForFunction(() => Boolean(window.catalogThumbnailHold.release))
       await page.locator(button).click()
-      assert.equal(await page.evaluate(() => window.controlHold.trustedEvents), 2)
-      await page.evaluate(() => window.controlHold.release())
+      assert.equal(await page.evaluate(() => window.catalogThumbnailHold.trustedEvents), 2)
+      await page.evaluate(() => window.catalogThumbnailHold.release())
       assert.deepEqual(editOf(await run('state')), expected)
     }
     const upsideDown = { width, height, samples: [...colors].reverse() }
@@ -170,8 +166,8 @@ test('queued controls use the intended photo and apply relative actions once', a
     await holdThumbnail(page, '#flip')
     await queuePhotoChange(page, second)
     await page.locator('#flip').click()
-    assert.equal(await page.evaluate(() => window.controlHold.trustedEvents), 1)
-    await page.evaluate(() => window.controlHold.release())
+    assert.equal(await page.evaluate(() => window.catalogThumbnailHold.trustedEvents), 1)
+    await page.evaluate(() => window.catalogThumbnailHold.release())
     const state = await run('state')
     assert.equal(state.selected, second)
     assert.deepEqual(editOf(state, first), { Contrast: 20 })
@@ -199,8 +195,8 @@ test('queued controls use the intended photo and apply relative actions once', a
       await queuePhotoChange(page, second)
       await page.locator(exposure).press('ArrowRight')
       assert.equal(await page.locator(exposure).inputValue(), '0.05')
-      assert.equal(await page.evaluate(() => window.controlHold.trustedEvents), 1)
-      await page.evaluate(() => window.controlHold.release())
+      assert.equal(await page.evaluate(() => window.catalogThumbnailHold.trustedEvents), 1)
+      await page.evaluate(() => window.catalogThumbnailHold.release())
       const after = await run('state')
       assert.equal(after.selected, second)
       assert.deepEqual(editOf(after, first), { Contrast: 20 })
@@ -240,8 +236,8 @@ test('queued controls use the intended photo and apply relative actions once', a
       await holdThumbnail(page, selector, type)
       await queuePhotoChange(page, second)
       await action()
-      assert.equal(await page.evaluate(() => window.controlHold.trustedEvents), 1)
-      await page.evaluate(() => window.controlHold.release())
+      assert.equal(await page.evaluate(() => window.catalogThumbnailHold.trustedEvents), 1)
+      await page.evaluate(() => window.catalogThumbnailHold.release())
       const after = await run('state')
       assert.equal(after.selected, second)
       assert.deepEqual(editOf(after, first).pointColors, [point])
@@ -284,8 +280,8 @@ test('queued controls use the intended photo and apply relative actions once', a
     await queuePhotoChange(page)
     await page.locator('#layout').click()
     await page.locator('#layout').click()
-    assert.equal(await page.evaluate(() => window.controlHold.trustedEvents), 2)
-    await page.evaluate(() => window.controlHold.release())
+    assert.equal(await page.evaluate(() => window.catalogThumbnailHold.trustedEvents), 2)
+    await page.evaluate(() => window.catalogThumbnailHold.release())
     assert.equal((await run('state')).gridLayout, 'square')
     assert.equal(await page.locator('#gallery').getAttribute('data-layout'), 'square')
     assert.deepEqual(await page.evaluate(() => window.layoutChanges), ['square', 'mosaic', 'square'])
@@ -311,8 +307,8 @@ test('queued controls use the intended photo and apply relative actions once', a
     await queuePhotoChange(page)
     await page.keyboard.press('ArrowRight')
     await page.keyboard.press('ArrowRight')
-    assert.equal(await page.evaluate(() => window.controlHold.trustedEvents), 2)
-    await page.evaluate(() => window.controlHold.release())
+    assert.equal(await page.evaluate(() => window.catalogThumbnailHold.trustedEvents), 2)
+    await page.evaluate(() => window.catalogThumbnailHold.release())
     assert.equal((await run('state')).selected, third)
     assert.deepEqual(await page.evaluate(() => window.navigationChanges), ['0.png', '1.png', '2.png'])
     assert.deepEqual(await image(page, 'preview'), { width, height, samples: thirdPalette })
@@ -361,12 +357,12 @@ test('queued controls use the intended photo and apply relative actions once', a
         }
       })
       const button = page.locator('#play-video')
-      await holdThumbnail(page, '#play-video', 'click', 96)
+      await holdThumbnail(page, '#play-video', 'click')
       await queuePhotoChange(page)
       await button.click()
       await button.click()
-      assert.equal(await page.evaluate(() => window.controlHold.trustedEvents), 2)
-      await page.evaluate(() => window.controlHold.release())
+      assert.equal(await page.evaluate(() => window.catalogThumbnailHold.trustedEvents), 2)
+      await page.evaluate(() => window.catalogThumbnailHold.release())
       const paused = (await run('state')).playback
       assert.equal(paused.playing, false)
       assert.ok(paused.time >= 0.35)
@@ -381,11 +377,11 @@ test('queued controls use the intended photo and apply relative actions once', a
       const copiedEdit = { Contrast: 20 }
       await run('select', { id: first })
       await run('video-seek', { time: 0.35 })
-      await holdThumbnail(page, '#play-video', 'click', 96)
+      await holdThumbnail(page, '#play-video', 'click')
       await queuePhotoChange(page, second)
       await button.click()
-      assert.equal(await page.evaluate(() => window.controlHold.trustedEvents), 1)
-      await page.evaluate(() => window.controlHold.release())
+      assert.equal(await page.evaluate(() => window.catalogThumbnailHold.trustedEvents), 1)
+      await page.evaluate(() => window.catalogThumbnailHold.release())
       const switched = await run('state')
       assert.equal(switched.selected, second)
       assert.equal(switched.playback.playing, false)
@@ -406,11 +402,11 @@ test('queued controls use the intended photo and apply relative actions once', a
       ]) {
         await run('select', { id: first })
         await run('video-seek', { time: 0.35 })
-        await holdThumbnail(page, control, type, 96)
+        await holdThumbnail(page, control, type)
         await queuePhotoChange(page, second)
         await act()
-        assert.equal(await page.evaluate(() => window.controlHold.trustedEvents), 1)
-        await page.evaluate(() => window.controlHold.release())
+        assert.equal(await page.evaluate(() => window.catalogThumbnailHold.trustedEvents), 1)
+        await page.evaluate(() => window.catalogThumbnailHold.release())
         const after = await run('state')
         assert.equal(after.selected, second)
         assert.equal(after.playback.time, 0)

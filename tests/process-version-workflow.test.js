@@ -4,6 +4,7 @@ import assert from 'node:assert/strict'
 import { chromium } from 'playwright-core'
 import UTIF from '../web/vendor/codecs/utif.js'
 import { serveWorkspace } from './browser-server.mjs'
+import { holdCatalogThumbnail } from './catalog-thumbnail-hold.mjs'
 import { makeDng } from './fixtures/dng.mjs'
 
 async function workspace(t) {
@@ -262,30 +263,16 @@ test('live slider frames wait for a matching committed recipe during both proces
     await run('edit', { key: 'Exposure', value: 0 })
     assert.equal((await run('state')).photos[0].edit.processVersion, from)
     const before = await pixels(page)
+    await holdCatalogThumbnail(page)
     await page.evaluate((to) => {
-      const original = HTMLCanvasElement.prototype.toBlob
       window.sliderRace = {
-        original,
         canvas: document.querySelector('#stage canvas'),
         stage: document.querySelector('#stage canvas').toDataURL(),
-        pending: null,
         completed: false,
         failure: null
       }
-      let holdNext = true
-      HTMLCanvasElement.prototype.toBlob = function (callback, ...args) {
-        if (!holdNext) return original.call(this, callback, ...args)
-        holdNext = false
-        return original.call(
-          this,
-          (blob) => {
-            window.sliderRace.pending = () => callback(blob)
-          },
-          ...args
-        )
-      }
-      // The real thumbnail encoder runs, but its callback cannot commit the
-      // recipe yet. source() has already installed the other-version bitmap.
+      // The thumbnail is encoded, but its catalog write is held.
+      // source() has already installed the other-version bitmap.
       window.openlr.run('processing', { version: to }).then(
         () => {
           window.sliderRace.completed = true
@@ -296,7 +283,7 @@ test('live slider frames wait for a matching committed recipe during both proces
         }
       )
     }, to)
-    await page.waitForFunction(() => Boolean(window.sliderRace.pending))
+    await page.waitForFunction(() => Boolean(window.catalogThumbnailHold.release))
     const held = await page.evaluate(async () => {
       const input = document.querySelector('input[data-control="Exposure"]')
       input.value = '1'
@@ -320,8 +307,7 @@ test('live slider frames wait for a matching committed recipe during both proces
       document
         .querySelector('input[data-control="Exposure"]')
         .dispatchEvent(new Event('change', { bubbles: true }))
-      HTMLCanvasElement.prototype.toBlob = window.sliderRace.original
-      window.sliderRace.pending()
+      window.catalogThumbnailHold.release()
     })
     await page.waitForFunction(() => window.sliderRace.completed)
     const state = await run('state')

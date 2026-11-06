@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { chromium } from 'playwright-core'
 import { serveWorkspace } from './browser-server.mjs'
+import { holdCatalogThumbnail } from './catalog-thumbnail-hold.mjs'
 import { makePng } from './fixtures/png.mjs'
 
 const width = 1536,
@@ -124,20 +125,14 @@ test('Point color rejects a click on a canvas superseded by a queued photo edit'
   const before = await run('point-tool')
   assert.equal(before.sampling, 'point')
   assert.deepEqual((await stagePixel(page)).rgba, [255, 0, 0, 255])
+  await holdCatalogThumbnail(page)
   await page.evaluate(() => {
-    const toBlob = HTMLCanvasElement.prototype.toBlob
     const canvas = document.querySelector('#stage canvas')
-    const race = (window.pointSamplingRace = { canvas, clicked: false, release: null })
+    const race = (window.pointSamplingRace = { canvas, clicked: false })
     canvas.addEventListener('click', (event) => (race.clicked = event.isTrusted), { once: true })
-    HTMLCanvasElement.prototype.toBlob = function (callback, ...args) {
-      if (this.width !== 240) return toBlob.call(this, callback, ...args)
-      HTMLCanvasElement.prototype.toBlob = toBlob
-      // Run the real thumbnail encoder, but hold the edit before it saves and redraws.
-      return toBlob.call(this, (blob) => (race.release = () => callback(blob)), ...args)
-    }
     race.edit = window.openlr.run('edit', { key: 'Exposure', value: -1 })
   })
-  await page.waitForFunction(() => Boolean(window.pointSamplingRace.release))
+  await page.waitForFunction(() => Boolean(window.catalogThumbnailHold.release))
   assert.equal(
     await page.evaluate(() => document.querySelector('#stage canvas') === window.pointSamplingRace.canvas),
     true
@@ -145,7 +140,7 @@ test('Point color rejects a click on a canvas superseded by a queued photo edit'
   await clickPoint(page)
   assert.equal(await page.evaluate(() => window.pointSamplingRace.clicked), true)
   await page.evaluate(async () => {
-    window.pointSamplingRace.release()
+    window.catalogThumbnailHold.release()
     await window.pointSamplingRace.edit
   })
   const after = await run('state')

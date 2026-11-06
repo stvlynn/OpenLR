@@ -1,6 +1,7 @@
 import { decodePhoto, decodePhotoLinear, RAW_EXTENSIONS } from './decode.js'
 import { metadata } from './metadata.js'
-import { render, toBlob } from './render.js'
+import { render } from './render.js'
+import { encodeThumbnail } from './encode.js'
 import { runImageWorker } from './image-worker.js'
 
 export async function mergePhotos(kind, photos, readOriginal, options = {}) {
@@ -50,7 +51,7 @@ export async function mergePhotos(kind, photos, readOriginal, options = {}) {
       file: new File([blob], filename, { type: 'image/png' }),
       width: result.width,
       height: result.height,
-      thumbnail: await toBlob(render(canvas, {}, 240)),
+      thumbnail: encodeThumbnail(render(canvas, {}, 240)),
       radiance: result.radiance ? new Blob([result.radiance], { type: 'image/vnd.radiance' }) : null,
       diagnostics: {
         ...result.diagnostics,

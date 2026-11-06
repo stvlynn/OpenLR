@@ -1,4 +1,5 @@
 import { renderPrepared as render, toBlob } from './render.js'
+import { encodeThumbnail } from './encode.js'
 import { runImageWorker } from './image-worker.js'
 export async function enhancePhoto(image, edit, { mode = 'denoise', strength = 1 } = {}) {
   const canvas = await render(image, edit),
@@ -20,7 +21,7 @@ export async function enhancePhoto(image, edit, { mode = 'denoise', strength = 1
     blob,
     width: result.width,
     height: result.height,
-    thumbnail: await toBlob(await render(output, {}, 240)),
+    thumbnail: encodeThumbnail(await render(output, {}, 240)),
     provenance: result.provenance,
     metrics: result.metrics
   }

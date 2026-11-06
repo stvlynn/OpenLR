@@ -1,8 +1,9 @@
 import { validateColorGradingRecipe } from './color-grading.js'
-import { encodeBlob } from './transfer.js'
+import { decodeBase64, encodeBlob } from './transfer.js'
 import * as db from './catalog.js'
 import { decodeEditSource } from './edit-source.js'
-import { renderPrepared as render, toBlob } from './render.js'
+import { renderPrepared as render } from './render.js'
+import { encodeThumbnail } from './encode.js'
 import { processingVersion } from './process-version.js'
 import { validateToneCurveRecipe } from './tone-curves.js'
 const stores = ['photos', 'albums', 'presets']
@@ -96,9 +97,6 @@ export function reconcile(base, local, remote, prefer = '') {
   next.version = Math.max(base.version, local.version, remote.version, requiredManifestVersion(next))
   return { next, conflicts }
 }
-function bytes(value) {
-  return Uint8Array.from(atob(value), (char) => char.charCodeAt(0))
-}
 export function mountSync(run, report) {
   const dialog = document.getElementById('sync-dialog'),
     button = document.getElementById('sync-button'),
@@ -164,7 +162,7 @@ export async function synchronize(
     const manifestName = 'openlr-manifest.json',
       response = await call('Get', manifestName)
     const remote =
-      response.status === 404 ? empty() : JSON.parse(new TextDecoder().decode(bytes(response.data)))
+      response.status === 404 ? empty() : JSON.parse(new TextDecoder().decode(decodeBase64(response.data)))
     if (
       ![1, 2].includes(remote.version) ||
       stores.some((s) => !remote[s] || typeof remote[s] !== 'object' || Array.isArray(remote[s]))
@@ -229,11 +227,11 @@ export async function synchronize(
       if (!file) {
         const r = await call('Get', 'openlr-' + (p.originalId || p.id) + '.original')
         if (r.status !== 200) throw Error('Missing remote original for ' + p.name)
-        file = new File([bytes(r.data)], p.name, { type: p.mediaType || '', lastModified: p.added })
+        file = new File([decodeBase64(r.data)], p.name, { type: p.mediaType || '', lastModified: p.added })
         if (p.merge?.kind === 'hdr') {
           const h = await call('Get', 'openlr-' + (p.originalId || p.id) + '.hdr')
           if (h.status !== 200) throw Error('Missing remote HDR data')
-          radiance = new Blob([bytes(h.data)], { type: 'image/vnd.radiance' })
+          radiance = new Blob([decodeBase64(h.data)], { type: 'image/vnd.radiance' })
         }
       }
       if (!storedOriginal) downloads.set(assetId, { id: assetId, file, ...(radiance ? { radiance } : {}) })
@@ -244,7 +242,7 @@ export async function synchronize(
             ...p,
             ...(localReference ? { reference: localReference } : {}),
             ...(localRecords[p.id]?.migration ? { migration: localRecords[p.id].migration } : {}),
-            thumbnail: await toBlob(await render(image, p.edit, 240))
+            thumbnail: encodeThumbnail(await render(image, p.edit, 240))
           },
           original: storedOriginal
             ? null

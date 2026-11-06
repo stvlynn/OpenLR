@@ -1,6 +1,7 @@
 import { validateColorGradingRecipe } from './color-grading.js'
 import { decodeEditSource } from './edit-source.js'
-import { renderPrepared as render, toBlob } from './render.js'
+import { renderPrepared as render } from './render.js'
+import { encodeThumbnail } from './encode.js'
 import { whenVisible } from './thumbnail-visibility.js'
 import { processingVersion } from './process-version.js'
 import { validateToneCurveRecipe } from './tone-curves.js'
@@ -151,7 +152,7 @@ export function observeThumbnail(photo, img, onReady) {
         try {
           image = await decodeEditSource((await original(photo)).file, edit)
           if (revision !== generation) return
-          const thumbnail = await toBlob(await render(image, edit, 240, { signal: controller.signal }))
+          const thumbnail = encodeThumbnail(await render(image, edit, 240, { signal: controller.signal }))
           if (revision !== generation || photo.edit !== edit || !img.isConnected) return
           photo.width = image.width
           photo.height = image.height

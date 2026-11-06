@@ -1,10 +1,14 @@
+export function decodeBase64(value) {
+  const raw = atob(value),
+    bytes = new Uint8Array(raw.length)
+  for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i)
+  return bytes
+}
+
 export function decodeFile(payload) {
   if (!payload || typeof payload.name !== 'string' || typeof payload.base64 !== 'string')
     throw Error('Invalid photo payload')
-  const raw = atob(payload.base64),
-    bytes = new Uint8Array(raw.length)
-  for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i)
-  return new File([bytes], payload.name, {
+  return new File([decodeBase64(payload.base64)], payload.name, {
     type: payload.type || 'application/octet-stream',
     lastModified: payload.lastModified ?? Date.now()
   })

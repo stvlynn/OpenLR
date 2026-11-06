@@ -4,6 +4,17 @@ import { validateExportColorSpace } from './export-color.js'
 import { assertLinearFrame, linearFrameToEncoded } from './pixel-frame.js'
 import { makeColorProfile } from './color-spaces.js'
 import { buildExportMetadata, validateExportMetadataPolicy } from './export-metadata.js'
+import { decodeBase64 } from './transfer.js'
+
+// The thumbnail render already limits the canvas to 240 pixels per edge.
+// Encoding this small surface directly avoids waiting for an idle JPEG task.
+export function encodeThumbnail(canvas) {
+  const type = 'image/jpeg',
+    prefix = `data:${type};base64,`,
+    encoded = canvas.toDataURL(type, 0.92)
+  if (!encoded.startsWith(prefix)) throw Error('Image export failed')
+  return new Blob([decodeBase64(encoded.slice(prefix.length))], { type })
+}
 
 function outputMetadata(pixels, format, colorSpace, options) {
   const policy = validateExportMetadataPolicy(format, options?.policy)

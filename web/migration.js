@@ -6,7 +6,8 @@ import { photoPreviewVersions } from './decode.js'
 import { processingVersion, PROCESS_MESSAGES } from './process-version.js'
 import { isVideo, poster } from './video.js'
 import { metadata } from './metadata.js'
-import { renderPrepared as render, toBlob, controls } from './render.js'
+import { renderPrepared as render, controls } from './render.js'
+import { encodeThumbnail } from './encode.js'
 import { CRS_FIELDS, readXmp } from './xmp.js'
 import { scanCatalog, relativeResource } from './migration-core.js'
 import { validCrop } from './geometry.js'
@@ -287,7 +288,7 @@ export async function commit(id) {
           captureTime: source.captureTime,
           warnings
         },
-        thumbnail: await toBlob(await render(image, edit, 240)),
+        thumbnail: encodeThumbnail(await render(image, edit, 240)),
         ...photoPreviewVersions(file)
       }
       await db.save('photos', photo)

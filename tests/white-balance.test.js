@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { chromium } from 'playwright-core'
 import { serveWorkspace } from './browser-server.mjs'
+import { holdCatalogThumbnail } from './catalog-thumbnail-hold.mjs'
 import { makePng } from './fixtures/png.mjs'
 
 const width = 360,
@@ -156,21 +157,15 @@ test('White balance refuses trusted clicks on an old canvas after queued selecti
   const { page, run, warmId, coolId } = await workspace(t)
   await run('sample-tool')
   for (const nextPhoto of [coolId, null]) {
+    await holdCatalogThumbnail(page)
     await page.evaluate((nextPhoto) => {
-      const toBlob = HTMLCanvasElement.prototype.toBlob
       const canvas = document.querySelector('#stage canvas')
-      const race = (window.whiteBalanceRace = { canvas, clicked: false, release: null })
+      const race = (window.whiteBalanceRace = { canvas, clicked: false })
       canvas.addEventListener('click', (event) => (race.clicked = event.isTrusted), { once: true })
-      HTMLCanvasElement.prototype.toBlob = function (callback, ...args) {
-        if (this.width !== 240) return toBlob.call(this, callback, ...args)
-        HTMLCanvasElement.prototype.toBlob = toBlob
-        // Run the real thumbnail encoder and delay only completion of its callback.
-        return toBlob.call(this, (blob) => (race.release = () => callback(blob)), ...args)
-      }
       race.done = window.openlr.run('edit', { key: 'Exposure', value: -1 })
       if (nextPhoto) race.done = window.openlr.run('select', { id: nextPhoto })
     }, nextPhoto)
-    await page.waitForFunction(() => Boolean(window.whiteBalanceRace.release))
+    await page.waitForFunction(() => Boolean(window.catalogThumbnailHold.release))
     assert.equal(
       await page.evaluate(() => document.querySelector('#stage canvas') === window.whiteBalanceRace.canvas),
       true
@@ -178,7 +173,7 @@ test('White balance refuses trusted clicks on an old canvas after queued selecti
     await clickCanvas(page, sourcePoint)
     assert.equal(await page.evaluate(() => window.whiteBalanceRace.clicked), true)
     await page.evaluate(async () => {
-      window.whiteBalanceRace.release()
+      window.catalogThumbnailHold.release()
       await window.whiteBalanceRace.done
     })
     const after = await run('state')

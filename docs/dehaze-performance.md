@@ -2,6 +2,65 @@
 
 The subsequent [sRGB byte-encoding experiment](../research/srgb-byte-encoding.md) investigated the remaining Original source-sized conversion. Its routed 20-bit bucket prototype matched tested output bytes; saturation alone did not reproduce the cached gain. The production integration and its separate measurements are recorded here. First latency and main-thread gaps remain variable; platform acceptance is recorded separately.
 
+## Trusted 24 MP Windows slider measurement (2026-11-06)
+
+A fresh unpacked Windows/amd64 build of `07ce383` ran on Windows 11 build 26200, WebView2 156.0.4314.58, Ryzen 7 7840U and 30.84 GB RAM. The runner used Node 24.9.0 and two isolated host profiles, one per processing version. Both imported the same 6000×4000 opaque sRGB PNG generated from the haze formula below. The viewport was 1426×923 CSS pixels at device pixel ratio 1.25, and the Detail stage published a 1181×787 canvas. Fixture generation, import, neutral capture and PNG verification were outside draft timing.
+
+Playwright sent pointer input through the private WebView2 connection and recorded trusted pointer, input and change events. Each cold gesture held the first nonzero value, 37, until the draft canvas appeared. Each warm scrub delivered six input events and held the last value, 20, until one draft canvas appeared. Draft latency runs from the input listener to the new stage canvas observed in the DOM. The heartbeat samples main-thread scheduling at a nominal 10 ms interval. Commit latency runs from the release-generated `change` event to the next canvas publication. The measurement includes a subsequent animation-frame observation and does not measure physical presentation.
+
+| Processing | Cold draft latency / max gap | Warm final-input latency / max gap | Cold / warm commit latency | Renderer / GPU peak working set through warm commit |
+| --- | ---: | ---: | ---: | ---: |
+| Original | 5,581.4 / 185.8 ms | 739.3 / 110.4 ms | 2,386.5 / 2,311.6 ms | 1.771 / .827 GB |
+| Linear | 4,480.2 / 92.7 ms | 281.3 / 90.4 ms | 1,358.3 / 1,336.7 ms | 2.068 / .136 GB |
+
+From the first warm input through publication, Original took 1,281.1 ms and Linear 685.3 ms. Renderer working sets before the gesture were .235 and 1.043 GB, respectively. At cold draft publication the cumulative renderer high-water marks were 1.297 and 1.625 GB, and GPU marks were .521 and .131 GB. These are OS per-process working-set measurements in decimal GB. The separate peaks include fixture and surface allocations and need not be simultaneous.
+
+Independent Node PNG decoding found that each draft differed from neutral and matched its freshly published committed canvas in all 3,717,788 RGBA channels. Undo restored strength 37 and original export matched all 1,472,342 source bytes in each host. No dehaze worker fallback was reported. These are single Windows observations with one cold and one warm gesture per mode. The executable build succeeded with `-skip-installer` after the NSIS download failed. The ignored runner, raw events, PNGs and logs are `.workspace/dehaze-native-slider.mjs`, `.workspace/24mp-native-slider-detail/`, `.workspace/24mp-native-slider-detail.log` and `.workspace/24mp-native-build*.log`.
+
+### Release-to-commit phase trace
+
+A separate run of the same executable observed the existing worker messages, canvas JPEG callback, IndexedDB transaction and stage canvas replacement. It measured the warm release as follows. The small intervals between the JPEG callback and the database request are included in the total.
+
+| Processing | Release to 240×160 JPEG request | JPEG request to callback | IndexedDB transaction | Transaction complete to stage publication | Total |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Original | 661.3 ms | 1,011.3 ms | 1.7 ms | 654.8 ms | 2,329.7 ms |
+| Linear | 83.1 ms | 1,008.4 ms | .8 ms | 256.1 ms | 1,349.3 ms |
+
+The cold release also waited 1,004.6 ms (Original) or 1,010.4 ms (Linear) for the thumbnail JPEG callback. The renderer reused its prepared dehaze source and analysis. Original still ran the full-size 6000×4000 encoding worker twice during commit, once before the exact thumbnail render and again before the stage render. Linear requested separate 240×160 and 1181×787 reconstructions. The independently rendered JPEG bytes matched the active filmstrip tile in each phase. FFmpeg decoded each thumbnail, and the stage PNG and original comparisons passed again. The approximately one-second JPEG interval is consistent with Blink's desktop idle-encoding startup deadline. The WebView trace observes the API callback and does not establish the encoder's internal scheduling branch. [Blink canvas encoder](https://chromium.googlesource.com/chromium/src/+/lkgr/third_party/blink/renderer/core/html/canvas/canvas_async_blob_creator.cc)
+
+### Thumbnail JPEG API comparison
+
+The same Windows executable retained the actual 240×160 thumbnail canvases from both cold and warm releases in both modes. Once those workflows settled, it encoded each canvas three times with each API at JPEG quality .92. Three cyclic orders put each API in each position once per canvas, and the warm trials reversed the cold order. The Offscreen candidate included copying the existing canvas's RGBA samples to a fresh offscreen surface. The data URL candidate included decoding base64 into a JPEG Blob. The measurement ended once each Blob was ready, before byte comparison and independent decoding.
+
+| API | Elapsed range | Longest 10 ms heartbeat gap |
+| --- | ---: | ---: |
+| HTML Canvas `toBlob` | .6–12.5 ms | 11.2 ms |
+| HTML Canvas `toDataURL` and Blob conversion | .5–3.1 ms | 3.1 ms |
+| OffscreenCanvas `convertToBlob` including pixel copy | 1.8–4.9 ms | 4.9 ms |
+
+All 36 JPEGs matched the respective filmstrip thumbnail bytes and all 153,600 independently decoded RGBA channels. Encodes completing before the first heartbeat used their measured elapsed time as the scheduling gap. The one-second callback wait did not recur when calling the APIs after the workflow settled. Ignored phase and encoder evidence is `.workspace/24mp-native-slider-phase/`, `.workspace/24mp-native-slider-jpeg/` and the corresponding `.log` files.
+
+### Matched live thumbnail commits
+
+The next run used the same executable and gesture in twelve fresh native hosts, three baseline/candidate pairs per processing mode. The order reversed between consecutive pairs and was counterbalanced across modes. The candidate substituted `toDataURL` and JPEG Blob conversion only for the 240×160 commit thumbnail on the same HTML canvas. Both variants still used the existing thumbnail render, stored its output, and rendered a new stage canvas. The live thumbnail encode waited 1,003.5–1,011.4 ms with `toBlob`, compared with 2.9–16.9 ms for the candidate.
+
+| Processing and release | Baseline release to stage | Candidate release to stage |
+| --- | ---: | ---: |
+| Original, cold | 2,300.3–2,645.8 ms | 1,243.3–1,317.0 ms |
+| Original, warm | 2,250.6–2,740.7 ms | 1,276.8–1,397.7 ms |
+| Linear, cold | 1,353.4–1,375.6 ms | 363.4–386.4 ms |
+| Linear, warm | 1,351.1–1,383.5 ms | 346.6–403.3 ms |
+
+Across all twelve paired releases, each committed thumbnail matched its baseline JPEG bytes and all 153,600 independently decoded RGBA channels. Each committed canvas matched all 3,717,788 baseline channels. All drafts matched their own committed canvases, undo restored strength 37, and exported original bytes matched. This was a Windows runtime substitution in the ignored harness. The measurement covers commit latency and leaves the earlier cold analysis and draft latency as separate costs. Exact inputs, order and comparison results are in `.workspace/24mp-native-slider-live-jpeg/` and `.workspace/24mp-native-slider-live-jpeg.log`.
+
+### Shared catalog thumbnail encoding
+
+The production `encodeThumbnail` consumes the existing canvas after rendering at a maximum edge of 240 pixels. It requests JPEG quality .92 and returns its bytes as an `image/jpeg` Blob. It serves import, catalog refresh, edit and undo, Local folder hydration, enhancement, merge, migration and sync. Full-size image encoding retains the asynchronous export APIs. Slider release still renders the thumbnail, persists the edit and publishes the committed viewport. The change avoids the measured JPEG callback wait without sharing viewport surfaces with thumbnail rendering.
+
+The focused browser regression compares the previous and new JPEG bytes and decoded pixels for opaque and varying-alpha canvases, including a small thumbnail. It also compares cropped Original and Linear thumbnails after an edit, verifies the same thumbnail and recipe after reopening the catalog, and checks that an encoder failure preserves the prior edit, thumbnail and original bytes. Related browser coverage holds the real asynchronous catalog write to test that queued stale controls, sampling and straightening retain their existing ownership. Run `node --test tests/thumbnail.test.js` for the encoder and persistence checks.
+
+A freshly built Windows package reproduced the benefit with the production encoder and no runtime substitution. Original cold and warm releases published the canvas in 1,256.4 and 1,277.8 ms, with 2.7 and 2.9 ms from the JPEG request to its Blob entering catalog serialization. Linear published in 387.3 and 351.5 ms, with JPEG intervals of 17.2 and 4.2 ms. The four thumbnails matched the old packaged encoder byte for byte and across all 153,600 independently decoded channels each. Each committed stage matched all 3,717,788 old-encoder channels. In both hosts, undo restored the prior strength, stale-target and forced encoder failures preserved the recipe, and original export matched all 1,472,342 bytes. The two-mode run used the same Windows/WebView2 environment described above. Evidence is `.workspace/24mp-native-slider-production-jpeg/` and `.workspace/24mp-native-slider-production-jpeg.log`.
+
 ## Production byte encoding (2026-11-06)
 
 The shared `linearFrameToRgba8` now uses `srgb-byte-encode.js` with the chosen 20-bit prefix table and scalar fallback at quantization boundaries. An independent scalar test exercises all 255 byte transitions and neighboring Float32 values, plus source-alpha, rounding, view-offset and validation contracts. Real Chrome encoding-worker bytes are compared before resizing, alongside cancellation and deliberate startup fallback. This does not change analysis resolution, floating reconstruction or profile-aware export encoding.
