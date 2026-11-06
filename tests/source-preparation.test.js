@@ -109,6 +109,8 @@ test('linear source preparation preserves samples, ownership and correction orde
     for (const invalid of [
       invalidSample(0, NaN),
       invalidSample(1, Infinity),
+      invalidSample(2, -Infinity),
+      invalidSample(3, NaN),
       invalidSample(3, -0.1),
       invalidSample(3, 1.1),
       { ...input, width: width + 1 }
@@ -137,6 +139,8 @@ test('linear source preparation preserves samples, ownership and correction orde
 
   await t.test('rejects malformed linear samples before worker transfer', () => {
     assert.deepEqual(results.errors, [
+      ['TypeError', 'Invalid linear pixel sample'],
+      ['TypeError', 'Invalid linear pixel sample'],
       ['TypeError', 'Invalid linear pixel sample'],
       ['TypeError', 'Invalid linear pixel sample'],
       ['TypeError', 'Invalid linear pixel sample'],

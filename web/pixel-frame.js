@@ -21,9 +21,15 @@ function dimensions(frame) {
 export function assertLinearFrame(frame) {
   dimensions(frame)
   if (!isLinearFrame(frame)) throw new TypeError('Expected a linear sRGB Float32 frame')
-  for (let i = 0; i < frame.data.length; i++) {
-    const value = frame.data[i]
-    if (!Number.isFinite(value) || (i % 4 === 3 && (value < 0 || value > 1)))
+  const { data } = frame
+  for (let i = 0; i < data.length; i += 4) {
+    const alpha = data[i + 3]
+    if (
+      !Number.isFinite(data[i]) ||
+      !Number.isFinite(data[i + 1]) ||
+      !Number.isFinite(data[i + 2]) ||
+      !(alpha >= 0 && alpha <= 1)
+    )
       throw new TypeError('Invalid linear pixel sample')
   }
   return frame

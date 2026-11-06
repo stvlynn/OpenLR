@@ -32,6 +32,20 @@ An actual `renderPrepared` comparison used the same 24MP haze scene and bitmap/L
 
 The measured first main-thread gap fell, but total completion worsened in this single observation. This supports removing redundant synchronous scans, not a claim of lower total latency or smooth interaction. Background activity was uncontrolled; no process-memory measurement or other-engine performance measurement was made. Copying, one full validation, active source corrections and canvas work remain. Ignored evidence is `.workspace/empty-source-stages.mjs/.json/.log` and `.workspace/source-preparation-integrated.mjs/.json/.log`. The tracked `tests/source-preparation.test.js` checks actual prepared and rendered samples against explicit stage composition, source isolation and malformed frame rejection.
 
+## Cold Linear phase breakdown and grouped validation (2026-11-06)
+
+Six fresh Chrome 156.0.8078.80 processes rendered the same 6000×4000 Float32 haze fixture through `renderPrepared` at edge 1280 and strengths 40, 70 and 20. The trial order was baseline, grouped validation, moment-row reuse, then the reverse. The baseline used `cb64646` renderer modules, and routes added the same phase instrumentation to all trials. Source fixture generation and final pixel comparison were outside the timed interval. The comparison checked all 4,367,360 canvas RGBA bytes at each strength against the baseline. Every byte matched and worker startup fallback was absent.
+
+| Variant | First preview ms | First maximum heartbeat gap ms | Main validation ms | Worker validation ms | Peak active renderer GB |
+| --- | --- | --- | --- | --- | --- |
+| Baseline | 4909.2 / 5023.1 | 143.1 / 144.8 | 93.7 / 95.3 | 104.1 / 102.8 | 1.595 / 1.595 |
+| Grouped RGBA validation | 5051.6 / 4909.2 | 107.3 / 109.5 | 55.8 / 53.3 | 58.2 / 54.8 | 1.595 / 1.598 |
+| Reuse one row of Float64 moments | 4840.1 / 4903.1 | 142.8 / 155.1 | 95.3 / 104.0 | 117.6 / 103.6 | 1.592 / 1.598 |
+
+Baseline source copying took 41–42 ms and the two weighted-moment passes took 2.70–2.86 s together. Cold reconstruction including its owned copies took 223–233 ms, followed by about 39–41 ms of display encoding. The grouped scan lowers the measured synchronous validation and first heartbeat gap, while total completion overlaps the baseline. It retains dimensional checks, signed finite RGB, alpha in `[0,1]` and the same `TypeError` before worker transfer. The production validator now checks one RGBA pixel per iteration. The row-reuse candidate preserves the compensated accumulation order and matched four small signed and transparent map fixtures. Its measured gap did not improve consistently, so it remains research-only.
+
+Renderer working-set peaks include fixture surfaces and caches and stay near 1.60 GB. Separate GPU process peaks were about 0.50 GB. This isolated Linear test excludes active source corrections, image decode, Original canvas readback, and the thumbnail and catalog commit path. The six runs show neither a latency distribution nor native WebView behavior. Ignored reproduction and evidence are `.workspace/dehaze-cold-breakdown.mjs`, `.json` and `.log`.
+
 ## Original measurement environment
 
 Measured on 2026-11-05, Windows x64, AMD Ryzen 7 7840U (16 logical processors), 30.84 GB installed RAM, Node v24.9.0 and headless Chrome 156.0.8078.80. This is a bounded local measurement, not a cross-platform performance guarantee. [Dehaze](dehaze.md) owns the behavior; [research](../research/dehaze.md) owns the algorithm and prior limitations.
