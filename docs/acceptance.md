@@ -4,6 +4,12 @@
 
 ## 桌面验收与交付快照 — 2026-11-07
 
+`d2f15aa` 的四平台托管验收全部通过。Windows 浏览器 482 项通过、零失败、8 项可选资源跳过，安装包和三项短音频也通过。Ubuntu 完成实际 Debian 安装后的原生套件，两种 macOS 完成 DMG 复制和原生验收。独立冷启动专项在两种 macOS 均由随包 CLI 启动复制件，核对会话 PID、再次接入、4×3 预览、73 字节原件和清理。[四平台结果](https://github.com/stvlynn/OpenLR/actions/runs/42281028302) · [macOS 冷启动结果](https://github.com/stvlynn/OpenLR/actions/runs/42282761330)
+
+`5710968` 在 Windows／Node 24.9.0／Chrome 157.0.8103.38 启用独立色彩和元数据校验，完整浏览器回归 **490/490，零失败、零跳过**，299.4 秒。本机日志 `.workspace/full-browser-5710968.log`。
+
+Apple Silicon 海报对照两轮共用逐字节一致的 WebM 夹具，原生海报组 13/16，独立解码组 16/16。反序轮的一次崩溃发生在第七次试验的 MP4 导出阶段，首轮试验通过。海报候选仍待更多格式的导入兼容性验证。[两轮对照证据](../research/native-video.md#packaged-application-load-comparison)
+
 `5599804` 的四平台托管验收已全部通过，包含 Windows NSIS 安装、随包 CLI 和卸载，Ubuntu 安装后的完整原生套件，以及两种 macOS 的 DMG 复制检查。Windows 浏览器 480 项通过、8 项可选资源跳过、零失败。[完整矩阵](https://github.com/stvlynn/OpenLR/actions/runs/42278480431)
 
 旧随包 CLI 在首个状态请求超时后会启动第二进程，并把现有工作区的结果标为该进程启动成功。修复后，两个受控 loopback 时序均返回已有会话，重建的 Windows 包也通过实际冷启动、会话进程 ID 比对、再次接入、预览像素与原件读回。[CLI 启动行为](agent-cli.md)
