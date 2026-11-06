@@ -4,6 +4,140 @@ import { chromium } from 'playwright-core'
 import { serveWorkspace } from './browser-server.mjs'
 import { makeVideoFixture } from './fixtures/video.mjs'
 
+test('opt-in native seek tracing observes the real event before its awaited callback resolves', async (t) => {
+  const server = await serveWorkspace()
+  t.after(server.close)
+  const browser = await chromium.launch({ channel: process.env.CHROME_CHANNEL || 'chrome' })
+  t.after(() => browser.close())
+  const page = await browser.newPage()
+  await page.addInitScript(() => {
+    window.seekRecords = []
+    window.seekReplies = {}
+    const pending = new Promise(() => {})
+    window.mygo = {
+      call(method, ...args) {
+        if (method === 'Desktop.AgentPoll')
+          return new Promise((resolve) => {
+            window.deliverSeek = resolve
+          })
+        if (method === 'Desktop.AgentPollControl') return pending
+        if (method === 'Desktop.AgentReply') {
+          window.seekReplies[args[0]] = JSON.parse(args[1])
+          return Promise.resolve()
+        }
+        if (method === 'Desktop.VideoImportDiagnostic') {
+          window.seekRecords.push(JSON.parse(args[0]))
+          return pending
+        }
+        if (method === 'Local.Folders') return Promise.resolve([])
+        if (method === 'External.Editor') return Promise.resolve('')
+        if (method === 'Sharing.State') return Promise.resolve({})
+        return Promise.resolve()
+      }
+    }
+  })
+  await page.goto(server.url)
+  const bytes = await makeVideoFixture(page)
+  const imported = await page.evaluate((bytes) => {
+    const file = new File([Uint8Array.from(bytes)], 'private-seek-fixture.webm', { type: 'video/webm' })
+    return window.openlr.run('import', { files: [file] })
+  }, Array.from(bytes))
+  assert.deepEqual(imported.failed, [])
+  const [photoId] = imported.added
+  await page.evaluate((photoId) => {
+    window.openlrDiagnostics = true
+    const add = HTMLMediaElement.prototype.addEventListener
+    HTMLMediaElement.prototype.addEventListener = function (type, listener, options) {
+      if (this instanceof HTMLVideoElement && type === 'seeked' && options === undefined) {
+        HTMLMediaElement.prototype.addEventListener = add
+        return add.call(
+          this,
+          type,
+          (event) => {
+            window.seekEventTrusted = event.isTrusted
+            window.resumeNativeSeek = () => listener.call(this, event)
+          },
+          { once: true }
+        )
+      }
+      return add.call(this, type, listener, options)
+    }
+    window.deliverSeek({ id: 'private-seek-request', command: 'video-seek', args: { time: 2.35, photoId } })
+  }, photoId)
+  await page.waitForFunction(() => typeof window.resumeNativeSeek === 'function', null, { timeout: 5000 })
+  const held = await page.evaluate(() => ({
+    trusted: window.seekEventTrusted,
+    records: window.seekRecords,
+    reply: window.seekReplies['private-seek-request']
+  }))
+  assert.equal(held.trusted, true)
+  assert.equal(held.reply, undefined)
+  assert.deepEqual(
+    held.records.map(({ stage }) => stage),
+    [
+      'renderer-received',
+      'source-original',
+      'source-original-read',
+      'playback-load',
+      'playback-loaded',
+      'playback-opened',
+      'seek-unchanged',
+      'source-frame',
+      'source-frame-read',
+      'seek-start',
+      'seek-assigned',
+      'seek-event',
+      'seek-event'
+    ]
+  )
+  const assigned = held.records.find(({ stage }) => stage === 'seek-assigned')
+  assert.equal(held.records.find(({ stage }) => stage === 'seek-unchanged').seekTime, 0)
+  assert.equal(assigned.requestedTime, 2.35)
+  assert.equal(assigned.seekTime, 2.35)
+  assert.ok(Number.isFinite(assigned.currentTime))
+  assert.ok(assigned.seekableRanges > 0)
+  const completedEvent = held.records.at(-1)
+  assert.equal(completedEvent.event, 'seeked')
+  assert.equal(completedEvent.seeking, false)
+  assert.ok(completedEvent.readyState >= 2)
+  assert.ok(Math.abs(completedEvent.currentTime - 2.35) < 0.01)
+
+  await page.evaluate(() => window.resumeNativeSeek())
+  await page.waitForFunction(() => window.seekRecords.at(-1)?.stage === 'renderer-replied', null, {
+    timeout: 5000
+  })
+  const { records, reply, pixel } = await page.evaluate(() => {
+    const canvas = document.querySelector('#stage canvas')
+    return {
+      records: window.seekRecords,
+      reply: window.seekReplies['private-seek-request'],
+      pixel: Array.from(
+        canvas.getContext('2d').getImageData(canvas.width >> 1, canvas.height >> 1, 1, 1).data
+      )
+    }
+  })
+  assert.equal(reply.ok, true, reply.error?.message)
+  assert.equal(reply.result.selected, photoId)
+  assert.equal(reply.result.playback.playing, false)
+  assert.ok(Math.abs(reply.result.playback.time - 2.35) < 0.01)
+  assert.ok(pixel[0] < 100 && pixel[1] < 100 && pixel[2] > 130 && pixel[3] === 255, JSON.stringify(pixel))
+  assert.deepEqual(
+    records.slice(held.records.length).map(({ stage }) => stage),
+    [
+      'seek-completed',
+      'stage-frame',
+      'stage-paint',
+      'stage-painted',
+      'renderer-dispatched',
+      'renderer-replied'
+    ]
+  )
+  assert.equal(new Set(records.map(({ sequence }) => sequence)).size, 1)
+  assert.ok(records.every(({ operation, elapsedMs }) => operation === 'seek' && Number.isFinite(elapsedMs)))
+  assert.doesNotMatch(JSON.stringify(records), /private-seek|blob:|https?:/)
+  assert.ok(!JSON.stringify(records).includes(photoId))
+})
+
 test('origin-restricted video uses decoded frames through live playback, seeking and saved stills', async (t) => {
   const server = await serveWorkspace()
   t.after(server.close)

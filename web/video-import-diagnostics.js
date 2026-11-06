@@ -12,13 +12,14 @@ const importErrorNames = new Set([
 ])
 const mediaEvents = ['loadstart', 'loadedmetadata', 'loadeddata', 'stalled', 'suspend', 'error']
 let nextSequence = 0
+const videoSeekTrace = Symbol()
 
 function send(report) {
   try {
-    // A stalled or failed diagnostic bridge cannot hold up the import.
+    // A stalled or failed diagnostic bridge cannot hold up a video command.
     globalThis.mygo?.call?.('Desktop.VideoImportDiagnostic', JSON.stringify(report))?.catch(() => {})
   } catch {
-    // The import owns its result and any error.
+    // The command owns its result and any error.
   }
 }
 
@@ -54,6 +55,54 @@ export function beginNativeVideoImportTrace(request) {
 
 export function markNativeVideoImport(started, stage) {
   if (started !== undefined) send({ stage, elapsedMs: Math.round(performance.now() - started) })
+}
+
+export function beginNativeVideoSeekTrace(request) {
+  if (!globalThis.openlrDiagnostics || request.command !== 'video-seek') return
+  const requestedTime = request.args?.time
+  const trace = {
+    [videoSeekTrace]: true,
+    sequence: ++nextSequence,
+    started: performance.now(),
+    requestedTime: Number.isFinite(requestedTime) ? requestedTime : null
+  }
+  markVideoSeek(trace, 'renderer-received')
+  return trace
+}
+
+export function markVideoSeek(trace, stage, video, { event, seekTime } = {}) {
+  if (!trace?.[videoSeekTrace]) return
+  try {
+    const currentTime = video?.currentTime
+    send({
+      operation: 'seek',
+      sequence: trace.sequence,
+      stage,
+      elapsedMs: Math.round(performance.now() - trace.started),
+      requestedTime: trace.requestedTime,
+      seekTime,
+      currentTime: video ? (Number.isFinite(currentTime) ? currentTime : null) : undefined,
+      seeking: video?.seeking,
+      seekableRanges: video?.seekable.length,
+      readyState: video?.readyState,
+      networkState: video?.networkState,
+      mediaErrorCode: video ? (video.error?.code ?? null) : undefined,
+      event
+    })
+  } catch {
+    // A diagnostic sample must not affect playback.
+  }
+}
+
+export function observeVideoSeek(trace, video, seekTime) {
+  if (!trace) return
+  const events = new AbortController()
+  for (const event of ['seeking', 'seeked', 'error'])
+    video.addEventListener(event, () => markVideoSeek(trace, 'seek-event', video, { event, seekTime }), {
+      once: true,
+      signal: events.signal
+    })
+  return () => events.abort()
 }
 
 export function beginVideoImportTrace(file) {

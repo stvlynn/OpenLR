@@ -4,7 +4,9 @@ import { applyWatermark } from './export-options.js'
 import { executeAudioExport, planAudioExport } from './audio-export.js'
 import {
   markVideoImport,
+  markVideoSeek,
   observeVideoImportMedia,
+  observeVideoSeek,
   recordVideoImportState
 } from './video-import-diagnostics.js'
 export const isVideo = (asset) =>
@@ -47,7 +49,7 @@ function nativeVideoPixelsReadable(video) {
   }
 }
 
-export async function openVideo(file, diagnostic) {
+export async function openVideo(file, diagnostic, seekTrace) {
   markVideoImport(diagnostic, 'media-load')
   const url = URL.createObjectURL(file),
     video = document.createElement('video')
@@ -71,9 +73,11 @@ export async function openVideo(file, diagnostic) {
     URL.revokeObjectURL(url)
   }
   try {
+    markVideoSeek(seekTrace, 'playback-load', video)
     await waitForMedia(video, 'loadeddata', () => {
       video.src = url
     })
+    markVideoSeek(seekTrace, 'playback-loaded', video)
     markVideoImport(diagnostic, 'media-duration', video)
     video.width = video.videoWidth
     video.height = video.videoHeight
@@ -101,12 +105,22 @@ export async function openVideo(file, diagnostic) {
       if (closed) throw new DOMException('The video is closed', 'AbortError')
       return source
     }
-    const seek = async (time, force = false) => {
+    const seek = async (time, force = false, trace) => {
       if (!(time >= 0 && time <= duration)) throw Error('Time is outside the video')
-      if (force || Math.abs(video.currentTime - time) > 0.0001)
-        await waitForMedia(video, 'seeked', () => {
-          video.currentTime = time
-        })
+      const detail = trace && { seekTime: time }
+      if (force || Math.abs(video.currentTime - time) > 0.0001) {
+        markVideoSeek(trace, 'seek-start', video, detail)
+        const stopObserving = observeVideoSeek(trace, video, time)
+        try {
+          await waitForMedia(video, 'seeked', () => {
+            video.currentTime = time
+            markVideoSeek(trace, 'seek-assigned', video, detail)
+          })
+        } finally {
+          stopObserving?.()
+        }
+        markVideoSeek(trace, 'seek-completed', video, detail)
+      } else markVideoSeek(trace, 'seek-unchanged', video, detail)
     }
     async function frameAt(time = video.currentTime) {
       const source = await frames()

@@ -8,7 +8,7 @@
 
 新 Windows MyGo 包通过扩展的原生导航流程。图库实际从 0 移至 3007.199951 CSS px，胶片条从 0 移至 1881.599976；CLI 截图独立解码出不同位置的缩略图色块，`watch` 正确观察变化。选择、编辑、三十六个生成源文件及两个既有原件保持；原有偏好重启、全屏和可信键盘检查继续通过。日志 `.workspace/catalog-viewport-{build,native-navigation}.log`。该改动的 Linux／macOS 原生结果尚待后续提交验证。见[契约](agent-cli.md)和[调查与消融](../research/catalog-viewport.md)。
 
-前一版本 `78efe71` 的 [Actions 42190243615](https://github.com/stvlynn/OpenLR/actions/runs/42190243615) 已有 Linux 全套成功。ARM macOS 的十种局部草稿全部通过，证明覆盖层读回修复在该平台生效；视频导入也已完成，但紧接着第一次 `video-seek` 超时，普通套件仍失败。它后续的独立短音频三项通过。Windows 和 Intel macOS 在此记录时仍运行，不能据此宣称该版本四平台通过。该次运行不包含图库 viewport 扩展。
+前一版本 `78efe71` 的 [Actions 42190243615](https://github.com/stvlynn/OpenLR/actions/runs/42190243615) 已全部结束：Linux 和 Intel macOS 成功，ARM macOS 和 Windows 失败。两种 macOS 的十种局部草稿全部通过，证明覆盖层读回修复在这些平台生效。ARM 视频导入已完成，但紧接着第一次 `video-seek` 超时；后续独立短音频三项通过。Windows 浏览器 448/456、8 项可选资源跳过；普通包通过主流程后，在同步流程的新宿主首次 `state` 超时。相同宿主随后在 31.846 秒导航，32.082 秒回复控制探针，但清理前未记录工作区就绪。独立诊断包二十组与短音频通过不能替代该失败。该次运行不包含图库 viewport 扩展。见[启动证据](../research/native-startup.md)与[定位证据](../research/native-video.md#arm64-first-seek-timeout)。
 
 ## 局部草稿与拉直参考点 — 2026-11-06
 

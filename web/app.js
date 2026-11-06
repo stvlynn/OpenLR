@@ -20,6 +20,7 @@ import {
 import { workingFrame } from './working-frames.js'
 import { inputPrecisionDescription } from './input-color.js'
 import { isVideo, openVideo, clipRange } from './video.js'
+import { markVideoSeek } from './video-import-diagnostics.js'
 import { PHOTO_ACCEPT, photoPreviewVersions } from './decode.js'
 import { whenVisible } from './thumbnail-visibility.js'
 import { Presets } from './presets.js'
@@ -234,21 +235,26 @@ function visible() {
     openStacks
   )
 }
-async function source(id, recipe = photos.find((photo) => photo.id === id)?.edit ?? {}) {
+async function source(id, recipe = photos.find((photo) => photo.id === id)?.edit ?? {}, seekTrace) {
   const selectedPhoto = photos.find((photo) => photo.id === id)
   if (selectedPhoto?.local?.sidecarError) throw new Error(selectedPhoto.local.sidecarError)
   const version = processingVersion(recipe)
   if (bitmapId !== id || bitmapVersion !== version) {
+    markVideoSeek(seekTrace, 'source-original')
     const data = await original(id)
+    markVideoSeek(seekTrace, 'source-original-read')
     const photo = photos.find((p) => p.id === id)
     const video = isVideo(data.file)
     if (video && version === 2) throw new Error(PROCESS_MESSAGES.video)
     let media, next
     try {
       if (video) {
-        media = await openVideo(data.file)
-        await media.seek(clipRange(photo.edit.trim, media.duration).start)
+        media = await openVideo(data.file, undefined, seekTrace)
+        markVideoSeek(seekTrace, 'playback-opened', media.video)
+        await media.seek(clipRange(photo.edit.trim, media.duration).start, false, seekTrace)
+        markVideoSeek(seekTrace, 'source-frame', media.video)
         next = await media.frameAt()
+        markVideoSeek(seekTrace, 'source-frame-read', media.video)
       } else next = await decodeEditSource(data.file, recipe)
       if (photo) {
         photo.metadata ??= await metadata(data.file)
@@ -662,7 +668,7 @@ function displayedSamplePreview(photo, clickedCanvas, messages) {
     throw Error(messages.preview)
   return samplePreview
 }
-async function draw(pausedFrame) {
+async function draw(pausedFrame, seekTrace) {
   local.drawNavigation()
   const list = visible()
   selected = organization.reconcile(list, selected)
@@ -797,11 +803,14 @@ async function draw(pausedFrame) {
   }
   if (detail) {
     const currentMedia = playingMedia && bitmapId === p.id
+    markVideoSeek(seekTrace, 'stage-frame', playingMedia?.video)
     let image
     if (currentMedia && pausedFrame?.media === playingMedia && pausedFrame.image) {
       image = bitmap = pausedFrame.image
     } else image = currentMedia && !playingMedia.video.paused ? bitmap : await source(p.id)
+    markVideoSeek(seekTrace, 'stage-paint', playingMedia?.video)
     await paintStage(image, p.edit)
+    markVideoSeek(seekTrace, 'stage-painted', playingMedia?.video)
   }
   const precision = inputPrecisionDescription(processingState(p)?.input)
   if (precision) $('info').textContent += '\n' + precision
@@ -2169,7 +2178,7 @@ async function execute(command, args, context = {}) {
           if (args.photoId !== undefined && args.photoId !== p.id) throw Error('The selected photo changed')
           if (!isVideo(p)) throw Error('Select a video')
           mode = 'detail'
-          if (bitmapId !== p.id) await source(p.id)
+          if (bitmapId !== p.id) await source(p.id, p.edit, context.seekTrace)
           const media = playingMedia
           if (command === 'video-play' || (command === 'video-toggle' && media.video.paused)) {
             const range = clipRange(p.edit.trim, media.duration)
@@ -2189,7 +2198,7 @@ async function execute(command, args, context = {}) {
             pausedFrame = { media, image }
           } else if (command === 'video-seek') {
             stopPlayback()
-            await media.seek(args.time)
+            await media.seek(args.time, false, context.seekTrace)
           } else {
             const range = clipRange(args, media.duration)
             stopPlayback()
@@ -2445,7 +2454,7 @@ async function execute(command, args, context = {}) {
   }
   if (nextId && visible().some((row) => row.id === nextId))
     selected = organization.chooseMany(visible(), [nextId])
-  await draw(pausedFrame)
+  await draw(pausedFrame, context.seekTrace)
   return result ?? snapshot()
 }
 globalThis.openlrStartupMilestone?.('catalog-read-started')

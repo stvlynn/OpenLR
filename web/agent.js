@@ -2,10 +2,15 @@ import { run, commands } from './app.js'
 import { schema, searchCommands, validateArgs } from './agent-protocol.js'
 
 import { decodeFile, encodeBlob } from './transfer.js'
-import { beginNativeVideoImportTrace, markNativeVideoImport } from './video-import-diagnostics.js'
+import {
+  beginNativeVideoImportTrace,
+  beginNativeVideoSeekTrace,
+  markNativeVideoImport,
+  markVideoSeek
+} from './video-import-diagnostics.js'
 
 // All GUI and agent mutations use app.run's same serialized, persisted command queue.
-export async function dispatch(command, args = {}, capture = false) {
+export async function dispatch(command, args = {}, capture = false, seekTrace) {
   try {
     validateArgs(command, args)
     if (command === 'import')
@@ -15,7 +20,7 @@ export async function dispatch(command, args = {}, capture = false) {
         args = { ...args, [key]: decodeFile(args[key]) }
     if (command === 'screenshot' || capture) {
       if (!globalThis.mygo?.call) throw Error('Workspace capture requires the desktop app')
-      return await run(command === 'screenshot' ? 'state' : command, args, async (result, state) => {
+      const observe = async (result, state) => {
         if (result?.blob) throw Error('Use screenshot separately from image export')
         await new Promise((resolve) => setTimeout(resolve, 32))
         const base64 = await globalThis.mygo.call('Desktop.CaptureWorkspace')
@@ -30,9 +35,10 @@ export async function dispatch(command, args = {}, capture = false) {
         return command === 'screenshot'
           ? { ok: true, result: frame }
           : { ok: true, result, frame, selected: state.selected }
-      })
+      }
+      return await run(command === 'screenshot' ? 'state' : command, args, observe, { seekTrace })
     }
-    const result = await run(command, args)
+    const result = await run(command, args, undefined, { seekTrace })
     if (result?.blob instanceof Blob) {
       return {
         ok: true,
@@ -74,11 +80,14 @@ async function serveNative(pollMethod, lane) {
       if (!request) continue
       globalThis.openlrStartupMilestone?.(lane + '-renderer-received')
       const videoImportStarted = beginNativeVideoImportTrace(request)
-      const reply = await dispatch(request.command, request.args ?? {}, request.capture)
+      const seekTrace = beginNativeVideoSeekTrace(request)
+      const reply = await dispatch(request.command, request.args ?? {}, request.capture, seekTrace)
       globalThis.openlrStartupMilestone?.(lane + '-dispatch-finished')
       markNativeVideoImport(videoImportStarted, 'renderer-dispatched')
+      markVideoSeek(seekTrace, 'renderer-dispatched')
       await call('Desktop.AgentReply', request.id, JSON.stringify(reply))
       markNativeVideoImport(videoImportStarted, 'renderer-replied')
+      markVideoSeek(seekTrace, 'renderer-replied')
     } catch (error) {
       document.documentElement.dataset.agent = 'disconnected'
       console.error('OpenLR agent bridge:', error)
