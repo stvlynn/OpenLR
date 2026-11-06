@@ -4,6 +4,8 @@
 
 ## 桌面验收与交付快照 — 2026-11-07
 
+Windows 安装专项在一次性托管账户运行实际 NSIS 静默安装和卸载，核对安装路径、开始菜单快捷方式、六种 Open With 注册及清理。已安装的 CLI 在源码树外实际导入照片，读回目录状态、32×24 预览像素和 93 字节原件。Ubuntu 推荐依赖消融减少了 20 个归档和 5,376,484 字节，并通过完整 Xvfb 原生验收。[Windows 安装专项](https://github.com/stvlynn/OpenLR/actions/runs/42275482733) · [Ubuntu 消融](../research/linux-dependencies.md#apt-recommendations-comparison)
+
 `6a03088` 在 Windows、Linux、Intel macOS 和 ARM macOS 的完整托管任务均通过。Linux 修复延后了诊断中的原生时间轴读取。本机 WebKitGTK 的对照从 8 次均报告零时长，变为 8 次通过真实定位、播放、帧像素、音频导出及原件检查。[四平台结果](https://github.com/stvlynn/OpenLR/actions/runs/42264627961) · [Linux 消融记录](../research/native-video.md)
 
 较新的 `40fdeaa` 在 Windows、Linux 和 Intel macOS 通过。ARM 通过主视频流程，随后短多音轨用例在第一次裁剪时返回解码错误，发生在导出之前。原生媒体错误会立即返回给 CLI。裁剪诊断、生成输入留存和帧解码对照另行验证。[完整矩阵](https://github.com/stvlynn/OpenLR/actions/runs/42265530525) · [ARM 裁剪诊断](https://github.com/stvlynn/OpenLR/actions/runs/42267893913) · [帧解码对照](https://github.com/stvlynn/OpenLR/actions/runs/42266059363)

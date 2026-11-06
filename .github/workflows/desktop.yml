@@ -90,6 +90,13 @@ jobs:
       - name: Observe the instrumented Windows startup
         if: ${{ !cancelled() && runner.os == 'Windows' && steps.startup-diagnostic.outcome == 'success' }}
         run: node scripts/native-suite.mjs build/startup-diagnostic/windows-amd64/OpenLR.exe
+      - name: Verify the Windows installer and installed CLI
+        if: ${{ !cancelled() && runner.os == 'Windows' && steps.distribution.outcome == 'success' }}
+        timeout-minutes: 5
+        run: |
+          $installers = @(Get-ChildItem -LiteralPath build/release/windows-amd64 -Filter 'openlr-setup-*.exe')
+          if ($installers.Count -ne 1) { throw 'Expected one NSIS installer' }
+          ./scripts/native-installer-smoke.ps1 -Installer $installers[0].FullName
       - uses: actions/upload-artifact@v4
         if: ${{ !cancelled() }}
         with:

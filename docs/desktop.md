@@ -43,6 +43,10 @@ On 2026-11-05, the Windows/amd64 package launched on WebView2 156.0.4314.58, and
 
 Official packages include the single-file Node CLI under cli/openlr.mjs in the native resource directory. Run it with Node 24. The build command bundles the shared schema and CLI implementation from this checkout.
 
+## Windows installer verification
+
+Desktop CI runs `scripts/native-installer-smoke.ps1` in a fresh Windows runner account. It installs the generated NSIS executable silently to a temporary path containing spaces. It checks the installed path, Start Menu shortcut, all configured Open With registrations and their command targets. The installed CLI runs from outside the source tree, imports a generated PNG into the installed desktop, and reads back catalog state, the actual preview pixels and exact original bytes. The uninstaller removes the program, shortcut and registrations. The initial run passed with six associations and a 32×24 preview. This covers the silent installer and registration; the separate Windows file-open smoke exercises delivery of photo arguments to the application. [Initial installer run](https://github.com/stvlynn/OpenLR/actions/runs/42275482733/job/128090613072) · [NSIS command line](https://nsis.sourceforge.io/Docs/Chapter3.html)
+
 ## macOS default store restart
 
 Ordinary macOS launches use the system's persistent WKWebView default store. The main native suite uses ephemeral stores on macOS to give each workflow a separate catalog. Run this additional check once in a fresh disposable macOS user account, such as each GitHub-hosted macOS job. The harness still isolates its socket, agent descriptor and adapter files. WKWebView catalog data and MyGo window state remain in the disposable account until it is removed. Use a fresh account for each run.
