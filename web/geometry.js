@@ -4,9 +4,11 @@ export function geometry(image, edit = {}, maxSize = Infinity) {
   const box = edit.crop || { x: 0, y: 0, w: 1, h: 1 }
   const boxW = box.w * image.width,
     boxH = box.h * image.height
-  const ratio = Number(edit.aspect) || boxW / boxH
-  const w = Math.min(boxW, boxH * ratio),
-    h = w / ratio
+  const ratio = Number(edit.aspect)
+  // Keep the exact crop bounds when no aspect is requested. A ratio round trip
+  // can otherwise move a full-image crop outside the source rectangle.
+  const w = ratio ? Math.min(boxW, boxH * ratio) : boxW,
+    h = ratio ? Math.min(boxH, boxW / ratio) : boxH
   const scale = Math.min(1, maxSize / Math.max(w, h))
   return {
     x: box.x * image.width + (boxW - w) / 2,
