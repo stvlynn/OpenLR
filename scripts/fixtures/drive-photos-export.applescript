@@ -1,5 +1,6 @@
 on run argv
     set operation to item 1 of argv
+    if operation is "export" then set the clipboard to (item 3 of argv)
     tell application "System Events"
         set targetProcess to first application process whose bundle identifier is "com.apple.Photos"
         set frontmost of targetProcess to true
@@ -24,7 +25,9 @@ on run argv
             keystroke "i" using command down
             set keywordField to my waitFor(targetProcess, "AXTextField", {"Add a Keyword", "Add a Keyword…", "Add Keywords"})
             set value of attribute "AXFocused" of keywordField to true
-            keystroke (item 3 of argv)
+            delay 0.2
+            keystroke "v" using command down
+            delay 0.4
             key code 36
             delay 0.3
             keystroke "i" using command down

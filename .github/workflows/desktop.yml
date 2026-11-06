@@ -58,6 +58,12 @@ jobs:
           done
           cmp "$PHOTOS_PROBE/Generated.png" "$PHOTOS_PROBE/export/Generated.png"
           test -s "$PHOTOS_PROBE/export/Generated.xmp"
+          /usr/bin/xmllint --nonet --format "$PHOTOS_PROBE/export/Generated.xmp"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: generated-photos-export
+          path: ${{ env.PHOTOS_PROBE }}/export/Generated.*
+          if-no-files-found: error
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
