@@ -30,6 +30,7 @@ export function videoTrialOutcome(code, signal, log) {
 
 export async function runVideoTrials({ apps, order, destination, args = [], environments = {} }) {
   await mkdir(destination, { recursive: true })
+  const fixture = path.resolve(destination, 'fixture.webm')
   const trials = []
   for (const [index, candidate] of order.entries()) {
     const logPath = path.join(destination, `${index}-${candidate}.log`)
@@ -41,7 +42,12 @@ export async function runVideoTrials({ apps, order, destination, args = [], envi
         process.execPath,
         ['scripts/native-video-smoke.mjs', path.resolve(apps[candidate]), ...args],
         {
-          env: { ...process.env, OPENLR_DIAGNOSTICS: '1', ...environments[candidate] },
+          env: {
+            ...process.env,
+            OPENLR_DIAGNOSTICS: '1',
+            ...environments[candidate],
+            OPENLR_VIDEO_PROBE_FIXTURE: fixture
+          },
           stdio: ['ignore', output.fd, output.fd],
           windowsHide: true
         }

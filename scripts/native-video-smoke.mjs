@@ -18,6 +18,20 @@ if (mode !== undefined && (!['--lldb', '--lldb-workflow'].includes(mode) || proc
 if (!executable) throw Error('Pass the path to a built OpenLR executable')
 const turnedSize = [64, 96],
   trim = { start: 1.2, end: 2.7 }
+
+async function prepareFixture(page, filename) {
+  if (filename) {
+    try {
+      return await readFile(filename)
+    } catch (error) {
+      if (error.code !== 'ENOENT') throw error
+    }
+  }
+  const bytes = await makeVideoFixture(page)
+  if (filename) await writeFile(filename, bytes, { flag: 'wx' })
+  return bytes
+}
+
 async function decodeStill(page, result) {
   assert.equal(result.mimeType, 'image/png')
   return page.evaluate(
@@ -157,13 +171,25 @@ try {
     oracleChrome ? { executablePath: oracleChrome } : { channel: process.env.CHROME_CHANNEL || 'chrome' }
   )
   console.log(JSON.stringify({ nativeVideoBrowser: browser.version() }))
-  const page = await browser.newPage()
-  // Use Chrome for the fixture and artifact decoder in a page without OpenLR application code.
-  await page.route(server.url + '/', (route) =>
-    route.fulfill({ contentType: 'text/html', body: '<title>Video oracle</title>' })
-  )
-  await page.goto(server.url)
-  const bytes = await makeVideoFixture(page)
+  async function prepareOracle() {
+    const page = await browser.newPage()
+    // Use Chrome for the fixture and artifact decoder in a page without OpenLR application code.
+    await page.route(server.url + '/', (route) =>
+      route.fulfill({ contentType: 'text/html', body: '<title>Video oracle</title>' })
+    )
+    await page.goto(server.url)
+    console.log(JSON.stringify({ nativeVideoSetup: 'fixture-pending' }))
+    const bytes = await prepareFixture(page, process.env.OPENLR_VIDEO_PROBE_FIXTURE)
+    return { page, bytes }
+  }
+  const timer = new AbortController()
+  const { page, bytes } = await Promise.race([
+    prepareOracle(),
+    delay(45_000, undefined, { signal: timer.signal }).then(() => {
+      throw Error('The independent browser did not prepare the video fixture within 45 seconds')
+    })
+  ]).finally(() => timer.abort())
+  console.log(JSON.stringify({ nativeVideoSetup: 'fixture-ready', bytes: bytes.length }))
   const verifyWorkflow = async ({ root, call, initial, pid }) => {
     const clip = path.join(root, 'clip.webm')
     await writeFile(clip, bytes)
