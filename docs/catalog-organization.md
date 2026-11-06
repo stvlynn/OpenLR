@@ -42,6 +42,8 @@ Open Versions in the detail editor and choose Save version. A version stores a n
 
 Versions persist with imported catalog records or local sidecars and survive restart. Subsequent edits, copied settings, and resets do not mutate an existing version. This implementation provides named snapshots rather than automatic session versions. Saved snapshots also travel with explicit library sync.
 
+Save version retains the photo that was active when its dialog opened. A later selection change rejects confirmation without creating a version on either photo; edits to the same photo are included at confirmation. CLI `version-save` accepts the corresponding optional `photoId`. The ordinary Copy edits button and copy shortcut also bind their displayed source through the existing `copy-edits.photoId` guard and preserve the previous clipboard when selection changes before execution.
+
 ## Filtering and ordering
 
 The current scope, text search, minimum star rating, flag, and edited status combine to determine visible photos. Search matches filenames, keywords, camera make/model and lens metadata. Edited status checks whether the recipe has a non-default stored value, ignoring `processVersion` metadata. Sort by added time, numeric-aware filename, or star rating, with ascending or descending direction. These view settings and selection are session state; photo metadata, recipes, named versions, albums, and memberships are persisted.

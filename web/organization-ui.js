@@ -18,7 +18,7 @@ export function mountOrganization(run) {
   const count = element('span', { id: 'selection-count' })
   const selectAll = button('Select all', () => run('select-all'))
   const clear = button('Clear selection', () => run('select-many', { ids: [] }))
-  const copy = button('Copy edits', () => run('copy-edits'))
+  const copy = button('Copy edits', () => run('copy-edits', { photoId: current.selected }))
   copy.id = 'copy-edits'
   const chooseCopy = mountCopyOptions(run, () => current?.selected)
   const paste = button('Paste edits', () => run('paste-edits', { expectedIds: [...current.selection] }))
@@ -168,9 +168,10 @@ export function mountOrganization(run) {
 
   const versions = element('details', { id: 'versions' }),
     summary = element('summary', { textContent: 'Versions' })
-  const save = button('Save version', () =>
-    ask('Save version', '', '', (name) => run('version-save', { name }))
-  )
+  const save = button('Save version', () => {
+    const photoId = current.selected
+    ask('Save version', '', '', (name) => run('version-save', { name, photoId }))
+  })
   save.id = 'save-version'
   const list = element('div', { id: 'version-list' })
   versions.append(summary, save, list)

@@ -3,6 +3,7 @@ import test from 'node:test'
 import { chromium } from 'playwright-core'
 import { serveWorkspace } from './browser-server.mjs'
 import { holdCatalogThumbnail } from './catalog-thumbnail-hold.mjs'
+import { waitForAsyncFunction } from './browser-wait.mjs'
 import { makePng } from './fixtures/png.mjs'
 import { makeVideoFixture } from './fixtures/video.mjs'
 
@@ -217,6 +218,72 @@ test('queued controls use the intended photo and apply relative actions once', a
       })
     }
   })
+
+  await t.test('copy actions retain their displayed source across queued selection', async (t) => {
+    const { page, run, first, second } = await workspace(t)
+    await run('edit', { key: 'Exposure', value: 1 })
+    await run('copy-edits')
+    const clipboard = (await run('state')).clipboard
+    for (const keyboard of [false, true]) {
+      await run('select', { id: first })
+      await holdThumbnail(page, '#copy-edits')
+      await queuePhotoChange(page, second)
+      if (keyboard) {
+        await page.locator('#copy-edits').focus()
+        await page.keyboard.press('Control+c')
+      } else await page.locator('#copy-edits').click()
+      await page.evaluate(() => window.catalogThumbnailHold.release())
+      const state = await run('state')
+      assert.equal(state.selected, second)
+      assert.deepEqual(state.clipboard, clipboard)
+      assert.match(await page.locator('#notice').textContent(), /active photo changed/i)
+    }
+    await run('paste-edits')
+    assert.equal(editOf(await run('state'), second).Exposure, 1)
+    await page.locator('#copy-edits').click()
+    assert.equal((await run('state')).clipboard.source, second)
+  })
+
+  await t.test(
+    'version dialog retains its photo and snapshots current edits only on that photo',
+    async (t) => {
+      const { page, run, first, second } = await workspace(t)
+      await run('panel', { name: 'Versions', open: true })
+      await page.locator('#save-version').click()
+      await page.locator('#organize-dialog input').fill('Wrong photo')
+      await run('select', { id: second })
+      await page.locator('#organize-dialog button[value="ok"]').click()
+      await page.waitForFunction(() =>
+        /selected photo changed/i.test(document.querySelector('#notice').textContent)
+      )
+      assert.ok((await run('state')).photos.every((p) => !p.versions?.length))
+      await assert.rejects(
+        () => run('version-save', { name: 'Stale', photoId: first }),
+        /selected photo changed/i
+      )
+      await run('select', { id: first })
+      await page.locator('#save-version').click()
+      await page.locator('#organize-dialog input').fill('Current edit')
+      await run('edit', { key: 'Exposure', value: 0.75 })
+      await page.locator('#organize-dialog button[value="ok"]').click()
+      const saved = await waitForAsyncFunction(page, async () => {
+        const state = await window.openlr.run('state')
+        return state.photos.some((p) => p.versions?.length) ? state : null
+      })
+      const version = saved.photos.find((p) => p.id === first).versions[0]
+      assert.equal(version.name, 'Current edit')
+      assert.deepEqual(version.edit, { Exposure: 0.75 })
+      assert.equal(saved.photos.find((p) => p.id === second).versions, undefined)
+      await run('edit', { key: 'Exposure', value: -1 })
+      assert.deepEqual(
+        (await run('version-restore', { id: version.id })).photos.find((p) => p.id === first).edit,
+        version.edit
+      )
+      await page.reload()
+      await page.waitForFunction(() => window.openlr)
+      assert.deepEqual((await run('state')).photos.find((p) => p.id === first).versions[0], version)
+    }
+  )
 
   await t.test('two rapid turns and flips each apply once with independent pixels and history', async (t) => {
     const { page, run, first } = await workspace(t)

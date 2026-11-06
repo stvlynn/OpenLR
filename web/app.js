@@ -2091,6 +2091,7 @@ async function execute(command, args, context = {}) {
           await applySelection((photo) => ({ edit: organization.pasted(photo) }), true)
           break
         case 'version-save': {
+          if (args.photoId !== undefined && args.photoId !== p.id) throw Error('The selected photo changed')
           const version = namedVersion(p, args.name)
           await replace(p, { versions: [...(p.versions ?? []), version] })
           result = version
@@ -3023,7 +3024,7 @@ document.onkeydown = (e) => {
     })
   } else if (mod && key === ',') $('settings').click()
   else if (mod && key === 'a') act('select-all')
-  else if (mod && key === 'c') act('copy-edits')
+  else if (mod && key === 'c') act('copy-edits', { photoId: selected })
   else if (mod && key === 'v') act('paste-edits')
   else if (mod && key === 'z') act(e.shiftKey ? 'history-redo' : 'history-undo')
   else if (mod && key === 'f') $('search').focus()

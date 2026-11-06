@@ -801,7 +801,7 @@ export const definitions = {
   'paste-edits': entry('Paste copied edits to every selected photo, with per-photo undo', { expectedIds }),
   'version-save': entry(
     'Save a named immutable edit snapshot on the active photo',
-    { name: string('Version name') },
+    { name: string('Version name'), photoId: string('Optional active-photo guard for the snapshot') },
     ['name']
   ),
   'version-restore': entry(

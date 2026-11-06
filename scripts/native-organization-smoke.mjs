@@ -174,7 +174,11 @@ await withNativeWorkspace(
     await select(first)
     const edit = { Exposure: 0.625 }
     await call('edit', '--key', 'Exposure', '--value', String(edit.Exposure))
-    const version = await call('version-save', '--name', 'Draft edit')
+    await assert.rejects(
+      () => call('version-save', '--name', 'Wrong photo', '--photoId', second),
+      /selected photo changed/i
+    )
+    const version = await call('version-save', '--name', 'Draft edit', '--photoId', first)
     const removedVersion = await call('version-save', '--name', 'Temporary edit')
     assert.deepEqual(version.edit, edit)
     const retainedVersion = { ...version, name: 'Ridge edit' }
