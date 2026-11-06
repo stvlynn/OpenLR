@@ -107,9 +107,9 @@ export async function openVideo(file, diagnostic) {
       if (closed) throw new DOMException('The video is closed', 'AbortError')
       return source
     }
-    const seek = async (time) => {
+    const seek = async (time, force = false) => {
       if (!(time >= 0 && time <= duration)) throw Error('Time is outside the video')
-      if (Math.abs(video.currentTime - time) > 0.0001)
+      if (force || Math.abs(video.currentTime - time) > 0.0001)
         await waitForMedia(video, 'seeked', () => {
           video.currentTime = time
         })
@@ -129,8 +129,8 @@ export async function openVideo(file, diagnostic) {
         video.pause()
         const time = Math.max(beforePause, video.currentTime)
         const image = await frameAt(time)
-        // The native clock can return to its previous seek after a decoded frame read.
-        if (!closed && isCurrent() && video.paused && video.currentTime < time) await seek(time)
+        // Anchor a paused clock before it can fall back to the previous seek.
+        if (!closed && isCurrent() && video.paused) await seek(time, true)
         return !closed && isCurrent() ? image : null
       },
       async snapshot() {

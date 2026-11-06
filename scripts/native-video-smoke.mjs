@@ -189,6 +189,11 @@ try {
     assert.equal(paused.playing, false)
     assert.ok(paused.time >= advanced.time, JSON.stringify({ started, advanced, paused }))
     assert.deepEqual((await call('state')).playback, paused)
+    // WKWebView can rewind after pause returns, even without another frame read.
+    await delay(2000)
+    const settledPause = (await call('state')).playback
+    assert.equal(settledPause.playing, false)
+    near(settledPause.time, paused.time, 0.0001, 'Paused playhead after idle')
 
     const trimmed = await call('video-trim', '--start', String(trim.start), '--end', String(trim.end))
     assert.deepEqual(trimmed.photos.find((photo) => photo.id === id).edit.trim, trim)

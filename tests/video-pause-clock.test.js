@@ -10,7 +10,7 @@ const start = 0.85
 const end = 1.2
 const run = (page, command, args = {}) => page.evaluate(([c, a]) => window.openlr.run(c, a), [command, args])
 
-async function fixture(t) {
+async function fixture(t, { deferRollback = false } = {}) {
   const server = await serveWorkspace()
   t.after(server.close)
   const browser = await chromium.launch({ channel: process.env.CHROME_CHANNEL || 'chrome' })
@@ -19,7 +19,7 @@ async function fixture(t) {
   await page.goto(server.url)
   const bytes = Array.from(await makeVideoFixture(page))
   const imported = await page.evaluate(
-    async ({ bytes, start, end }) => {
+    async ({ bytes, start, end, deferRollback }) => {
       const marked = new WeakSet(),
         draw = CanvasRenderingContext2D.prototype.drawImage,
         read = CanvasRenderingContext2D.prototype.getImageData,
@@ -29,6 +29,7 @@ async function fixture(t) {
       let pending,
         gate,
         concurrentSeek,
+        delayedPause,
         lastRewound,
         resets = 0,
         sparseReads = 0
@@ -55,6 +56,10 @@ async function fixture(t) {
         pending = null
         const frame = await getCanvas.call(this, time, ...args)
         if (media) {
+          if (deferRollback) {
+            delayedPause = { media, writes: [] }
+            return frame
+          }
           await new Promise((resolve) => {
             media.addEventListener('seeked', resolve, { once: true })
             media.currentTime = start
@@ -72,6 +77,7 @@ async function fixture(t) {
       Object.defineProperty(HTMLMediaElement.prototype, 'currentTime', {
         ...clock,
         set(time) {
+          if (delayedPause?.media === this) delayedPause.writes.push({ time, before: this.currentTime })
           if (concurrentSeek?.media === this && time === concurrentSeek.time)
             concurrentSeek.supersededWhileSeeking = this.seeking
           clock.set.call(this, time)
@@ -88,6 +94,17 @@ async function fixture(t) {
         trace: () => trace,
         resets: () => resets,
         sparseReads: () => sparseReads,
+        lateWrites: () => delayedPause.writes,
+        async releaseDelayedRollback() {
+          const { media, writes } = delayedPause
+          // The native regression returns to the last seek position, even
+          // though the ordinary paused read previously reported progress.
+          await new Promise((resolve) => {
+            media.addEventListener('seeked', resolve, { once: true })
+            clock.set.call(media, writes.at(-1)?.time ?? start)
+          })
+          return media.currentTime
+        },
         restoredAt(count, time) {
           return (
             resets >= count && lastRewound.paused && !lastRewound.seeking && lastRewound.currentTime >= time
@@ -111,7 +128,7 @@ async function fixture(t) {
       const file = new File([Uint8Array.from(bytes)], 'pause-clock.webm', { type: 'video/webm' })
       return window.openlr.run('import', { files: [file] })
     },
-    { bytes, start, end }
+    { bytes, start, end, deferRollback }
   )
   assert.deepEqual(imported.failed, [])
   return page
@@ -231,4 +248,24 @@ test('a later explicit seek supersedes a native corrective seek already in fligh
   assert.equal((await run(page, 'state')).playback.time, 0.2)
   const [red, green, blue] = await visibleColor(page)
   assert.ok(red > Math.max(green, blue) * 2)
+})
+
+test('pause seeks before a deferred native rollback can return to the earlier playhead', async (t) => {
+  const page = await fixture(t, { deferRollback: true })
+  await run(page, 'video-seek', { time: start })
+  await play(page)
+  const advanced = await playbackWhen(page, ({ time }) => time >= 1.12)
+  const { playback } = await run(page, 'video-pause')
+  assert.equal(playback.playing, false)
+  assert.ok(playback.time >= advanced.time)
+  const writes = await page.evaluate(() => pauseClock.lateWrites())
+  const afterRollback = await page.evaluate(() => pauseClock.releaseDelayedRollback())
+  assert.equal(afterRollback, playback.time, JSON.stringify({ playback, writes }))
+  assert.equal(writes.length, 1)
+  assert.equal(writes[0].time, playback.time)
+  assert.ok(writes[0].before >= advanced.time)
+  assert.equal((await run(page, 'video-seek', { time: playback.time })).playback.time, playback.time)
+  assert.deepEqual(await page.evaluate(() => pauseClock.lateWrites()), writes)
+  const [red, green, blue] = await artifactColor(page, 'preview')
+  assert.ok(green > Math.max(red, blue) * 2)
 })
