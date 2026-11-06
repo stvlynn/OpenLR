@@ -27,6 +27,16 @@ test('GUI local-tool activation shares crop/compare transitions, observable stat
     return Array.from(new Uint8Array(await blob.arrayBuffer()))
   })
   const run = (command, args = {}) => page.evaluate(([c, a]) => window.openlr.run(c, a), [command, args])
+  const tool = page.getByLabel('Local tool', { exact: true })
+  const settleScroll = () =>
+    page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))))
+  const resetToolEvents = async () => {
+    await tool.scrollIntoViewIfNeeded()
+    await settleScroll()
+    await page.evaluate(() => {
+      window.localToolEvents = 0
+    })
+  }
   for (const scenario of ['crop-tool', 'compare']) {
     await run('local-tool', { tool: 'off' })
     const initial = await run(scenario)
@@ -34,10 +44,8 @@ test('GUI local-tool activation shares crop/compare transitions, observable stat
     await run('panel', { name: 'Masks & local repair', open: true })
     const before = await run('state'),
       previousCount = before.photos[0].edit.localTools?.masks.length ?? 0
-    await page.evaluate(() => {
-      window.localToolEvents = 0
-    })
-    await page.getByLabel('Local tool', { exact: true }).selectOption('brush')
+    await resetToolEvents()
+    await tool.selectOption('brush')
     const activated = await run('state'),
       summary = await run('state', { summary: true })
     assert.equal(activated.localTool, 'brush')
@@ -89,7 +97,7 @@ test('GUI local-tool activation shares crop/compare transitions, observable stat
     assert.deepEqual(original, input)
   }
   await run('local-tool', { tool: 'clone' })
-  assert.equal(await page.getByLabel('Local tool', { exact: true }).inputValue(), 'clone')
+  assert.equal(await tool.inputValue(), 'clone')
   assert.equal((await run('state')).localTool, 'clone')
   await run('view', { mode: 'grid' })
   assert.equal(
@@ -98,16 +106,37 @@ test('GUI local-tool activation shares crop/compare transitions, observable stat
     'Selected tool does not imply a mounted editing surface'
   )
   await run('local-tool', { tool: 'brush' })
+  await resetToolEvents()
   const beforeOff = await run('state')
+  // Off closes the section. A shorter Inspector can clamp its current scroll
+  // offset and publish a second notification for that actual movement.
   await page.evaluate(() => {
-    window.localToolEvents = 0
+    const inspector = document.querySelector('main > aside')
+    window.offScrolls = []
+    window.offUpdates = []
+    inspector.addEventListener('scroll', () => window.offScrolls.push(inspector.scrollTop))
+    window.addEventListener('openlr-change', () => {
+      window.offUpdates.push(window.openlr.run('state', { summary: true }))
+    })
   })
-  await page.getByLabel('Local tool', { exact: true }).selectOption('off')
+  await tool.selectOption('off')
   const off = await run('state')
   assert.equal(off.localTool, 'off')
   assert.equal((await run('state', { summary: true })).localTool, 'off')
-  assert.equal(await page.getByLabel('Local tool', { exact: true }).inputValue(), 'off')
-  assert.equal(await page.evaluate(() => window.localToolEvents), 1)
+  assert.equal(await tool.inputValue(), 'off')
+  await settleScroll()
+  const { scrolls, updates } = await page.evaluate(async () => ({
+    scrolls: window.offScrolls,
+    updates: await Promise.all(window.offUpdates)
+  }))
+  const beforeInspector = beforeOff.panelViewports.inspector,
+    offInspector = off.panelViewports.inspector
+  assert.ok(offInspector.maxY < beforeInspector.maxY)
+  assert.deepEqual(scrolls, offInspector.y === beforeInspector.y ? [] : [offInspector.y])
+  assert.deepEqual(
+    updates.map(({ localTool, panelViewports }) => ({ localTool, inspector: panelViewports.inspector })),
+    Array.from({ length: 1 + scrolls.length }, () => ({ localTool: 'off', inspector: offInspector }))
+  )
   assert.deepEqual(off.photos[0].edit, beforeOff.photos[0].edit)
   assert.equal(await page.locator('#stage canvas').evaluate((el) => el.style.cursor), 'zoom-in')
 })

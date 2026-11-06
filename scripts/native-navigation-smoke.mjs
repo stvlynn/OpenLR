@@ -59,6 +59,16 @@ function colorPatchBounds({ width, height, data }, rgb, [patchWidth, patchHeight
   return right < 0 ? null : { left, right, top, bottom }
 }
 
+function countPixels({ width, data }, { left, right, top, bottom }, matches) {
+  let count = 0
+  for (let y = top; y < bottom; y++) {
+    for (let x = left; x < right; x++) {
+      if (matches(data, (y * width + x) * 4)) count++
+    }
+  }
+  return count
+}
+
 async function inspectWebView(profile, inspect) {
   // Only the disposable test WebView opts in. Port 0 avoids opening a fixed port,
   // and the endpoint is discovered from this run's private profile.
@@ -74,6 +84,20 @@ async function inspectWebView(profile, inspect) {
   } finally {
     await browser.close()
   }
+}
+
+function visiblePanelItems(profile, selector, items) {
+  return inspectWebView(profile, (page) =>
+    page.locator(selector).evaluate((panel, items) => {
+      const bounds = panel.getBoundingClientRect()
+      return Object.fromEntries(
+        items.map((item) => {
+          const rect = panel.querySelector(item)?.getBoundingClientRect()
+          return [item, Boolean(rect?.height && rect.bottom > bounds.top && rect.top < bounds.bottom)]
+        })
+      )
+    }, items)
+  )
 }
 
 async function gridLabels(page) {
@@ -305,13 +329,13 @@ await withNativeWorkspace(
         })
       )
     )
-    const catalogViewport = (target, ...args) => call('viewport', '--target', target, ...args)
+    const viewport = (target, ...args) => call('viewport', '--target', target, ...args)
     await view('detail')
     if (!(await state()).film) await call('film')
-    const filmWidth = (await catalogViewport('filmstrip')).width
+    const filmWidth = (await viewport('filmstrip')).width
     await view('grid')
     await call('grid-layout', '--layout', 'mosaic')
-    const gridSize = await catalogViewport('grid')
+    const gridSize = await viewport('grid')
     // Each 3:1 source makes a 420px mosaic tile and the film tile is at
     // least 78px wide. Size the bands to the actual disposable window.
     const bandSize = Math.max(
@@ -345,15 +369,15 @@ await withNativeWorkspace(
       } while (performance.now() < deadline)
       assert.fail(`Expected the visible ${name} thumbnail band`)
     }
-    async function verifyCatalogScroll(target, axis, extent) {
+    async function verifyViewportScroll(target, axis, key, inspectCapture) {
+      const extent = axis === 'y' ? 'maxY' : 'maxX'
       const otherAxis = axis === 'y' ? 'x' : 'y'
-      const top = await catalogViewport(target, '--' + axis, '0', '--photoId', first)
+      const top = await viewport(target, '--' + axis, '0', '--photoId', first)
       assert.equal(top[axis], 0)
       assert.ok(top[extent] > 0, `Expected the ${target} fixture to overflow`)
-      const start = await visibleBand(`${target}-start`, catalogColors[0])
-      assert.equal(catalogPatch(start.image, catalogColors[1]), null)
+      const start = await inspectCapture((await capture(`${target}-start`)).image, false)
       const before = await state()
-      assert.deepEqual(before.catalogViewports[target], top)
+      assert.deepEqual(before[key][target], top)
       assert.equal(before.selected, first)
       let scrolled, revision
       await Promise.race([
@@ -361,15 +385,15 @@ await withNativeWorkspace(
           assert.equal(update.selected, first)
           if (revision !== undefined) {
             assert.equal(update.revision, revision + 1, 'Only the actual scroll publishes a revision')
-            assert.deepEqual(update.catalogViewports[target], scrolled.result)
+            assert.deepEqual(update[key][target], scrolled.result)
             return
           }
           revision = update.revision
-          assert.deepEqual(update.catalogViewports[target], top)
-          assert.deepEqual(await catalogViewport(target), top)
-          assert.deepEqual(await catalogViewport(target, '--' + axis, '0'), top)
+          assert.deepEqual(update[key][target], top)
+          assert.deepEqual(await viewport(target), top)
+          assert.deepEqual(await viewport(target, '--' + axis, '0'), top)
           await assert.rejects(
-            catalogViewport(target, '--' + axis, '10', '--photoId', second),
+            viewport(target, '--' + axis, '10', '--photoId', second),
             /selected photo changed/
           )
           scrolled = await capture(
@@ -389,45 +413,150 @@ await withNativeWorkspace(
           throw Error(`No observed ${target} scroll`)
         })
       ])
-      const end = await visibleBand(`${target}-end`, catalogColors[1], scrolled.image)
-      assert.equal(catalogPatch(end.image, catalogColors[0]), null)
+      const end = await inspectCapture(scrolled.image, true)
       assert.deepEqual(dimensions(end.image), dimensions(start.image))
-      if (target === 'filmstrip') {
-        assert.ok(start.patch.top > start.image.height * 0.65)
-        assert.ok(end.patch.top > end.image.height * 0.65)
-      }
       const after = await state()
-      assert.deepEqual(after.catalogViewports[target], scrolled.result)
-      assert.deepEqual(await catalogViewport(target), scrolled.result)
+      assert.deepEqual(after[key][target], scrolled.result)
+      assert.deepEqual(await viewport(target), scrolled.result)
+      for (const group of ['catalogViewports', 'panelViewports']) {
+        const readback = group === key ? { ...after[group], [target]: top } : after[group]
+        assert.deepEqual(readback, before[group])
+      }
       assert.deepEqual(after.viewport, before.viewport)
       assert.deepEqual(after.photos, before.photos)
       assert.deepEqual(after.selection, before.selection)
-      return {
-        start: top[axis],
-        end: scrolled.result[axis],
-        extent: top[extent],
-        capturedBands: [start.patch, end.patch]
-      }
+      assert.equal(after.selected, first)
+      return { start, end, range: { start: top[axis], end: scrolled.result[axis], extent: top[extent] } }
     }
-    async function rejectHiddenViewport(target, axis, error) {
+    async function verifyCatalogScroll(target, axis) {
+      const { start, end, range } = await verifyViewportScroll(
+        target,
+        axis,
+        'catalogViewports',
+        async (image, end) => {
+          const captured = await visibleBand(
+            `${target}-${end ? 'end' : 'start'}`,
+            catalogColors[Number(end)],
+            image
+          )
+          assert.equal(catalogPatch(captured.image, catalogColors[Number(!end)]), null)
+          if (target === 'filmstrip') assert.ok(captured.patch.top > captured.image.height * 0.65)
+          return captured
+        }
+      )
+      return { ...range, capturedBands: [start.patch, end.patch] }
+    }
+    async function rejectHiddenViewport(target, axis, key, error) {
       const before = await state()
-      assert.equal(before.catalogViewports[target], null)
-      await assert.rejects(catalogViewport(target, '--' + axis, '10'), error)
+      assert.equal(before[key][target], null)
+      await assert.rejects(viewport(target, '--' + axis, '10'), error)
       const after = await state()
       assert.deepEqual(after.catalogViewports, before.catalogViewports)
+      assert.deepEqual(after.panelViewports, before.panelViewports)
       assert.deepEqual(after.viewport, before.viewport)
     }
 
     await view('grid')
-    await rejectHiddenViewport('filmstrip', 'x', /Show the filmstrip in detail view/)
-    const gridScroll = await verifyCatalogScroll('grid', 'y', 'maxY')
+    await rejectHiddenViewport('filmstrip', 'x', 'catalogViewports', /Show the filmstrip in detail view/)
+    const gridScroll = await verifyCatalogScroll('grid', 'y')
     await view('detail')
-    assert.deepEqual(await call('viewport'), await catalogViewport('detail'))
-    await rejectHiddenViewport('grid', 'y', /Open Grid view/)
+    assert.deepEqual(await call('viewport'), await viewport('detail'))
+    await rejectHiddenViewport('grid', 'y', 'catalogViewports', /Open Grid view/)
     if (!(await state()).film) await call('film')
-    const filmScroll = await verifyCatalogScroll('filmstrip', 'x', 'maxX')
+    const filmScroll = await verifyCatalogScroll('filmstrip', 'x')
     await call('film')
-    await rejectHiddenViewport('filmstrip', 'x', /Show the filmstrip in detail view/)
+    await rejectHiddenViewport('filmstrip', 'x', 'catalogViewports', /Show the filmstrip in detail view/)
+
+    const hiddenPhotos = /Show the Photos panel/
+    const hiddenInspector = /Show the Inspector in detail view/
+    await call('panel', '--name', 'photos', '--open', 'false')
+    await rejectHiddenViewport('photos', 'y', 'panelViewports', hiddenPhotos)
+    await call('panel', '--name', 'photos', '--open', 'true')
+    await view('grid')
+    await rejectHiddenViewport('inspector', 'y', 'panelViewports', hiddenInspector)
+    assert.deepEqual((await state()).panelViewports.photos, await viewport('photos'))
+    await call('view', '--mode', 'detail', '--inspector', 'true')
+    await call('panel', '--name', 'Histogram', '--open', 'true')
+    await call('panel', '--name', 'Info', '--open', 'true')
+
+    const layout = await state()
+    const { photos: photosSize, inspector: inspectorSize } = layout.panelViewports
+    const bandRows = Math.ceil(photosSize.height / 32) + 1
+    const albums = []
+    for (let i = 0; i < 2 * bandRows; i++) {
+      const label = i < bandRows ? 'I' : 'MMMMMMMMMM'
+      albums.push(await call('album', '--name', `${label} ${i + 1}`))
+    }
+    // Widths are CSS pixels. Estimate the capture scale from the three client
+    // widths and stay well inside each panel to exclude its scrollbar/edge.
+    const panelScale = (image) =>
+      image.width / (photosSize.width + layout.viewport.width + inspectorSize.width)
+    const verticalBand = (image) => ({
+      top: Math.floor(image.height * 0.22),
+      bottom: Math.floor(image.height * 0.78)
+    })
+    const albumMarkers = [albums[0], albums.at(-1)].map(({ id }) => `[data-scope="${id}"]`)
+    const photosScroll = await verifyViewportScroll('photos', 'y', 'panelViewports', async (image, end) => {
+      if (windows) {
+        assert.deepEqual(await visiblePanelItems(profile, 'nav', albumMarkers), {
+          [albumMarkers[0]]: !end,
+          [albumMarkers[1]]: end
+        })
+      }
+      const width = photosSize.width * panelScale(image)
+      const ink = countPixels(
+        image,
+        { left: Math.floor(width * 0.45), right: Math.floor(width * 0.72), ...verticalBand(image) },
+        (data, offset) => Math.min(data[offset], data[offset + 1], data[offset + 2]) > 0.55
+      )
+      return { image, ink }
+    })
+    assert.ok(
+      photosScroll.end.ink > Math.max(300, photosScroll.start.ink * 2),
+      `Wide endpoint album labels must add visible glyph ink (${photosScroll.start.ink} → ${photosScroll.end.ink})`
+    )
+
+    const inspectorScroll = await verifyViewportScroll(
+      'inspector',
+      'y',
+      'panelViewports',
+      async (image, end) => {
+        if (windows) {
+          assert.deepEqual(await visiblePanelItems(profile, 'aside', ['#histogram', '#keywords']), {
+            '#histogram': !end,
+            '#keywords': end
+          })
+        }
+        return { image }
+      }
+    )
+    const inspectorWidth = inspectorSize.width * panelScale(inspectorScroll.end.image)
+    const inspectorChangedPixels = countPixels(
+      inspectorScroll.end.image,
+      {
+        left: Math.floor(inspectorScroll.end.image.width - inspectorWidth * 0.85),
+        right: Math.floor(inspectorScroll.end.image.width - inspectorWidth * 0.16),
+        ...verticalBand(inspectorScroll.end.image)
+      },
+      (data, offset) =>
+        [0, 1, 2].some(
+          (channel) =>
+            Math.abs(data[offset + channel] - inspectorScroll.start.image.data[offset + channel]) > 0.1
+        )
+    )
+    assert.ok(
+      inspectorChangedPixels > 1000,
+      `Expected different Inspector controls (${inspectorChangedPixels} pixels)`
+    )
+
+    await call('slideshow', '--seconds', '3600')
+    assert.equal((await state()).slideshow, true)
+    await rejectHiddenViewport('photos', 'y', 'panelViewports', hiddenPhotos)
+    await rejectHiddenViewport('inspector', 'y', 'panelViewports', hiddenInspector)
+    await call('slideshow', '--stop', 'true')
+    const restored = await state()
+    assert.deepEqual(restored.panelViewports.photos, await viewport('photos'))
+    assert.deepEqual(restored.panelViewports.inspector, await viewport('inspector'))
     assert.equal((await state()).selected, first)
     assert.deepEqual(photo(await state()).edit, edit)
     for (const { file, bytes } of catalogFiles) assert.deepEqual(await readFile(file), bytes)
@@ -461,6 +590,15 @@ await withNativeWorkspace(
           grid: gridScroll,
           filmstrip: filmScroll,
           unchangedFixtureFiles: catalogFiles.length
+        },
+        panelScroll: {
+          photos: {
+            ...photosScroll.range,
+            albumCount: albums.length,
+            glyphInkPixels: [photosScroll.start.ink, photosScroll.end.ink]
+          },
+          inspector: { ...inspectorScroll.range, changedControlPixels: inspectorChangedPixels },
+          namedVisibleItems: windows
         },
         preferenceRestart: persistent,
         trustedKeyboard: windows,

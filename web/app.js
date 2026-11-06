@@ -99,7 +99,13 @@ import { mountEnhance } from './enhance-ui.js'
 
 const $ = (id) => document.getElementById(id)
 const option = (value, label) => new Option(label, value)
-const scrollports = { detail: 'stage', grid: 'gallery', filmstrip: 'film' }
+const scrollports = {
+  detail: $('stage'),
+  grid: $('gallery'),
+  filmstrip: $('film'),
+  photos: document.querySelector('main > nav'),
+  inspector: document.querySelector('main > aside')
+}
 let photos = [],
   albums = [],
   selected = '',
@@ -710,7 +716,7 @@ async function draw(pausedFrame, seekTrace) {
   $('gallery').hidden = detail
   $('film').hidden = !detail || !film
   $('stage').hidden = !detail
-  document.querySelector('aside').hidden = !detail || !inspector || p?.deleted
+  scrollports.inspector.hidden = !detail || !inspector || p?.deleted
   $('actions').hidden = !p
   $('export').textContent = BATCH_EXPORT_MESSAGES.action(organization.selection.size)
   $('export').disabled = !p
@@ -845,11 +851,14 @@ function panelSnapshot() {
   )
 }
 function viewportElement(target, photo) {
+  const element = scrollports[target]
+  if (target === 'photos' || target === 'inspector')
+    return !element.hidden && slideTimer === null ? element : null
   const visible =
     target === 'grid'
       ? mode === 'grid'
       : mode === 'detail' && photo && (target === 'detail' || (film && slideTimer === null))
-  return visible ? $(scrollports[target]) : null
+  return visible ? element : null
 }
 function viewportSnapshot(photo) {
   const read = (target) => {
@@ -858,7 +867,8 @@ function viewportSnapshot(photo) {
   }
   return {
     viewport: read('detail'),
-    catalogViewports: { grid: read('grid'), filmstrip: read('filmstrip') }
+    catalogViewports: { grid: read('grid'), filmstrip: read('filmstrip') },
+    panelViewports: { photos: read('photos'), inspector: read('inspector') }
   }
 }
 function snapshot() {
@@ -2648,8 +2658,8 @@ $('clear-crop').onclick = () => act('edit', { key: 'crop', value: null, photoId:
 function notifyWorkspaceChange() {
   window.dispatchEvent(new Event('openlr-change'))
 }
-for (const [target, id] of Object.entries(scrollports))
-  $(id).addEventListener(
+for (const [target, element] of Object.entries(scrollports))
+  element.addEventListener(
     'scroll',
     () => {
       if (viewportElement(target, active())) notifyWorkspaceChange()
@@ -3090,7 +3100,7 @@ opticsUI = mountOptics({ run, getActive: active, notify: notice })
 migrationUI = mountMigration({ run, notify: notice })
 
 // Capture base titles once, before draw can add live text such as a filter count.
-const panels = new Map([['photos', document.querySelector('main > nav')]])
+const panels = new Map([['photos', scrollports.photos]])
 const panelSummaries = new Set()
 for (const panel of document.querySelectorAll('main details')) {
   const summary = panel.querySelector(':scope > summary')

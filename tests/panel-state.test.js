@@ -209,6 +209,12 @@ test('workspace panels share command state with trusted mouse and keyboard activ
   await stackDialog.waitFor({ state: 'hidden' })
 
   const activateSummary = async (summary, title, input, open) => {
+    // Reaching an offscreen control also scrolls its panel. Observe the
+    // disclosure after that distinct workspace change has settled.
+    await summary.scrollIntoViewIfNeeded()
+    await page.evaluate(
+      () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+    )
     const before = await eventCount()
     const notice = await page.locator('#notice').textContent()
     await page.evaluate(() => (window.summaryClicks.length = 0))

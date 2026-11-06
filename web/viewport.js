@@ -3,6 +3,8 @@ export const VIEWPORT_MESSAGES = {
   detail: 'Open a photo in detail view',
   grid: 'Open Grid view',
   filmstrip: 'Show the filmstrip in detail view',
+  photos: 'Show the Photos panel',
+  inspector: 'Show the Inspector in detail view',
   changed: 'The selected photo changed'
 }
 

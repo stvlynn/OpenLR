@@ -1036,8 +1036,10 @@ export const definitions = {
   compare: entry('Toggle the original image comparison in detail view'),
   film: entry('Toggle the detail-view filmstrip'),
   zoom: entry('Toggle fit versus full-resolution detail view'),
-  viewport: entry('Read or move a photo viewport using absolute CSS-pixel scroll offsets', {
-    target: string('Visible scrollport; defaults to Detail', { enum: ['detail', 'grid', 'filmstrip'] }),
+  viewport: entry('Read or move a workspace viewport using absolute CSS-pixel scroll offsets', {
+    target: string('Visible scrollport; defaults to Detail', {
+      enum: ['detail', 'grid', 'filmstrip', 'photos', 'inspector']
+    }),
     x: number('Horizontal offset; clamped to the actual scrollable range', 0, Number.MAX_SAFE_INTEGER),
     y: number('Vertical offset; clamped to the actual scrollable range', 0, Number.MAX_SAFE_INTEGER),
     photoId: string('Optional selected-photo guard')
