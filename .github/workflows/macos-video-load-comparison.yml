@@ -1,24 +1,27 @@
-name: Apple Silicon playback element attachment comparison
+name: macOS Launch Services file-open check
 on:
   workflow_dispatch:
     inputs:
       comparison:
-        description: Media behavior to compare
+        description: Native integration to verify
         type: choice
-        options: [attachment]
-        default: attachment
+        options: [file-open]
+        default: file-open
 permissions:
-  actions: read
   contents: read
 jobs:
-  attachment:
-    runs-on: macos-15
-    timeout-minutes: 30
+  file-open:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, macos-15-intel]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
       - uses: actions/checkout@v5
         with:
-          ref: 205cd4585084dc6d02471c77d62ad8c6fa6d449e
+          ref: ca71e855d088b1829734acb2e1e485ab9210bdb6
           path: production
       - uses: actions/setup-node@v5
         with:
@@ -26,40 +29,15 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version-file: production/go.mod
-      - name: Provision the pinned fixture browser
-        run: |
-          mkdir -p build/video-oracle
-          curl --fail --location "https://storage.googleapis.com/chrome-for-testing-public/157.0.8103.38/mac-arm64/chrome-mac-arm64.zip" -o build/video-oracle/chrome.zip
-          ditto -xk build/video-oracle/chrome.zip build/video-oracle
-          echo "OPENLR_VIDEO_PROBE_CHROME=$PWD/build/video-oracle/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing" >> "$GITHUB_ENV"
-      - name: Build the unmodified production app
+      - name: Build the unmodified application
         working-directory: production
         run: |
           npm ci
           node scripts/desktop.mjs build -o build/release -platform darwin/universal
-      - name: Build the connected playback candidate
+      - name: Copy the DMG app and deliver files through Launch Services
         working-directory: production
+        shell: bash
         run: |
-          node ../scripts/native-video-attachment.mjs apply
-          node scripts/desktop.mjs build -o build/connected -platform darwin/universal
-      - name: Retrieve the exact fixture from the ordinary failure
-        uses: actions/download-artifact@v4
-        with:
-          name: video-postmortem-macos-15
-          run-id: 42299659571
-          github-token: ${{ github.token }}
-          path: build/prior
-      - name: Compare detached and connected playback on the same fixture
-        working-directory: production
-        run: |
-          output="$GITHUB_WORKSPACE/build/video-attachment"
-          mkdir -p "$output"
-          cp ../build/prior/fixture.webm "$output/fixture.webm"
-          node ../scripts/native-video-attachment.mjs compare \
-            build/release/darwin-universal/OpenLR.app/Contents/MacOS/OpenLR \
-            build/connected/darwin-universal/OpenLR.app/Contents/MacOS/OpenLR "$output"
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: video-attachment-macos-15
-          path: build/video-attachment
+          cp ../scripts/native-file-open-smoke.mjs scripts/native-file-open-smoke.mjs
+          cp ../scripts/native-dmg-smoke.sh scripts/native-dmg-smoke.sh
+          bash scripts/native-dmg-smoke.sh build/release/darwin-universal/openlr-*.dmg

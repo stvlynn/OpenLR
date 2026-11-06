@@ -1,14 +1,27 @@
 import assert from 'node:assert/strict'
+import { execFile } from 'node:child_process'
 import { once } from 'node:events'
 import { access, mkdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
+import { promisify } from 'node:util'
 import { makePng } from '../tests/fixtures/png.mjs'
 import { readPng } from '../web/png.js'
 import { withNativeWorkspace } from './native-workspace.mjs'
 
 const executable = process.argv[2]
-if (process.platform !== 'win32') throw Error('Use a packaged Windows build')
+const mac = process.platform === 'darwin'
+if (!executable || (!mac && process.platform !== 'win32'))
+  throw Error('Pass a packaged Windows or macOS executable')
+const exec = promisify(execFile)
+const bundle = mac && path.resolve(path.dirname(executable), '../..')
+if (mac) {
+  assert.equal(path.extname(bundle), '.app')
+  const { stdout } = await exec('/usr/bin/plutil', [
+    '-extract', 'CFBundleDocumentTypes', 'json', '-o', '-', path.join(bundle, 'Contents/Info.plist')
+  ])
+  assert.ok(JSON.parse(stdout).some((type) => type.CFBundleTypeExtensions?.includes('png')))
+}
 
 const fixtures = [
   { name: 'First launch.png', rgb: [39, 82, 131], width: 32, height: 24 },
@@ -34,12 +47,12 @@ async function prepare({ root }) {
     )
     await writeFile(fixture.file, fixture.bytes)
   }
-  return [fixtures[0].file]
+  return mac ? [] : [fixtures[0].file]
 }
 
 await withNativeWorkspace(
   executable,
-  async ({ root, session, pid, call, restart, launchSecondary }) => {
+  async ({ root, session, initial, pid, call, restart, launchSecondary }) => {
     const readPid = async () => JSON.parse(await readFile(session, 'utf8')).pid
     assert.equal(await readPid(), pid)
     const [first, second] = fixtures
@@ -90,44 +103,55 @@ await withNativeWorkspace(
       assert.deepEqual(await readFile(fixture.file), fixture.bytes)
     }
 
+    async function forward(fixture) {
+      if (mac) await exec('/usr/bin/open', ['-a', bundle, fixture.file], { timeout: 8000 })
+      else {
+        const secondary = launchSecondary([fixture.name], source)
+        assert.deepEqual(
+          await Promise.race([
+            once(secondary, 'close'),
+            delay(5000, undefined, { ref: false }).then(() => {
+              throw Error('Second instance did not exit')
+            })
+          ]),
+          [0, null]
+        )
+        await assert.rejects(access(path.join(root, 'secondary-agent.json')), { code: 'ENOENT' })
+      }
+      assert.equal(await readPid(), pid)
+    }
+    if (mac) {
+      assert.deepEqual(initial.photos, [])
+      await forward(first)
+    }
     const firstPhoto = await opened(first, 1)
     assert.deepEqual(firstPhoto.edit, {})
     await verifySelected(first, 'first')
 
-    async function forward() {
-      const secondary = launchSecondary([second.name], source)
-      assert.deepEqual(
-        await Promise.race([
-          once(secondary, 'close'),
-          delay(5000, undefined, { ref: false }).then(() => {
-            throw Error('Second instance did not exit')
-          })
-        ]),
-        [0, null]
-      )
-      await assert.rejects(access(path.join(root, 'secondary-agent.json')), { code: 'ENOENT' })
-      assert.equal(await readPid(), pid)
-    }
-    await forward()
+    await forward(second)
     const secondPhoto = await opened(second, 2)
     assert.notEqual(secondPhoto.id, firstPhoto.id)
     await verifySelected(second, 'second')
     await call('view', '--mode', 'grid')
-    await forward()
+    await forward(second)
     assert.equal((await opened(second, 2)).id, secondPhoto.id)
+    assert.equal(await readPid(), pid)
 
-    const reopened = await restart()
-    assert.deepEqual(new Set(reopened.photos.map(({ id }) => id)), new Set([firstPhoto.id, secondPhoto.id]))
-    for (const [fixture, id] of [
-      [first, firstPhoto.id],
-      [second, secondPhoto.id]
-    ]) {
-      await call('select', '--id', id)
-      await verifySelected(fixture, 'reopen-' + fixture.width)
+    if (!mac) {
+      const reopened = await restart()
+      assert.deepEqual(new Set(reopened.photos.map(({ id }) => id)), new Set([firstPhoto.id, secondPhoto.id]))
+      for (const [fixture, id] of [
+        [first, firstPhoto.id],
+        [second, secondPhoto.id]
+      ]) {
+        await call('select', '--id', id)
+        await verifySelected(fixture, 'reopen-' + fixture.width)
+      }
     }
     console.log(
       JSON.stringify({
         nativeFileOpen: 'passed',
+        delivery: mac ? 'Launch Services to a running app' : 'executable arguments',
         first: {
           input: 'absolute path with spaces',
           dimensions: [first.width, first.height],
@@ -135,16 +159,16 @@ await withNativeWorkspace(
           bytes: first.bytes.length
         },
         second: {
-          input: 'relative Unicode path from second working directory',
+          input: mac ? 'absolute Unicode path' : 'relative Unicode path from second working directory',
           dimensions: [second.width, second.height],
           rgb: second.rgb,
           bytes: second.bytes.length
         },
         primarySessionRetained: true,
         duplicateRetainedId: true,
-        persistentReload: true
+        persistentReload: mac ? undefined : true
       })
     )
   },
-  { persistent: true, prepare }
+  { persistent: !mac, prepare, env: { OPENLR_DIAGNOSTICS: '1' } }
 )
