@@ -66,6 +66,82 @@ test('visible legacy macOS video thumbnails refresh without changing the origina
   assert.ok(pixel[0] > 130 && pixel[1] < 100 && pixel[2] < 100 && pixel[3] === 255, JSON.stringify(pixel))
 })
 
+test('macOS releases the previous Detail video before loading another and can reopen after failure', async (t) => {
+  const server = await serveWorkspace()
+  t.after(server.close)
+  const browser = await chromium.launch({ channel: process.env.CHROME_CHANNEL || 'chrome' })
+  t.after(() => browser.close())
+  const page = await browser.newPage()
+  await page.addInitScript(() => {
+    globalThis.openlrNativePlatform = 'darwin'
+  })
+  await page.goto(server.url)
+  const bytes = Array.from(await makeVideoFixture(page))
+  const result = await page.evaluate(async (bytes) => {
+    const { run } = await import('./app.js')
+    const files = ['first.webm', 'second.webm'].map(
+      (name) => new File([Uint8Array.from(bytes)], name, { type: 'video/webm' })
+    )
+    const imported = await run('import', { files })
+    if (imported.failed.length) throw Error(imported.failed[0].error)
+    const [first, second] = imported.added
+    const prototype = HTMLMediaElement.prototype
+    const src = Object.getOwnPropertyDescriptor(prototype, 'src')
+    const released = []
+    let previous, failNext
+    Object.defineProperty(prototype, 'src', {
+      ...src,
+      set(value) {
+        if (previous) released.push(!previous.hasAttribute('src'))
+        if (failNext) {
+          failNext = false
+          throw Error('Controlled second video load failure')
+        }
+        src.set.call(this, value)
+        previous = this
+      }
+    })
+    async function select(id) {
+      await run('view', { mode: 'grid' })
+      await run('select', { id })
+    }
+    try {
+      await select(first)
+      await run('video-seek', { time: 0.25 })
+      await select(second)
+      failNext = true
+      const error = await run('video-seek', { time: 0.25 }).catch(({ message }) => message)
+      const failed = await run('state')
+      await select(first)
+      const reopened = await run('video-seek', { time: 0.35 })
+      await select(second)
+      const switched = await run('video-seek', { time: 2.35 })
+      const { blob } = await run('preview')
+      const bitmap = await createImageBitmap(blob)
+      const context = new OffscreenCanvas(1, 1).getContext('2d')
+      context.drawImage(bitmap, 0, 0, 1, 1)
+      bitmap.close()
+      return {
+        released,
+        error,
+        afterFailure: failed.playback,
+        reopened: reopened.selected === first && reopened.playback.time,
+        switched: switched.selected === second && switched.playback.time,
+        pixel: Array.from(context.getImageData(0, 0, 1, 1).data)
+      }
+    } finally {
+      Object.defineProperty(prototype, 'src', src)
+    }
+  }, bytes)
+  assert.deepEqual(result.released, [true, true, true])
+  assert.equal(result.error, 'Controlled second video load failure')
+  assert.equal(result.afterFailure, null)
+  assert.equal(result.reopened, 0.35)
+  assert.equal(result.switched, 2.35)
+  const [red, green, blue, alpha] = result.pixel
+  assert.ok(red < 100 && green < 100 && blue > 130 && alpha === 255, JSON.stringify(result.pixel))
+})
+
 test('opt-in native seek tracing observes the real event before its awaited callback resolves', async (t) => {
   const server = await serveWorkspace()
   t.after(server.close)

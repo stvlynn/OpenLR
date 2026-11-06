@@ -209,6 +209,16 @@ function stopPlayback() {
   playingMedia?.video.pause()
   cancelPlaybackFrames()
 }
+function closePlayback() {
+  stopPlayback()
+  playingMedia?.close()
+  playingMedia = null
+}
+function clearBitmap() {
+  bitmap?.close?.()
+  bitmap = null
+  bitmapId = ''
+}
 async function refreshPlayback() {
   const media = playingMedia,
     photo = active()
@@ -273,6 +283,13 @@ async function source(id, recipe = photos.find((photo) => photo.id === id)?.edit
     let media, next
     try {
       if (video) {
+        if (playingMedia && globalThis.openlrNativePlatform === 'darwin') {
+          // Release the previous WebKit decoder before loading another video.
+          closePlayback()
+          cancelPaint()
+          clearBitmap()
+          markVideoSeek(seekTrace, 'source-previous-closed')
+        }
         media = await openVideo(data.file, undefined, seekTrace)
         markVideoSeek(seekTrace, 'playback-opened', media.video)
         await media.seek(clipRange(photo.edit.trim, media.duration).start, false, seekTrace)
@@ -291,13 +308,12 @@ async function source(id, recipe = photos.find((photo) => photo.id === id)?.edit
       next?.close?.()
       throw error
     }
-    stopPlayback()
-    playingMedia?.close()
+    closePlayback()
     playingMedia = media ?? null
     localToolsUI?.unmount()
     opticsUI?.unmount()
     cancelPaint()
-    bitmap?.close?.()
+    clearBitmap()
     bitmap = next
     bitmapId = id
     bitmapVersion = version
@@ -323,12 +339,8 @@ function clearSources() {
   thumbnailObservers.clear()
   localToolsUI?.unmount()
   opticsUI?.unmount()
-  stopPlayback()
-  playingMedia?.close()
-  playingMedia = null
-  bitmap?.close?.()
-  bitmap = null
-  bitmapId = ''
+  closePlayback()
+  clearBitmap()
   for (const id of urls.keys()) invalidate(id)
   undo.length = redo.length = 0
   libraryHistory.clear()
