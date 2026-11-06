@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import { execute, parse } from '../cli/openlr.mjs'
-import { inspectNativeStartup } from './native-startup-diagnostics.mjs'
+import { inspectNativeRuntime, inspectNativeStartup } from './native-startup-diagnostics.mjs'
 
 // Isolated native test lifecycle, shared by workflows that need their own GUI.
 export async function withNativeWorkspace(
@@ -41,7 +41,7 @@ export async function withNativeWorkspace(
   if (process.platform === 'linux' && runtime && display && !path.isAbsolute(display))
     env.WAYLAND_DISPLAY = path.join(runtime, display)
 
-  let host, exited, secondary, secondaryExited
+  let host, exited, lifecycle, secondary, secondaryExited
   async function start(args = []) {
     if (host || secondary) throw Error('Native workspace host is already started or its exit is unconfirmed')
     const startedAt = performance.now()
@@ -53,6 +53,13 @@ export async function withNativeWorkspace(
       'Use a shorter temporary directory for the private MyGo socket'
     )
     host = spawn(path.resolve(executable), args, { env, stdio: 'inherit' })
+    const observed = (lifecycle = { startedAt, startedWall: Date.now() })
+    observed.exitEvent = new Promise((resolve) =>
+      host.once('exit', (code, signal) => {
+        observed.exit = { code, signal, at: performance.now(), wall: Date.now() }
+        resolve()
+      })
+    )
     host.once('error', (error) => {
       launchError = error
     })
@@ -70,7 +77,9 @@ export async function withNativeWorkspace(
         await delay(120)
       }
       sessionAt = requestAt = performance.now()
-      return await call('state')
+      const initial = await call('state')
+      observed.readyAt = performance.now()
+      return initial
     } catch (error) {
       try {
         const diagnostic = await inspectNativeStartup({ session, host, startedAt, sessionAt, requestAt })
@@ -92,11 +101,13 @@ export async function withNativeWorkspace(
   }
   async function stop() {
     if (!host) return
+    lifecycle.stopRequested = true
     await killAndWait(host, exited)
     try {
       await rm(session, { force: true })
     } finally {
       host = null
+      lifecycle = null
     }
   }
 
@@ -142,6 +153,14 @@ export async function withNativeWorkspace(
     })
   } catch (error) {
     primaryFailure = true
+    if (lifecycle?.readyAt !== undefined && !lifecycle.stopRequested) {
+      try {
+        const diagnostic = await inspectNativeRuntime({ session, host, lifecycle })
+        console.error('Native workflow failure diagnostics: ' + JSON.stringify(diagnostic))
+      } catch {
+        console.error('Native workflow failure diagnostics unavailable')
+      }
+    }
     throw error
   } finally {
     const cleanupFailures = []
