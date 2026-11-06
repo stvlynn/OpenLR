@@ -1,16 +1,16 @@
-name: macOS cold Launch Services file-open check
+name: macOS native folder and Save panels
 on:
   workflow_dispatch:
     inputs:
       comparison:
-        description: Native integration to verify
+        description: Native interaction to verify
         type: choice
-        options: [cold-file-open]
-        default: cold-file-open
+        options: [dialogs]
+        default: dialogs
 permissions:
   contents: read
 jobs:
-  cold-file-open:
+  native-dialogs:
     strategy:
       fail-fast: false
       matrix:
@@ -19,6 +19,8 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
+      - name: Compile the System Events driver
+        run: osacompile -o "$RUNNER_TEMP/OpenLRNativeDialog.scpt" scripts/drive-native-dialog.applescript
       - uses: actions/checkout@v5
         with:
           ref: b8cc778cc5e9c4f44bbfcb7acefd38c30ef3fd45
@@ -29,17 +31,15 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version-file: production/go.mod
-      - name: Build the unmodified application
+      - name: Build the unmodified production package
         working-directory: production
         run: |
           npm ci
           node scripts/desktop.mjs build -o build/release -platform darwin/universal
-      - name: Deliver a document to a stopped application through Launch Services
+      - name: Exercise the real AppKit panels through System Events
         working-directory: production
         shell: bash
         run: |
-          xcrun swiftc -parse-as-library ../scripts/fixtures/cold-document-launch.swift -o build/cold-document-launch
-          cp ../scripts/native-workspace.mjs scripts/native-workspace.mjs
-          cp ../scripts/native-file-open-smoke.mjs scripts/native-file-open-smoke.mjs
-          cp ../scripts/native-dmg-smoke.sh scripts/native-dmg-smoke.sh
-          bash scripts/native-dmg-smoke.sh build/release/darwin-universal/openlr-*.dmg build/cold-document-launch
+          cp ../scripts/native-dialog-smoke.mjs scripts/native-dialog-smoke.mjs
+          cp ../scripts/drive-native-dialog.applescript scripts/drive-native-dialog.applescript
+          node scripts/native-dialog-smoke.mjs build/release/darwin-universal/OpenLR.app/Contents/MacOS/OpenLR

@@ -25,11 +25,26 @@ on run argv
         if operation is "navigate" then
             set destination to item 4 of argv
             if frontmost of targetProcess is not true then error "OpenLR is no longer frontmost"
+            set previousFocus to missing value
+            try
+                set previousFocus to value of attribute "AXFocusedUIElement" of targetProcess
+            end try
             keystroke "g" using {command down, shift down}
-            delay 0.4
-            if frontmost of targetProcess is not true then error "OpenLR lost focus before Go to Folder"
-            set focusedControl to value of attribute "AXFocusedUIElement" of targetProcess
-            if (role of focusedControl) is not in {"AXTextField", "AXComboBox"} then error "Go to Folder did not focus a path entry"
+            set pathEntryReady to false
+            set focusedRole to "unavailable"
+            repeat 30 times
+                if frontmost of targetProcess is not true then error "OpenLR lost focus before Go to Folder"
+                try
+                    set focusedControl to value of attribute "AXFocusedUIElement" of targetProcess
+                    set focusedRole to role of focusedControl
+                    if (focusedRole is in {"AXTextField", "AXComboBox"}) and (focusedControl is not previousFocus) then
+                        set pathEntryReady to true
+                        exit repeat
+                    end if
+                end try
+                delay 0.12
+            end repeat
+            if not pathEntryReady then error "Go to Folder did not focus a new path entry; last role " & focusedRole
             keystroke "a" using command down
             keystroke destination
             delay 0.4
