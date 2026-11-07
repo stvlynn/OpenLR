@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { cp, mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
@@ -92,6 +92,9 @@ export async function prepareInitialDecodeComparison(destination) {
   const archive = path.join(source, 'source.tar')
   git('archive', '--format=tar', '--output', archive, revisions.common)
   execFileSync('tar', ['-xf', archive, '-C', source], { timeout: 120_000, windowsHide: true })
+  await cp(path.join(source, 'resources', 'licenses'), path.join(output, 'licenses'), { recursive: true })
+  for (const name of ['LICENSE', 'THIRD_PARTY_NOTICES.md'])
+    await cp(path.join(source, name), path.join(output, name))
   const preload = await readFile(
     new URL('./fixtures/initial-decode-recovery/preload.js', import.meta.url),
     'utf8'

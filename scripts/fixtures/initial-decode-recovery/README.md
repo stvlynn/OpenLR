@@ -28,6 +28,10 @@ stock build uses `CGO_ENABLED=0`, `-mod=vendor`, `-tags mygo_noinspector` and th
 existing MyGo production flag. These executables do not prove ordinary package
 installation or platform dialogs.
 
+The artifact retains project and dependency license texts beside the direct test
+executables, using the common revision's original `LICENSE`,
+`THIRD_PARTY_NOTICES.md` and `resources/licenses/` files.
+
 The retained 59,365-byte input comes directly from the pinned `9004d23` Git
 object `scripts/fixtures/short-audio-layout/failed-multitrack.webm`; its provenance
 is in that revision's fixture README. No reticking, remuxing or new generation

@@ -38,6 +38,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
+          # The direct test hosts retain their dependency and project license texts.
           name: controlled-initial-decode-arm
           path: |
             build/initial-decode-recovery/**
