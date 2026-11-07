@@ -19,8 +19,19 @@ export const isVideo = (asset) =>
       asset.mediaType?.startsWith('video/') ||
       /\.(mov|mp4|m4v|webm|mkv)$/i.test(asset.name))
   )
+class NativeMediaError extends Error {
+  constructor(video) {
+    super(video.error?.message || 'The video codec is unavailable')
+    this.mediaErrorCode = video.error?.code
+  }
+}
+class InitialVideoDecodeFailure {
+  constructor(error) {
+    this.error = error
+  }
+}
 function mediaError(video) {
-  return Error(video.error?.message || 'The video codec is unavailable')
+  return new NativeMediaError(video)
 }
 
 function waitForMedia(video, event, action, signal) {
@@ -73,6 +84,19 @@ function nativeVideoPixelsReadable(video) {
 }
 
 export async function openVideo(file, diagnostic, seekTrace, preparePoster = false) {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      return await openVideoAttempt(file, diagnostic, seekTrace, preparePoster)
+    } catch (failure) {
+      if (!(failure instanceof InitialVideoDecodeFailure)) throw failure
+      if (attempt || globalThis.openlrNativePlatform !== 'darwin' || preparePoster) throw failure.error
+      // The failed attempt is fully closed before opening the unchanged source once more.
+      markVideoSeek(seekTrace, 'playback-load-retry')
+    }
+  }
+}
+
+async function openVideoAttempt(file, diagnostic, seekTrace, preparePoster) {
   markVideoImport(diagnostic, 'media-load')
   const url = URL.createObjectURL(file),
     video = document.createElement('video'),
@@ -109,14 +133,28 @@ export async function openVideo(file, diagnostic, seekTrace, preparePoster = fal
         })
         frameCallback = video.requestVideoFrameCallback(() => resolvePresentation(true))
       }
-      await waitForMedia(
-        video,
-        'loadeddata',
-        () => {
-          video.src = url
-        },
-        lifetime.signal
-      )
+      let metadataAdmitted = false
+      const admitMetadata = (event) => {
+        metadataAdmitted =
+          event.isTrusted && video.readyState >= 1 && video.videoWidth > 0 && video.videoHeight > 0
+      }
+      video.addEventListener('loadedmetadata', admitMetadata)
+      try {
+        await waitForMedia(
+          video,
+          'loadeddata',
+          () => {
+            video.src = url
+          },
+          lifetime.signal
+        )
+      } catch (error) {
+        if (metadataAdmitted && error instanceof NativeMediaError && error.mediaErrorCode === 3)
+          throw new InitialVideoDecodeFailure(error)
+        throw error
+      } finally {
+        video.removeEventListener('loadedmetadata', admitMetadata)
+      }
       if (presented) {
         // WebKit can report loadeddata before the native first frame can be copied.
         // An inactive window may never send the callback, so retain the ready-frame path.
