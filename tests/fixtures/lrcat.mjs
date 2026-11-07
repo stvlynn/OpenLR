@@ -36,17 +36,31 @@ export async function makeLrcat({ broken = false, version = '1500000', xmp = tru
     201,
     's = { Exposure2012 = 0.75, Contrast2012 = 10, Temperature = 5500, Nested = { Exposure2012 = -4 } }'
   ])
-  db.run('INSERT INTO Adobe_imageDevelopSettings VALUES (?,?,0,0)', [203, 's = { Exposure2012 = -0.5 }'])
+  db.run('INSERT INTO Adobe_imageDevelopSettings VALUES (?,?,0,0)', [
+    202,
+    's = { HasCrop = false, CropLeft = 0.125, CropRight = 0.875 }'
+  ])
+  db.run('INSERT INTO Adobe_imageDevelopSettings VALUES (?,?,0,0)', [
+    203,
+    's = { Exposure2012 = -0.5, CropLeft = 0.125, CropRight = 0.875 }'
+  ])
+  db.run('INSERT INTO Adobe_imageDevelopSettings VALUES (?,?,0,0)', [205, 's = { CropAngle = 2.5 }'])
   if (xmp) {
-    const xml = Buffer.from(
-        '<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"><rdf:Description xmlns:crs="http://ns.adobe.com/camera-raw-settings/1.0/" crs:Exposure2012="0.25" crs:Vibrance="20"/></rdf:RDF></x:xmpmeta>'
-      ),
-      size = Buffer.alloc(4)
-    size.writeUInt32BE(xml.length)
-    db.run('INSERT INTO Adobe_AdditionalMetadata VALUES (?,?)', [
-      201,
-      Buffer.concat([size, deflateSync(xml)])
-    ])
+    for (const image of [201, 202, 203, 205]) {
+      const tone = image === 201 ? 'crs:Exposure2012="0.25" crs:Vibrance="20"' : '',
+        xml = Buffer.from(`<x:xmpmeta xmlns:x="adobe:ns:meta/">
+  <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+    <rdf:Description xmlns:crs="http://ns.adobe.com/camera-raw-settings/1.0/" ${tone}
+      crs:HasCrop="True" crs:CropLeft="0.25" crs:CropTop="0.125" crs:CropRight="0.75" crs:CropBottom="0.875"/>
+  </rdf:RDF>
+</x:xmpmeta>`),
+        size = Buffer.alloc(4)
+      size.writeUInt32BE(xml.length)
+      db.run('INSERT INTO Adobe_AdditionalMetadata VALUES (?,?)', [
+        image,
+        Buffer.concat([size, deflateSync(xml)])
+      ])
+    }
   }
   if (broken) db.run('DROP TABLE AgLibraryFolder')
   const bytes = db.export()

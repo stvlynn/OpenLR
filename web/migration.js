@@ -161,6 +161,8 @@ function readSidecar(xml, warnings, includeCaptureDate) {
     return {}
   }
 }
+const catalogCropEdges = ['CropLeft', 'CropTop', 'CropRight', 'CropBottom']
+
 function changes(photo, edit, warnings) {
   for (const [key, field] of Object.entries(CRS_FIELDS))
     if (typeof photo.develop?.[field] === 'number') {
@@ -170,18 +172,33 @@ function changes(photo, edit, warnings) {
       else edit[key] = value
     }
   const d = photo.develop ?? {}
-  if (d.HasCrop === true) {
-    const crop = { x: d.CropLeft, y: d.CropTop, w: d.CropRight - d.CropLeft, h: d.CropBottom - d.CropTop }
-    if (validCrop(crop) && !d.CropAngle) edit.crop = crop
-    else warnings.push('Unsupported or rotated catalog crop; not applied')
+  const {
+    HasCrop: hasCrop,
+    CropLeft: x = 0,
+    CropTop: y = 0,
+    CropRight: right = 1,
+    CropBottom: bottom = 1,
+    CropAngle: angle = 0
+  } = d
+  if (hasCrop !== undefined || angle !== 0 || catalogCropEdges.some((key) => d[key] !== undefined)) {
+    delete edit.crop
+    if (hasCrop !== false) {
+      const crop = { x, y, w: right - x, h: bottom - y }
+      if (
+        (hasCrop === true || hasCrop === undefined) &&
+        angle === 0 &&
+        [x, y, right, bottom].every(Number.isFinite) &&
+        validCrop(crop)
+      ) {
+        if (x !== 0 || y !== 0 || right !== 1 || bottom !== 1) edit.crop = crop
+      } else warnings.push('Unsupported or rotated catalog crop; not applied')
+    }
   }
   const supported = new Set([
     ...Object.values(CRS_FIELDS),
     'HasCrop',
-    'CropLeft',
-    'CropTop',
-    'CropRight',
-    'CropBottom',
+    ...catalogCropEdges,
+    'CropAngle',
     'ProcessVersion',
     'Version'
   ])

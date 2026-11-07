@@ -154,7 +154,8 @@ test('synthetic Classic/Apple resource migration reviews explicit references, re
   await a.page.getByRole('button', { name: 'Close', exact: true }).click()
   let state = await a.run('state'),
     first = state.photos.find((photo) => photo.migration.sourceId === '201'),
-    copy = state.photos.find((photo) => photo.migration.sourceId === '203')
+    copy = state.photos.find((photo) => photo.migration.sourceId === '203'),
+    rotated = state.photos.find((photo) => photo.migration.sourceId === '205')
   assert.equal(state.photos.length, 3)
   assert.equal(first.rating, 4)
   assert.equal(first.flag, 'pick')
@@ -162,7 +163,11 @@ test('synthetic Classic/Apple resource migration reviews explicit references, re
   assert.equal(first.edit.Exposure, 0.75)
   assert.equal(first.edit.Vibrance, 20)
   assert.equal(first.edit.Temperature, undefined)
+  assert.deepEqual(first.edit.crop, { x: 0.25, y: 0.125, w: 0.5, h: 0.75 })
   assert.equal(copy.originalId, first.id)
+  assert.deepEqual(copy.edit.crop, { x: 0.125, y: 0, w: 0.75, h: 1 })
+  assert.equal(rotated.edit.crop, undefined)
+  assert.ok(rotated.migration.warnings.includes('Unsupported or rotated catalog crop; not applied'))
   assert.equal(first.reference.relative, 'Album/first.png')
   assert.equal(state.albums.length, 1)
   assert.equal(
@@ -186,6 +191,7 @@ test('synthetic Classic/Apple resource migration reviews explicit references, re
   first = state.photos.find((photo) => photo.id === first.id)
   assert.equal(state.photos.length, 4)
   assert.equal(first.edit.Exposure, 1.1)
+  assert.equal(state.photos.find((photo) => photo.migration.sourceId === '202').edit.crop, undefined)
   const b = await device(false),
     endpoint = { endpoint: 'https://fixture.test/reviewed-sync/' }
   const uploaded = await a.run('sync', endpoint)
@@ -207,9 +213,12 @@ test('synthetic Classic/Apple resource migration reviews explicit references, re
   await b.run('select', { id: copy.id })
   const preview = await b.page.evaluate(async () => {
     const { blob } = await window.openlr.run('preview', { maxSize: 40 })
-    return blob.size
+    const image = await createImageBitmap(blob),
+      dimensions = [image.width, image.height]
+    image.close()
+    return dimensions
   })
-  assert.ok(preview > 100)
+  assert.deepEqual(preview, [40, 40])
   await b.run('edit', { key: 'Contrast', value: 12 })
   await b.run('sync', endpoint)
   await a.run('sync', endpoint)
