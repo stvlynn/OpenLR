@@ -1,0 +1,46 @@
+name: macOS controlled initial decode recovery
+on:
+  workflow_dispatch:
+  push:
+    branches: [experiment/macos-initial-decode-recovery]
+    paths: [.github/workflows/macos-initial-decode-recovery.yml]
+permissions:
+  contents: read
+jobs:
+  controlled-recovery:
+    runs-on: macos-15
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - run: npm ci
+      - name: Record the native environment
+        run: |
+          mkdir -p build/initial-decode-recovery
+          { uname -a; sw_vers; go version; } > build/initial-decode-recovery/system.log
+      - name: Provision independent audio verification tools
+        run: command -v ffmpeg && command -v ffprobe || brew install ffmpeg
+      - name: Provision the pinned independent browser
+        run: |
+          mkdir -p build/audio-oracle
+          curl --fail --location "https://storage.googleapis.com/chrome-for-testing-public/157.0.8103.38/mac-arm64/chrome-mac-arm64.zip" -o build/audio-oracle/chrome.zip
+          ditto -xk build/audio-oracle/chrome.zip build/audio-oracle
+          echo "OPENLR_AUDIO_ORACLE_CHROME=$PWD/build/audio-oracle/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing" >> "$GITHUB_ENV"
+      - name: Build and compare two controlled direct native hosts
+        run: node scripts/native-initial-decode-comparison.mjs build/initial-decode-recovery
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: controlled-initial-decode-arm
+          path: |
+            build/initial-decode-recovery/**
+            .workspace/native-audio-export-failures/**
+          include-hidden-files: true
+          if-no-files-found: error
