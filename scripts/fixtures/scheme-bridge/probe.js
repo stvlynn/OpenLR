@@ -7,7 +7,10 @@ window.fetch = async (url, options) => {
     try {
       envelope = JSON.parse(options.body)
     } catch {}
-    if (envelope?.kind === 'message') window.__capturedEnvelope ||= options.body
+    if (envelope?.kind === 'message' && window.__captureNextEnvelope) {
+      window.__captureNextEnvelope = false
+      window.__capturedEnvelope = options.body
+    }
     if (envelope?.kind === 'eval' && window.__duplicateNextEval) {
       window.__duplicateNextEval = false
       const response = await originalFetch(url, options)
@@ -69,6 +72,7 @@ async function firstPage() {
   checks.childForgeryRejected = child.status === 403
   frame.remove()
   await call('RendererChecks', checks)
+  window.__captureNextEnvelope = true
   await call('Ready', 'first')
 }
 

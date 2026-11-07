@@ -177,7 +177,7 @@ func (p *SchemeProbe) run() {
 	case <-time.After(8 * time.Second):
 		p.check("navigation/pending-eval-canceled", false, "old Eval remained pending")
 	}
-	p.eval("navigation/old-envelope-rejected", `fetch("mygo://localhost/__openlr_bridge", {method:"POST", body:sessionStorage.getItem("oldEnvelope")}).then(response => response.status)`, "403")
+	p.eval("navigation/old-envelope-rejected", `const envelope = sessionStorage.getItem("oldEnvelope"); if (!envelope) throw new Error("Missing old replay envelope"); return fetch("mygo://localhost/__openlr_bridge", {method:"POST", body:envelope}).then(response => response.status)`, "403")
 	p.eval("navigation/new-page-normal-call", `mygo.call("SchemeProbe.Echo", "new page alive")`, `"new page alive"`)
 	p.check("transport/reserved-endpoint-owned", p.reservedLeaks.Load() == 0, "application protocol handler received reserved endpoint")
 }
