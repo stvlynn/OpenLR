@@ -4,7 +4,11 @@ import { randomUUID } from 'node:crypto'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
-import { parseSignalContext, validateSignalCalibration } from './calibrate-signal-context.mjs'
+import {
+  parseSignalContext,
+  parseSignalContexts,
+  validateSignalCalibration
+} from './calibrate-signal-context.mjs'
 
 assert.equal(process.platform, 'darwin', 'Post-signal calibration requires macOS')
 assert.equal(process.arch, 'arm64', 'Post-signal calibration requires ARM64')
@@ -154,7 +158,8 @@ async function runCase(mode, debuggerMode) {
       record.capture = JSON.parse(lines[0].slice(captureMarker.length))
       assert.equal(record.capture.pid, probe.child.pid)
       assert.equal(record.capture.nonce, request.nonce)
-      assert.equal(record.capture.detachSuccess, true, 'Debugger must detach from its owned fixture')
+      assert.equal(record.capture.resumeSuccess, true, 'Debugger must resume original signal forwarding')
+      assert.equal(record.capture.sessionComplete, true, 'Debugger must observe its owned inferior exit')
     }
     record.continueRequested = probe.child.exitCode === null && probe.child.signalCode === null
     if (record.continueRequested) probe.child.kill('SIGCONT')
@@ -166,6 +171,8 @@ async function runCase(mode, debuggerMode) {
     assert.equal(probe.output.error, null)
     assert.equal(probe.output.truncated, false)
     record.termination = probe.output.closed
+    record.forwardedContexts = parseSignalContexts(probe.output.stderr)
+    record.forwardedRegisters = registerRecords(probe.output.stderr)
     const verified = validateSignalCalibration(
       {
         mode,
@@ -178,8 +185,6 @@ async function runCase(mode, debuggerMode) {
       baseline.runtimeSiUser,
       { allowIdenticalForwardedContexts: debuggerMode !== 'resume' }
     )
-    record.forwardedContexts = verified.contextRecords
-    record.forwardedRegisters = registerRecords(probe.output.stderr)
     assert.equal(record.forwardedRegisters.length, record.forwardedContexts.length)
     for (const registers of record.forwardedRegisters)
       assert.deepEqual(
