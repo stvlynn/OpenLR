@@ -105,6 +105,8 @@ Video failures can additionally return `error.details.video` through the existin
 
 The native video smoke emits one failure-only JSON record `{nativeVideo:"failed",failure:...}` containing only the whitelisted video snapshot; its trial report can retain that `failure` without changing pass or cleanup rules. This prevents Node's ordinary error inspection from abbreviating nested admission/history data. Run `node --test tests/video-error-details.test.js tests/agent-cli.test.js` for controlled real-Chrome failures and the existing details transport. [Evidence and scope](../research/native-video.md#failure-only-video-details)
 
+Reannotating the same error retains its first player's load metadata and history. The owning load can still append its bounded failure history; a later catch cannot substitute another player's attempt or metadata.
+
 `video-toggle --photoId PHOTO_ID` uses the same Play/Pause action as the video bar. It reads the clip's actual playback state when the command executes and returns the resulting `playback` state. `video-play` and `video-pause` remain available for explicit playback requests. `video-seek --time 0.75` moves the playhead, and `video-trim --start 0.5 --end 1.5` saves the trim and moves the playhead to its start. The video bar sends the ID of the clip it displays for Play/Pause, seeking and trimming. The `photoId` guard is optional for these three CLI commands.
 
 Video-container export decodes from the original and applies the captured edits to the source tracks. A Grid export can run with no playback session. Preview and still-frame output keep their existing frame sources.
