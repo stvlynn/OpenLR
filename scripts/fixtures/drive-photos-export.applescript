@@ -1,6 +1,5 @@
 on run argv
     set operation to item 1 of argv
-    if operation is "export" then set the clipboard to (item 3 of argv)
     tell application "System Events"
         set targetProcess to first application process whose bundle identifier is "com.apple.Photos"
         set frontmost of targetProcess to true
@@ -21,21 +20,6 @@ on run argv
         end if
         if operation is "export" then
             keystroke "a" using command down
-            my waitForExport(targetProcess)
-            keystroke "i" using command down
-            set keywordField to my waitFor(targetProcess, "AXTextField", {"Add a Keyword", "Add a Keyword…", "Add Keywords"})
-            set {fieldX, fieldY} to position of keywordField
-            set {fieldWidth, fieldHeight} to size of keywordField
-            click at {fieldX + (fieldWidth div 2), fieldY + (fieldHeight div 2)}
-            delay 0.25
-            keystroke "v" using command down
-            delay 0.4
-            set keywordValue to value of keywordField
-            if keywordValue is missing value then set keywordValue to ""
-            log ("Photos keyword field before Return: " & keywordValue)
-            key code 36
-            delay 1
-            keystroke "i" using command down
             click my waitForExport(targetProcess)
             set xmpToggle to my waitFor(targetProcess, "AXCheckBox", {"Export IPTC as XMP"})
             if (value of xmpToggle) is 0 then click xmpToggle

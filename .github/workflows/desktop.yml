@@ -28,10 +28,13 @@ jobs:
           import { writeFile } from 'node:fs/promises'
           import path from 'node:path'
           import { makePng } from './tests/fixtures/png.mjs'
+          import { embedPngMetadata } from './web/color-containers.js'
           const width = 32, height = 24
-          await writeFile(path.join(process.env.PHOTOS_PROBE, 'Generated.png'), makePng({
+          const pixels = makePng({
             width, height, bits: 8, data: Array.from({ length: width * height }, () => [64, 96, 128]).flat()
-          }))
+          })
+          const xmp = new TextEncoder().encode(`<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"><rdf:Description rdf:about="" xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:subject><rdf:Bag><rdf:li>OpenLRGeneratedKeyword</rdf:li></rdf:Bag></dc:subject></rdf:Description></rdf:RDF></x:xmpmeta>`)
+          await writeFile(path.join(process.env.PHOTOS_PROBE, 'Generated.png'), embedPngMetadata(pixels, { xmp }))
           NODE
           osacompile -o "$PHOTOS_PROBE/drive.scpt" scripts/fixtures/drive-photos-export.applescript
           open -b com.apple.Photos --args -IPXDefaultShowLibraryChooserOnLaunch true
@@ -51,7 +54,7 @@ jobs:
           sleep 1
           osascript "$PHOTOS_PROBE/drive.scpt" import "$PHOTOS_PROBE/Generated.png"
           sleep 1
-          osascript "$PHOTOS_PROBE/drive.scpt" export "$PHOTOS_PROBE/export/" OpenLRGeneratedKeyword
+          osascript "$PHOTOS_PROBE/drive.scpt" export "$PHOTOS_PROBE/export/"
           for trial in {1..50}; do
             if test -s "$PHOTOS_PROBE/export/Generated.png" && test -s "$PHOTOS_PROBE/export/Generated.xmp"; then break; fi
             sleep 0.2
