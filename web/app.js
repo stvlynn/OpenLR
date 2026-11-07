@@ -24,6 +24,7 @@ import {
 import { workingFrame } from './working-frames.js'
 import { inputPrecisionDescription } from './input-color.js'
 import { isVideo, openVideo, clipRange } from './video.js'
+import { annotateVideoError } from './video-errors.js'
 import { markVideoSeek } from './video-import-diagnostics.js'
 import { PHOTO_ACCEPT, photoPreviewVersions } from './decode.js'
 import { whenVisible } from './thumbnail-visibility.js'
@@ -251,6 +252,7 @@ async function refreshPlayback() {
   const ownsPlayback = () =>
     playingMedia === media && playbackGeneration === generation && selected === photo.id && mode === 'detail'
   const ownsFrame = () => ownsPlayback() && active() === photo
+  let operation = 'refresh-frame'
   try {
     const pending = end ? media.pauseFrame(ownsPlayback) : cursor ? cursor.at(time) : media.frameAt(time)
     $('play-video').textContent = video.paused ? 'Play' : 'Pause'
@@ -259,10 +261,12 @@ async function refreshPlayback() {
     if (end && ownsPlayback()) $('video-position').value = video.currentTime
     if (image && ownsFrame()) {
       bitmap = image
+      operation = 'refresh-paint'
       await previewStage(image, photo.edit, ownsFrame)
     }
   } catch (error) {
     if (!ownsPlayback()) return
+    annotateVideoError(error, { operation, video, origin: cursor ? 'frame-decoder' : undefined })
     if (!discardFailedVideoSource(media)) {
       stopPlayback()
       $('play-video').textContent = 'Play'
@@ -298,7 +302,9 @@ async function source(id, recipe = photos.find((photo) => photo.id === id)?.edit
     const photo = photos.find((p) => p.id === id)
     const video = isVideo(data.file)
     if (video && version === 2) throw new Error(PROCESS_MESSAGES.video)
-    let media, next
+    let media,
+      next,
+      operation = 'initial-open'
     try {
       if (video) {
         if (playingMedia && globalThis.openlrNativePlatform === 'darwin') {
@@ -308,18 +314,22 @@ async function source(id, recipe = photos.find((photo) => photo.id === id)?.edit
         }
         media = await openVideo(data.file, undefined, seekTrace)
         markVideoSeek(seekTrace, 'playback-opened', media.video)
+        operation = 'initial-position'
         await media.seek(clipRange(photo.edit.trim, media.duration).start, false, seekTrace)
         markVideoSeek(seekTrace, 'source-frame', media.video)
+        operation = 'initial-frame'
         next = await media.frameAt()
         markVideoSeek(seekTrace, 'source-frame-read', media.video)
       } else next = await decodeEditSource(data.file, recipe)
       if (photo) {
+        operation = 'source-metadata'
         photo.metadata ??= await metadata(data.file)
         if (media) photo.duration = media.duration
         photo.width = next.width
         photo.height = next.height
       }
     } catch (error) {
+      if (video) annotateVideoError(error, { operation, video: media?.video })
       media?.close()
       next?.close?.()
       throw error
@@ -856,13 +866,20 @@ async function draw(pausedFrame, seekTrace) {
   if (detail) {
     const currentMedia = playingMedia && bitmapId === p.id
     markVideoSeek(seekTrace, 'stage-frame', playingMedia?.video)
-    let image
-    if (currentMedia && pausedFrame?.media === playingMedia && pausedFrame.image) {
-      image = bitmap = pausedFrame.image
-    } else image = currentMedia && !playingMedia.video.paused ? bitmap : await source(p.id)
-    markVideoSeek(seekTrace, 'stage-paint', playingMedia?.video)
-    await paintStage(image, p.edit)
-    markVideoSeek(seekTrace, 'stage-painted', playingMedia?.video)
+    let image,
+      operation = 'draw-frame'
+    try {
+      if (currentMedia && pausedFrame?.media === playingMedia && pausedFrame.image) {
+        image = bitmap = pausedFrame.image
+      } else image = currentMedia && !playingMedia.video.paused ? bitmap : await source(p.id)
+      markVideoSeek(seekTrace, 'stage-paint', playingMedia?.video)
+      operation = 'draw-paint'
+      await paintStage(image, p.edit)
+      markVideoSeek(seekTrace, 'stage-painted', playingMedia?.video)
+    } catch (error) {
+      if (isVideo(p)) annotateVideoError(error, { operation, video: playingMedia?.video })
+      throw error
+    }
   }
   const precision = inputPrecisionDescription(processingState(p)?.input)
   if (precision) $('info').textContent += '\n' + precision
@@ -2246,8 +2263,10 @@ async function execute(command, args, context = {}) {
           if (!isVideo(p)) throw Error('Select a video')
           if (bitmapId !== p.id) await source(p.id, p.edit, context.seekTrace)
           const media = playingMedia
+          let operation
           try {
             if (command === 'video-play' || (command === 'video-toggle' && media.video.paused)) {
+              operation = 'play-start'
               const range = clipRange(p.edit.trim, media.duration)
               if (media.video.currentTime < range.start || media.video.currentTime >= range.end)
                 await media.seek(range.start)
@@ -2257,6 +2276,7 @@ async function execute(command, args, context = {}) {
               playbackFrames = await media.playbackFrames()
               frameTicket = requestAnimationFrame(refreshPlayback)
             } else if (command === 'video-pause' || command === 'video-toggle') {
+              operation = 'pause-frame'
               cancelPlaybackFrames()
               const generation = playbackGeneration
               const image = await media.pauseFrame(
@@ -2265,9 +2285,11 @@ async function execute(command, args, context = {}) {
               )
               pausedFrame = { media, image }
             } else if (command === 'video-seek') {
+              operation = 'requested-seek'
               stopPlayback()
               await media.seek(args.time, false, context.seekTrace)
             } else {
+              operation = 'requested-trim'
               const range = clipRange(args, media.duration)
               stopPlayback()
               await media.seek(range.start, false, context.seekTrace)
@@ -2276,6 +2298,7 @@ async function execute(command, args, context = {}) {
               redo.length = 0
             }
           } catch (error) {
+            annotateVideoError(error, { operation, video: media.video })
             discardFailedVideoSource(media)
             throw error
           }

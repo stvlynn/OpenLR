@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { videoFailureDetails } from '../web/video-errors.js'
 import { readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
@@ -396,6 +397,8 @@ try {
   )
 } catch (error) {
   primaryFailure = true
+  const failure = videoFailureDetails(error.details?.video)
+  if (failure) console.error(JSON.stringify({ nativeVideo: 'failed', failure }))
   throw error
 } finally {
   try {
