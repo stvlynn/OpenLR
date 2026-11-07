@@ -23,6 +23,7 @@ const hook = `${entry}
 const helper = String.raw`
 // Linker-selected only in the opt-in post-fault diagnostic build.
 var openlrFreezeSignal = "0"
+var openlrSignalStopped uint32
 
 // OpenLR diagnostic addition. The Go runtime source retains its BSD-3-Clause license.
 // Called after badsignal has obtained an M and before the original signal is re-raised.
@@ -63,7 +64,7 @@ func openlrOriginalSignal(sig uint32, c *sigctxt) {
 	}
 	record[n] = '\n'
 	writeErrData(&record[0], int32(n+1))
-	if openlrFreezeSignal == "1" {
+	if openlrFreezeSignal == "1" && atomic.Cas(&openlrSignalStopped, 0, 1) {
 		raiseproc(_SIGSTOP)
 	}
 }

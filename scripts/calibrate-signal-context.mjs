@@ -9,13 +9,20 @@ const marker = 'OpenLR forwarded signal sig/code/pc/lr/sp '
 const fixturePrefix = 'OpenLR signal fixture '
 const hex = '0x[0-9a-f]{16}'
 
-export function parseSignalContext(stderr) {
+export function parseSignalContexts(stderr) {
   const lines = stderr.split(/\r?\n/).filter((line) => line.startsWith(marker))
-  assert.equal(lines.length, 1, 'Expected exactly one original-context runtime marker')
-  const match = lines[0].match(new RegExp(`^${marker}(${hex}) (${hex}) (${hex}) (${hex}) (${hex}) ?$`))
-  assert.ok(match, 'Runtime context marker must contain five complete fixed-width hexadecimal fields')
-  const [, sig, code, pc, lr, sp] = match
-  return { sig, code, normalizedCode: Number(BigInt.asIntN(32, BigInt(code))), pc, lr, sp }
+  return lines.map((line) => {
+    const match = line.match(new RegExp(`^${marker}(${hex}) (${hex}) (${hex}) (${hex}) (${hex}) ?$`))
+    assert.ok(match, 'Runtime context marker must contain five complete fixed-width hexadecimal fields')
+    const [, sig, code, pc, lr, sp] = match
+    return { sig, code, normalizedCode: Number(BigInt.asIntN(32, BigInt(code))), pc, lr, sp }
+  })
+}
+
+export function parseSignalContext(stderr) {
+  const records = parseSignalContexts(stderr)
+  assert.equal(records.length, 1, 'Expected exactly one original-context runtime marker')
+  return records[0]
 }
 
 function tool(command, args, options = {}) {
@@ -86,7 +93,11 @@ export function mappedSignalImage(stderr, pid, pc) {
   throw Error('Original signal PC was not covered by the owned process loader map')
 }
 
-export function validateSignalCalibration(probe, runtimeSiUser) {
+export function validateSignalCalibration(
+  probe,
+  runtimeSiUser,
+  { allowIdenticalForwardedContexts = false } = {}
+) {
   assert.equal(probe.expired, false, `${probe.mode} exceeded its process deadline`)
   assert.equal(probe.code, null, `${probe.mode} must terminate by its original signal`)
   assert.equal(probe.signal, 'SIGTRAP', `${probe.mode} must retain SIGTRAP termination`)
@@ -98,7 +109,17 @@ export function validateSignalCalibration(probe, runtimeSiUser) {
   assert.equal(ready.callbacks, 1, 'Foreign pthread must enter and leave Go once before trapping')
   assert.equal(ready.brk0Word, '0xd4200000')
   assert.equal(ready.brk1Word, '0xd4200020')
-  const context = parseSignalContext(probe.stderr)
+  const contextRecords = parseSignalContexts(probe.stderr)
+  assert.ok(contextRecords.length >= 1, 'Missing original-context runtime marker')
+  if (!allowIdenticalForwardedContexts)
+    assert.equal(contextRecords.length, 1, 'Expected exactly one original-context runtime marker')
+  for (const context of contextRecords.slice(1))
+    assert.deepEqual(
+      context,
+      contextRecords[0],
+      'Repeated observer context must match the first record exactly'
+    )
+  const context = contextRecords[0]
   assert.equal(BigInt(context.sig), 5n)
   assert.notEqual(BigInt(context.pc), 0n)
   assert.notEqual(BigInt(context.lr), 0n)
@@ -144,7 +165,7 @@ export function validateSignalCalibration(probe, runtimeSiUser) {
     )
     pcRelation = '__pthread_kill+' + offset
   }
-  return { context, ready, images, image, pcRelation }
+  return { context, contextRecords, ready, images, image, pcRelation }
 }
 
 async function main() {

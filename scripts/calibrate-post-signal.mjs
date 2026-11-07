@@ -79,14 +79,21 @@ function state(pid) {
   return result.stdout.trim()
 }
 
+function registerRecords(stderr) {
+  const lines = stderr.split(/\r?\n/).filter((line) => line.startsWith(marker))
+  return lines.map((line) => {
+    const values = line.slice(marker.length).trim().split(' ')
+    assert.equal(values.length, registerNames.length)
+    for (const value of values) assert.match(value, /^0x[0-9a-f]{16}$/)
+    return Object.fromEntries(registerNames.map((name, index) => [name, values[index]]))
+  })
+}
+
 function context(stderr) {
   const original = parseSignalContext(stderr)
-  const lines = stderr.split(/\r?\n/).filter((line) => line.startsWith(marker))
-  assert.equal(lines.length, 1, 'Exactly one original register record is required')
-  const values = lines[0].slice(marker.length).trim().split(' ')
-  assert.equal(values.length, registerNames.length)
-  for (const value of values) assert.match(value, /^0x[0-9a-f]{16}$/)
-  return { ...original, ...Object.fromEntries(registerNames.map((name, index) => [name, values[index]])) }
+  const records = registerRecords(stderr)
+  assert.equal(records.length, 1, 'Exactly one initial original register record is required')
+  return { ...original, ...records[0] }
 }
 
 async function runCase(mode, debuggerMode) {
@@ -168,8 +175,18 @@ async function runCase(mode, debuggerMode) {
         stdout: probe.output.stdout,
         stderr: probe.output.stderr
       },
-      baseline.runtimeSiUser
+      baseline.runtimeSiUser,
+      { allowIdenticalForwardedContexts: debuggerMode !== 'resume' }
     )
+    record.forwardedContexts = verified.contextRecords
+    record.forwardedRegisters = registerRecords(probe.output.stderr)
+    assert.equal(record.forwardedRegisters.length, record.forwardedContexts.length)
+    for (const registers of record.forwardedRegisters)
+      assert.deepEqual(
+        registers,
+        Object.fromEntries(registerNames.map((name) => [name, record.context[name]])),
+        'Repeated observer register records must match the first context exactly'
+      )
     record.fixture = verified.ready
     record.image = verified.image
     if (debuggerMode === 'invalid') {
