@@ -2,7 +2,11 @@
 
 对照目标为本机 Adobe Lightroom 9.4 云桌面版。REA 证据来自可执行文件及其资源；登录后的 Windows 运行观察已核对裁剪、蒙版入口及导出设置，见 [运行记录](../research/lightroom.md#登录后的-windows-运行观察)。当前仍未建立全部功能逐屏、逐像素的 Adobe 对照。静态入口、独立实现及实际通过的测试分别记录。
 
-## 桌面验收与交付快照 — 2026-11-07
+## 桌面验收与交付快照 — 2026-11-08
+
+`a8c07ee` 的四平台完整验收全部通过。Windows 浏览器共 534 项，525 通过、9 项跳过、零失败；原生包、NSIS 安装与卸载及六种文件关联也通过。Ubuntu 验证实际 Debian 安装、原生套件和随包 CLI。两种 macOS 验证 DMG 复制、真实文件夹与保存面板、原生照片工作流及短多音轨 WebM／MP4、44.1 kHz AAC。该修订包含本地桥接修复、Matroska 声明时长优先级修正和有边界的初次解码恢复。[四平台结果](https://github.com/stvlynn/OpenLR/actions/runs/42389833465) · [桥接决策](decisions/022-macos-local-bridge.md) · [时长规范与实测](../research/audio-container-timing.md)
+
+同样产品源码的 `c53be6d` 在 Apple Silicon 原始流程专项通过 **24/24**，每轮使用保留的 59,365 字节原件，未增加裁剪前读回。第 4 轮自然发生首帧前错误 3，3,679 ms 启动一次新播放器，3,708 ms 取得实际帧；随后三项严格音频、图像维度、原件和清理检查全部通过。其余 23 轮未记录恢复。另一个真实 WKWebView 对照明确验证旧加载器在注入错误后失败，新加载器仅恢复一次，实际 PNG、WebM 像素、全部音轨及原件通过；两宿主与独立浏览器均退出。该受控错误不等同于系统解码器自然故障；有限成功样本也不证明所有未来故障消失。[原始流程 24 轮](https://github.com/stvlynn/OpenLR/actions/runs/42390693946) · [受控原生对照与完整许可文本](https://github.com/stvlynn/OpenLR/actions/runs/42391568368)
 
 `fc44a93` 的 GitHub Actions 在 Windows、Ubuntu、macOS Intel 和 Apple Silicon 全部通过。Windows 浏览器共 506 项，498 通过、8 项可选资源跳过；两种 macOS 也通过独立短多音轨 WebM／MP4 和 44.1 kHz AAC 检查。视频命令加载失败时保留当前 Grid 画面、共享状态、存储编辑和原件，成功后再进入 Detail。此次 push 未启用可选 macOS 原生对话框步骤，其证据仍以先前专项为准。[四平台验收](https://github.com/stvlynn/OpenLR/actions/runs/42343182557) · [失败状态回归与原生范围](../research/native-video.md#source-image-identity-and-memory-observation)
 

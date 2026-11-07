@@ -2,9 +2,11 @@
 
 ## Status
 
-Proposed. The isolated native protocol fixture and 24 packaged application trials
-passed. Acceptance of the vendored production build across all platforms is still
-required.
+Accepted for OpenLR's local frontend. The native protocol fixture, 24 diagnostic
+application trials and 24 ordinary stock-toolchain release trials passed. The
+integrated `a8c07ee` distribution passed Windows, Ubuntu, Intel macOS and Apple
+Silicon, including real macOS folder and Save panels. This does not extend the
+adapter's documented local-page contract to general remote pages.
 
 ## Context
 
@@ -21,7 +23,7 @@ shared UIProcess JSC context. Purego callbacks retain their pthread while enteri
 a Go stack. OpenLR needs its existing photo operations, GUI command dispatcher and
 packaged agent CLI to continue working on all supported desktop targets.
 
-## Proposed decision
+## Decision
 
 Use a local URL-scheme transport in the vendored Darwin MyGo adapter. It admits
 the existing secret-prefixed bridge messages into the same dispatcher, preserving
@@ -75,5 +77,7 @@ production build still needs its complete platform and native-dialog checks.
 - [Captured caller and stack comparison](../../research/native-video.md#allocating-caller-captured-during-conservative-root-gathering)
 - [40-assertion native fixture](https://github.com/stvlynn/OpenLR/actions/runs/42377530724)
 - [24-trial candidate application](https://github.com/stvlynn/OpenLR/actions/runs/42378126957)
+- [24-trial ordinary release](https://github.com/stvlynn/OpenLR/actions/runs/42382782290)
+- [Integrated four-platform acceptance](https://github.com/stvlynn/OpenLR/actions/runs/42389833465)
 - [Pinned WebKit evaluation implementation](https://github.com/apple-oss-distributions/WebKit/blob/e97539821b38379d82a51b6740d90191d5d0b7af/Source/WebKit/UIProcess/API/Cocoa/WKWebView.mm#L1265)
 - [Go vendoring](https://go.dev/ref/mod#vendoring) and [fork replacement](https://go.dev/doc/modules/managing-dependencies#external_fork)
