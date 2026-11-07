@@ -9,6 +9,19 @@ node scripts/build-scheme-bridge-probe.mjs build/scheme-bridge-probe
 node scripts/run-scheme-bridge-probe.mjs build/scheme-bridge-probe
 ```
 
+After the functional fixture passes, the same disposable preparation can package
+the actual application:
+
+```sh
+node scripts/build-scheme-bridge-probe.mjs build/release application
+```
+
+The experimental workflow's `scheme_bridge_workflow` input uses this package in
+the existing fixed 24-host video schedule, with the same calibrated fault-only
+observer. This is a separate native application experiment, not production adoption.
+Its application source includes the already-verified `fc44a93` video view-state
+repair from main; candidate delivery does not restore the earlier presentation bug.
+
 The executable, selected build information, JSON assertions, native logs, and owned-process exit record remain under that output directory. The runner has a 90 second deadline and kills only its newly created process group on timeout. It does not claim ownership or cleanup of WebKit helpers launched through launchd. Use a fresh output directory for another run; log creation deliberately rejects overwriting prior evidence. A cross-compilation check can set `GOOS=darwin GOARCH=arm64` and run the builder on another OS; that does not execute or validate WKWebView.
 
 ## Candidate mechanism
@@ -46,3 +59,5 @@ The independent prior public-JSC stack fixture demonstrated Go-stack exposure ve
 The first native run at `6d12ddf` passed all three baseline and five post-fault calibrations, then failed before fixture compilation or launch. Copied Go module directories retained their read-only POSIX modes: git could not replace files, and the disposable cleanup reported ENOTEMPTY. The builder now makes only the copied directory tree writable before patch application; the module cache remains untouched. It publishes a successful cleanup receipt only after the shared staging helper actually returns. Native validation of this preparation correction and the candidate is pending. [First native preparation failure](https://github.com/stvlynn/OpenLR/actions/runs/42364873931)
 
 The `1c933e5` native run built the fixture, confirmed disposable-stage cleanup and completed its actual window in 2.162 seconds, with exit zero and no forced termination. Thirty-nine assertions passed, including large Unicode payloads, channel backpressure, native syntax/runtime errors, exactly-once fallback, context cancellation and navigation outcomes. The fixture failed while saving its captured first message for replay: that message was the large Echo payload, which exceeded sessionStorage's quota. The later 403 therefore did not prove replay of a genuine old request. The fixture now captures the explicit small Ready request and requires a nonempty stored request before checking rejection. This fixture correction and the complete candidate pass remain pending. [Native fixture and original failure](https://github.com/stvlynn/OpenLR/actions/runs/42376955297)
+
+The `c882bb1` native fixture passed all 40 required assertions, including genuine old-envelope rejection after a successful small-request save. Its actual process exited zero in 2.615 seconds, with no forced termination, and the disposable-module cleanup receipt was confirmed. All baseline and post-fault calibrations passed. This validates the scoped candidate's tested native protocol branches, including the unsupported-result completion path; it does not yet prove that the application's allocator trap is removed, or close the compatibility gaps above. [Completed native fixture](https://github.com/stvlynn/OpenLR/actions/runs/42377530724)

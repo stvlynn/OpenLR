@@ -18,6 +18,8 @@ const root = realpathSync(fileURLToPath(new URL('..', import.meta.url)))
 const moduleName = 'github.com/egoist/mygo'
 const version = 'v0.7.4'
 const output = path.resolve(root, process.argv[2] || 'build/scheme-bridge-probe')
+const mode = process.argv[3] || 'fixture'
+if (!['fixture', 'application'].includes(mode)) throw Error('Expected fixture or application build mode')
 if (!output.startsWith(root + path.sep)) throw Error('Build output must remain inside this workspace')
 const bundled = path.join(root, '.tools', 'go', 'bin', 'go.exe')
 const go = process.env.GO_BINARY || (existsSync(bundled) ? bundled : 'go')
@@ -41,6 +43,7 @@ function run(command, args, capture = false) {
 }
 
 const selected = JSON.parse(run(go, ['list', '-m', '-json', moduleName], true))
+const targetArch = run(go, ['env', 'GOARCH'], true).trim()
 if (selected.Version !== version || selected.Replace)
   throw Error(`Expected the project's unmodified MyGo ${version}`)
 const sourceDirectory =
@@ -90,15 +93,23 @@ const build = withDiagnosticBuildStage(root, (scratch) => {
   copyFileSync(path.join(root, 'go.sum'), path.join(scratch, 'diagnostic.sum'))
   run(go, ['mod', 'edit', `-modfile=${modfile}`, `-replace=${moduleName}=${copy}`])
   env.GOFLAGS = [env.GOFLAGS, `-modfile=${relative(modfile)}`].filter(Boolean).join(' ')
-  run(go, ['build', '-o', path.join(output, 'scheme-bridge-probe'), './scripts/fixtures/scheme-bridge'])
-  const buildInfo = run(go, ['version', '-m', path.join(output, 'scheme-bridge-probe')], true)
+  let executable
+  if (mode === 'application') {
+    run(go, ['tool', 'mygo', 'build', '-o', relative(output), '-platform', `darwin/${targetArch}`])
+    executable = path.join(output, `darwin-${targetArch}`, 'OpenLR.app', 'Contents', 'MacOS', 'OpenLR')
+  } else {
+    executable = path.join(output, 'scheme-bridge-probe')
+    run(go, ['build', '-o', executable, './scripts/fixtures/scheme-bridge'])
+  }
+  const buildInfo = run(go, ['version', '-m', executable], true)
   writeFileSync(path.join(output, 'build-info.txt'), buildInfo)
   return {
     candidate: 'OpenLR local-frontend scheme transport; diagnostic only',
     mygo: version,
+    mode,
     sourceRevision: run('git', ['rev-parse', 'HEAD'], true).trim(),
     goos: env.GOOS || 'darwin',
-    goarch: env.GOARCH || process.arch,
+    goarch: targetArch,
     sourcePatch: 'scripts/fixtures/scheme-bridge/mygo-v0.7.4.patch'
   }
 })

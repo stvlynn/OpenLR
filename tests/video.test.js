@@ -142,6 +142,94 @@ test('macOS releases the previous Detail video before loading another and can re
   assert.ok(red < 100 && green < 100 && blue > 130 && alpha === 255, JSON.stringify(result.pixel))
 })
 
+test('an initial video trim load failure keeps Grid state and presentation consistent', async (t) => {
+  const server = await serveWorkspace()
+  t.after(server.close)
+  const browser = await chromium.launch({ channel: process.env.CHROME_CHANNEL || 'chrome' })
+  t.after(() => browser.close())
+  const page = await browser.newPage()
+  await page.goto(server.url)
+  const bytes = Array.from(await makeVideoFixture(page))
+  const result = await page.evaluate(async (bytes) => {
+    const run = window.openlr.run
+    const db = await import('./catalog.js')
+    const file = new File([Uint8Array.from(bytes)], 'trim-load.webm', { type: 'video/webm' })
+    const imported = await run('import', { files: [file] })
+    if (imported.failed.length) throw Error(imported.failed[0].error)
+    const [id] = imported.added
+    const before = await run('state')
+    const prototype = HTMLMediaElement.prototype
+    const src = Object.getOwnPropertyDescriptor(prototype, 'src')
+    let failedPlayer, metadataTrusted
+    Object.defineProperty(prototype, 'src', {
+      ...src,
+      set(value) {
+        failedPlayer = this
+        this.addEventListener(
+          'loadedmetadata',
+          (event) => {
+            metadataTrusted = event.isTrusted
+            Object.defineProperty(this, 'error', {
+              value: { code: 3, message: 'Controlled initial video decode failure' }
+            })
+            this.dispatchEvent(new Event('error'))
+          },
+          { once: true }
+        )
+        src.set.call(this, value)
+      }
+    })
+    const trim = { start: 0.5, end: 1.5 }
+    let error
+    try {
+      error = await run('video-trim', { ...trim, photoId: id }).catch(({ message }) => message)
+    } finally {
+      Object.defineProperty(prototype, 'src', src)
+    }
+    const failed = await run('state')
+    const presentation = {
+      galleryHidden: document.querySelector('#gallery').hidden,
+      stageHidden: document.querySelector('#stage').hidden
+    }
+    const savedAfterFailure = (await db.all('photos')).find((photo) => photo.id === id).edit
+    const originalAfterFailure = Array.from(new Uint8Array(await (await db.original(id)).file.arrayBuffer()))
+    return {
+      before,
+      error,
+      metadataTrusted,
+      released: !failedPlayer.hasAttribute('src'),
+      failed,
+      presentation,
+      savedAfterFailure,
+      originalAfterFailure
+    }
+  }, bytes)
+  assert.equal(result.before.mode, 'grid')
+  assert.equal(result.error, 'Controlled initial video decode failure')
+  assert.equal(result.metadataTrusted, true)
+  assert.equal(result.released, true)
+  assert.equal(result.failed.mode, 'grid')
+  assert.equal(result.failed.playback, null)
+  assert.equal(result.failed.selected, result.before.selected)
+  assert.deepEqual(result.failed.photos, result.before.photos)
+  assert.deepEqual(result.presentation, { galleryHidden: false, stageHidden: true })
+  assert.deepEqual(result.savedAfterFailure, result.before.photos[0].edit)
+  assert.deepEqual(result.originalAfterFailure, bytes)
+  assert.equal(await page.locator('#gallery').isVisible(), true)
+  assert.equal(await page.locator('#stage').isVisible(), false)
+  const trimmed = await page.evaluate(async (id) => {
+    const state = await window.openlr.run('video-trim', { start: 0.5, end: 1.5, photoId: id })
+    const db = await import('./catalog.js')
+    const saved = (await db.all('photos')).find((photo) => photo.id === id)
+    return { state, trim: saved.edit.trim }
+  }, result.before.selected)
+  assert.equal(trimmed.state.mode, 'detail')
+  assert.equal(trimmed.state.playback.time, 0.5)
+  assert.deepEqual(trimmed.trim, { start: 0.5, end: 1.5 })
+  assert.equal(await page.locator('#gallery').isVisible(), false)
+  assert.equal(await page.locator('#stage').isVisible(), true)
+})
+
 test('a terminal native seek error releases the failed player and the same video can retry', async (t) => {
   const server = await serveWorkspace()
   t.after(server.close)

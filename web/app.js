@@ -2244,7 +2244,6 @@ async function execute(command, args, context = {}) {
         case 'video-trim': {
           if (args.photoId !== undefined && args.photoId !== p.id) throw Error('The selected photo changed')
           if (!isVideo(p)) throw Error('Select a video')
-          mode = 'detail'
           if (bitmapId !== p.id) await source(p.id, p.edit, context.seekTrace)
           const media = playingMedia
           try {
@@ -2280,6 +2279,7 @@ async function execute(command, args, context = {}) {
             discardFailedVideoSource(media)
             throw error
           }
+          mode = 'detail'
           break
         }
         case 'remove-mask': {
