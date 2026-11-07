@@ -18,11 +18,18 @@ const commands = [
   `settings set target.run-args ${JSON.stringify(library)} brk0`,
   'settings set target.env-vars GODEBUG=asyncpreemptoff=1',
   `command script import ${JSON.stringify(script)}`,
-  'run',
-  `script import json; p=lldb.debugger.GetSelectedTarget().GetProcess(); print(${JSON.stringify(marker)} + json.dumps(dict(pid=p.GetProcessID(), **__import__('host_trace').fault(p))))`,
-  'process kill'
+  'run'
 ]
-const args = ['lldb', '--batch', '--no-lldbinit', ...commands.flatMap((command) => ['-o', command])]
+const crashCommands = [
+  `script import json; p=lldb.debugger.GetSelectedTarget().GetProcess(); r=dict(pid=p.GetProcessID(), **__import__('host_trace').fault(p)); e=p.Kill(); r['terminated']=e.Success(); print(${JSON.stringify(marker)} + json.dumps(r))`
+]
+const args = [
+  'lldb',
+  '--batch',
+  '--no-lldbinit',
+  ...commands.flatMap((command) => ['-o', command]),
+  ...crashCommands.flatMap((command) => ['-k', command])
+]
 const result = spawnSync('xcrun', args, {
   encoding: 'utf8',
   timeout: 45_000,
@@ -37,7 +44,8 @@ const report = {
   exitCode: result.status,
   signal: result.signal,
   error: result.error?.message || null,
-  commands
+  commands,
+  crashCommands
 }
 try {
   assert.equal(result.status, 0, 'LLDB calibration commands must complete successfully')
@@ -47,6 +55,7 @@ try {
   const record = JSON.parse(lines[0].slice(marker.length))
   report.record = record
   assert.ok(Number.isSafeInteger(record.pid) && record.pid > 0)
+  assert.equal(record.terminated, true, 'The calibration debugger must terminate its owned stopped fixture')
   assert.ok(record.signal === 5 || record.exception === 'EXC_BREAKPOINT')
   assert.equal(record.frames[0].symbol, 'openlr_brk0')
   assert.equal(record.frames[0].uuid.replaceAll('-', '').toLowerCase(), known.image.uuid)
