@@ -56,6 +56,10 @@ try {
   report.record = record
   assert.ok(Number.isSafeInteger(record.pid) && record.pid > 0)
   assert.equal(record.terminated, true, 'The calibration debugger must terminate its owned stopped fixture')
+  assert.ok(
+    ['signal', 'exception'].includes(record.reason),
+    'Calibration stop reason must name its actual event'
+  )
   assert.ok(record.signal === 5 || record.exception === 'EXC_BREAKPOINT')
   assert.equal(record.frames[0].symbol, 'openlr_brk0')
   assert.equal(record.frames[0].uuid.replaceAll('-', '').toLowerCase(), known.image.uuid)

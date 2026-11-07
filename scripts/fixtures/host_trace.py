@@ -29,7 +29,7 @@ def fault(process):
     if thread is None or not priority.get(thread.GetStopReason()):
         return {}
     reason = thread.GetStopReason()
-    names = {
+    reason_names = {
         lldb.eStopReasonException: "exception",
         lldb.eStopReasonSignal: "signal",
         lldb.eStopReasonBreakpoint: "breakpoint",
@@ -52,9 +52,9 @@ def fault(process):
     frame = thread.GetFrameAtIndex(0)
     if frame.IsValid():
         # Numeric stopped-thread state only; never dereference application buffers.
-        names = ("pc", "lr", "fp", "sp", "x0", "x1", "x2", "x3",
-                 "x19", "x20", "x21", "x22", "x23", "x24")
-        for name in names:
+        register_names = ("pc", "lr", "fp", "sp", "x0", "x1", "x2", "x3",
+                          "x19", "x20", "x21", "x22", "x23", "x24")
+        for name in register_names:
             register = frame.FindRegister(name)
             if register.IsValid():
                 error = lldb.SBError()
@@ -64,7 +64,7 @@ def fault(process):
     return {
         "thread": thread.GetIndexID(),
         "mainQueue": thread.GetQueueName() == "com.apple.main-thread",
-        "reason": names[reason],
+        "reason": reason_names[reason],
         "exception": exception.group() if exception else None,
         "signal": thread.GetStopReasonDataAtIndex(0) if reason == lldb.eStopReasonSignal else None,
         "frames": frames,
