@@ -13,6 +13,16 @@ const importErrorNames = new Set([
 const mediaEvents = ['loadstart', 'loadedmetadata', 'loadeddata', 'stalled', 'suspend', 'error']
 let nextSequence = 0
 const videoSeekTrace = Symbol()
+const encoderStages = new Set([
+  'configure-start',
+  'configured',
+  'encode-start',
+  'encoded',
+  'output',
+  'flush-start',
+  'flushed',
+  'closed'
+])
 
 function send(report) {
   try {
@@ -27,15 +37,38 @@ export function beginVideoExportTrace(format) {
   if (!globalThis.openlrDiagnostics) return
   const sequence = ++nextSequence
   const started = performance.now()
-  return (stage, index) =>
+  return (stage, index, details) =>
     send({
       operation: 'export',
       sequence,
       format: format === 'video/mp4' ? 'mp4' : 'webm',
       stage,
       elapsedMs: Math.round(performance.now() - started),
-      ...(Number.isSafeInteger(index) && { index })
+      ...(Number.isSafeInteger(index) && { index }),
+      ...details
     })
+}
+
+export function observeVideoEncoder(trace, index) {
+  if (!trace) return
+  let queued = 0
+  const sampled = (count) => count <= 8 || Number.isInteger(Math.log2(count))
+  return (report) => {
+    const { stage, submitted, output, queueSize } = report
+    if (!encoderStages.has(stage)) return
+    if (stage === 'encode-start' || stage === 'encoded') {
+      if (!sampled(submitted + (stage === 'encode-start' ? 1 : 0)) && !(queueSize >= 4 && sampled(++queued)))
+        return
+    } else if (stage === 'output' && !sampled(output)) return
+    const details = {}
+    for (const key of ['width', 'height', 'bitrate', 'framerate', 'queueSize', 'submitted', 'output'])
+      if (Number.isFinite(report[key]) && report[key] >= 0) details[key] = report[key]
+    if (typeof report.codec === 'string' && /^[a-zA-Z0-9.]{1,40}$/.test(report.codec))
+      details.codec = report.codec
+    for (const key of ['latencyMode', 'state', 'hardwareAcceleration', 'bitrateMode', 'alpha', 'avcFormat'])
+      if (typeof report[key] === 'string' && /^[a-zA-Z-]{1,24}$/.test(report[key])) details[key] = report[key]
+    trace('encoder-' + stage, index, details)
+  }
 }
 
 function emit(trace, extra) {

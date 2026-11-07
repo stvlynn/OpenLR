@@ -1,0 +1,195 @@
+# OpenLR video encoder observations for MediaBunny 1.65.1.
+# Upstream: https://github.com/Vanilagy/mediabunny/tree/v1.65.1/src
+# Modified files retain Mozilla Public License 2.0, copyright Vanilagy and contributors.
+# OpenLR changes add an optional, non-blocking observer without replacing WebCodecs globals.
+diff --git a/src/encode.ts b/src/encode.ts
+--- a/src/encode.ts
++++ b/src/encode.ts
+@@ -69,6 +69,26 @@
+ 	 */
+ 	transform?: VideoTransformOptions;
+ 
++	/** OpenLR opt-in observation of the actual WebCodecs video encoder. Never awaited. */
++	onEncoderDiagnostic?: (report: {
++		stage: 'configure-start' | 'configured' | 'encode-start' | 'encoded' | 'output'
++			| 'flush-start' | 'flushed' | 'closed';
++		codec: string;
++		width: number;
++		height: number;
++		bitrate?: number;
++		framerate?: number;
++		hardwareAcceleration?: VideoEncoderConfig['hardwareAcceleration'];
++		latencyMode?: VideoEncoderConfig['latencyMode'];
++		bitrateMode?: VideoEncoderConfig['bitrateMode'];
++		alpha?: VideoEncoderConfig['alpha'];
++		avcFormat?: 'annexb' | 'avc';
++		state: VideoEncoder['state'];
++		queueSize: number;
++		submitted: number;
++		output: number;
++	}) => unknown;
++
+ 	/** Called for each successfully encoded packet. Both the packet and the encoding metadata are passed. */
+ 	onEncodedPacket?: (packet: EncodedPacket, meta: EncodedVideoChunkMetadata | undefined) => unknown;
+ 	/**
+@@ -249,6 +269,9 @@
+ 		if (config.transform.force !== undefined && typeof config.transform.force !== 'boolean') {
+ 			throw new TypeError('config.transform.force, when provided, must be a boolean.');
+ 		}
++	}
++	if (config.onEncoderDiagnostic !== undefined && typeof config.onEncoderDiagnostic !== 'function') {
++		throw new TypeError('config.onEncoderDiagnostic, when provided, must be a function.');
+ 	}
+ 	if (config.onEncodedPacket !== undefined && typeof config.onEncodedPacket !== 'function') {
+ 		throw new TypeError('config.onEncodedPacket, when provided, must be a function.');
+diff --git a/src/conversion.ts b/src/conversion.ts
+--- a/src/conversion.ts
++++ b/src/conversion.ts
+@@ -178,6 +178,8 @@
+  * @public
+  */
+ export type ConversionVideoOptions = {
++	/** OpenLR opt-in observation; excludes temporary support probes. Never awaited. */
++	onEncoderDiagnostic?: VideoEncodingConfig['onEncoderDiagnostic'];
+ 	/** If `true`, all video tracks will be discarded and will not be present in the output. */
+ 	discard?: boolean;
+ 	/**
+@@ -507,6 +509,9 @@
+ 		&& (!Number.isFinite(videoOptions.keyFrameInterval) || videoOptions.keyFrameInterval < 0)
+ 	) {
+ 		throw new TypeError('options.video.keyFrameInterval, when provided, must be a non-negative number.');
++	}
++	if (videoOptions?.onEncoderDiagnostic !== undefined && typeof videoOptions.onEncoderDiagnostic !== 'function') {
++		throw new TypeError('options.video.onEncoderDiagnostic, when provided, must be a function.');
+ 	}
+ 	if (videoOptions?.process !== undefined && typeof videoOptions.process !== 'function') {
+ 		throw new TypeError('options.video.process, when provided, must be a function.');
+@@ -1914,6 +1919,8 @@
+ 				lastSampleTimestamp = sample.timestamp;
+ 			};
+ 
++			// Keep temporary encoder support probes out of the export's observations.
++			encodingConfig.onEncoderDiagnostic = trackOptions.onEncoderDiagnostic;
+ 			const source = new VideoSampleSource(encodingConfig);
+ 			videoSource = source;
+ 
+diff --git a/src/media-source.ts b/src/media-source.ts
+--- a/src/media-source.ts
++++ b/src/media-source.ts
+@@ -314,7 +314,42 @@
+ 	private lastMuxerPromise: Promise<void> = Promise.resolve();
+ 	private closed = false;
+ 
++	private diagnosticSubmitted = 0;
++	private diagnosticOutput = 0;
++
+ 	constructor(private source: VideoSource, private encodingConfig: VideoEncodingConfig) {}
++
++	private observeEncoder(stage: Parameters<NonNullable<VideoEncodingConfig['onEncoderDiagnostic']>>[0]['stage']) {
++		const observe = this.encodingConfig.onEncoderDiagnostic;
++		if (!observe) return;
++		try {
++			const encoder = this.encoder;
++			const config = this.encoderConfig;
++			if (!encoder || !config) return;
++			if (stage === 'encoded') this.diagnosticSubmitted++;
++			if (stage === 'output') this.diagnosticOutput++;
++			const result = observe({
++				stage,
++				codec: config.codec,
++				width: config.width,
++				height: config.height,
++				bitrate: config.bitrate,
++				framerate: config.framerate,
++				hardwareAcceleration: config.hardwareAcceleration,
++				latencyMode: config.latencyMode,
++				bitrateMode: config.bitrateMode,
++				alpha: config.alpha,
++				avcFormat: config.avc?.format,
++				state: encoder.state,
++				queueSize: encoder.encodeQueueSize,
++				submitted: this.diagnosticSubmitted,
++				output: this.diagnosticOutput,
++			});
++			if (isThenable(result)) void Promise.resolve(result).catch(() => {});
++		} catch {
++			// Observations must never affect codec work or its original errors.
++		}
++	}
+ 
+ 	async add(videoSample: VideoSample, shouldClose: boolean, encodeOptions?: VideoEncoderEncodeOptions) {
+ 		const originalSample = videoSample;
+@@ -615,7 +650,9 @@
+ 					if (!this.alphaEncoder) {
+ 						// No alpha encoder, simple case
+ 						try {
++							this.observeEncoder('encode-start');
+ 							this.encoder.encode(videoFrame, finalEncodeOptions);
++							this.observeEncoder('encoded');
+ 						} finally {
+ 							videoFrame.close();
+ 						}
+@@ -626,7 +663,9 @@
+ 						if (frameDefinitelyHasNoAlpha || this.splitterCreationFailed) {
+ 							this.alphaFrameQueue.push(null);
+ 							try {
++								this.observeEncoder('encode-start');
+ 								this.encoder.encode(videoFrame, finalEncodeOptions);
++								this.observeEncoder('encoded');
+ 							} finally {
+ 								videoFrame.close();
+ 							}
+@@ -640,7 +679,9 @@
+ 
+ 							this.alphaFrameQueue.push(alphaFrame);
+ 							try {
++								this.observeEncoder('encode-start');
+ 								this.encoder.encode(colorFrame, finalEncodeOptions);
++								this.observeEncoder('encoded');
+ 							} finally {
+ 								colorFrame.close();
+ 							}
+@@ -858,6 +899,7 @@
+ 
+ 		this.encoder = new VideoEncoder({
+ 			output: (chunk, meta) => {
++				this.observeEncoder('output');
+ 				if (!this.alphaEncoder) {
+ 					// We're done
+ 					this.addPacket(chunk, null, meta);
+@@ -894,7 +936,9 @@
+ 			},
+ 			error: error => handleError(error, stack),
+ 		});
++		this.observeEncoder('configure-start');
+ 		this.encoder.configure(encoderConfig);
++		this.observeEncoder('configured');
+ 
+ 		if (this.encodingConfig.alpha === 'keep') {
+ 			const stack = new Error('Encoding error').stack;
+@@ -1064,6 +1108,7 @@
+ 
+ 		if (this.encoder.state !== 'closed') {
+ 			this.encoder.close();
++			this.observeEncoder('closed');
+ 		}
+ 		if (this.alphaEncoder && this.alphaEncoder.state !== 'closed') {
+ 			this.alphaEncoder.close();
+@@ -1098,7 +1143,9 @@
+ 					void this.customEncoderCallSerializer.call(() => this.customEncoder!.flush());
+ 				} else if (this.encoder && !this.encodersReclaimed) {
+ 					// These are wired in series, therefore they must also be flushed in series
++					this.observeEncoder('flush-start');
+ 					await this.encoder.flush();
++					this.observeEncoder('flushed');
+ 					await this.alphaEncoder?.flush();
+ 
+ 					// Workaround for https://issues.chromium.org/issues/529852980 to give it time for errors to
+@@ -1120,6 +1167,7 @@
+ 			} else if (this.encoder) {
+ 				if (this.encoder.state !== 'closed') {
+ 					this.encoder.close();
++					this.observeEncoder('closed');
+ 				}
+ 				if (this.alphaEncoder && this.alphaEncoder.state !== 'closed') {
+ 					this.alphaEncoder.close();

@@ -389,7 +389,9 @@ try {
   )
 } finally {
   try {
+    console.log(JSON.stringify({ nativeVideoOracleCleanup: 'started' }))
     await browser?.close()
+    console.log(JSON.stringify({ nativeVideoOracleCleanup: 'confirmed' }))
   } finally {
     server.close()
   }

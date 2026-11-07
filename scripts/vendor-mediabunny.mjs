@@ -21,11 +21,20 @@ try {
     // The npm package contains these shared modules as compiled JS.
     cp(path.join(packagePath, 'dist', 'modules', 'shared'), path.join(source, 'shared'), { recursive: true })
   ])
-  execFileSync('git', ['apply', path.join(repo, 'scripts', 'mediabunny', 'audio-timing.patch')], {
-    cwd: source,
-    env: { ...process.env, GIT_CEILING_DIRECTORIES: temp },
-    stdio: 'inherit'
-  })
+  execFileSync(
+    'git',
+    [
+      'apply',
+      ...['audio-timing.patch', 'video-diagnostics.patch'].map((patch) =>
+        path.join(repo, 'scripts', 'mediabunny', patch)
+      )
+    ],
+    {
+      cwd: source,
+      env: { ...process.env, GIT_CEILING_DIRECTORIES: temp },
+      stdio: 'inherit'
+    }
+  )
   await build({
     entryPoints: [path.join(source, 'src', 'index.ts')],
     outfile: process.argv[2]

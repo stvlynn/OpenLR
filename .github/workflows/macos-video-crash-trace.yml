@@ -47,8 +47,11 @@ jobs:
           echo "OPENLR_AUDIO_ORACLE_CHROME=$chrome" >> "$GITHUB_ENV"
       - name: Build the ordinary native distribution
         run: node scripts/desktop.mjs build -o build/release -platform darwin/universal
+      - uses: actions/upload-artifact@v4
+        with:
+          name: video-export-macos-package
+          path: build/release/darwin-universal/*.dmg
       - name: Observe predetermined video export trials
-        id: video-trials
         if: inputs.scenario == 'video'
         timeout-minutes: 15
         env:
@@ -60,11 +63,6 @@ jobs:
         with:
           name: video-export-trace
           path: build/video-export-trials
-      - uses: actions/upload-artifact@v4
-        if: ${{ failure() && steps.video-trials.outcome == 'failure' }}
-        with:
-          name: video-export-macos-package
-          path: build/release/darwin-universal/*.dmg
       - name: Install independent audio verification tools
         if: inputs.scenario == 'short-audio'
         run: command -v ffmpeg && command -v ffprobe || brew install ffmpeg

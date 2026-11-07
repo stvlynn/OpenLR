@@ -3,6 +3,43 @@ import assert from 'node:assert/strict'
 import { chromium } from 'playwright-core'
 import { serveWorkspace } from './browser-server.mjs'
 import { serveMultitrackVideoFixture } from './fixtures/video.mjs'
+import { observeVideoEncoder } from '../web/video-import-diagnostics.js'
+
+test('encoder observation samples long exports and retains early queue pressure without payloads', () => {
+  assert.equal(observeVideoEncoder(undefined, 0), undefined)
+  const records = []
+  const observe = observeVideoEncoder(
+    (stage, index, details) => records.push({ stage, index, ...details }),
+    2
+  )
+  const report = {
+    codec: 'avc1.42400b',
+    width: 96,
+    height: 64,
+    state: 'configured',
+    latencyMode: 'quality',
+    queueSize: 0,
+    submitted: 0,
+    output: 0,
+    source: 'private-file.mp4',
+    description: new Uint8Array([1, 2, 3])
+  }
+  observe({ ...report, stage: 'configured' })
+  for (let submitted = 1; submitted <= 12; submitted++)
+    observe({ ...report, stage: 'encoded', submitted, queueSize: Math.max(0, submitted - 8) })
+  assert.ok(records.some((record) => record.submitted === 12 && record.queueSize === 4))
+  for (let count = 13; count <= 100000; count++) {
+    observe({ ...report, stage: 'encoded', submitted: count, output: count - 4, queueSize: 4 })
+    observe({ ...report, stage: 'output', submitted: count, output: count - 4, queueSize: 3 })
+  }
+  observe({ ...report, stage: 'flushed', submitted: 100000, output: 100000 })
+  observe({ ...report, stage: 'private-file.mp4' })
+  assert.ok(records.length < 100, records.length)
+  assert.equal(records.at(-1).stage, 'encoder-flushed')
+  assert.equal(records.at(-1).output, 100000)
+  assert.ok(records.every((record) => record.index === 2))
+  assert.doesNotMatch(JSON.stringify(records), /private|description/)
+})
 
 test(
   'video audio fallback preserves a delayed stereo track and trimmed mono samples with an injected encoder',
@@ -208,6 +245,40 @@ test(
       const source = makeInput(original),
         output = makeInput(result.blob)
       try {
+        const observerFailures = []
+        for (const behavior of ['throw', 'reject', 'pending']) {
+          const input = makeInput(original)
+          const target = new media.BufferTarget()
+          const converted = new media.Output({ target, format: new media.WebMOutputFormat() })
+          let observations = 0
+          try {
+            const conversion = await media.Conversion.init({
+              input,
+              output: converted,
+              trim: { start: 0, end: 0.5 },
+              video: {
+                codec: 'vp9',
+                forceTranscode: true,
+                onEncoderDiagnostic() {
+                  observations++
+                  if (behavior === 'throw') throw Error('Private observer failure')
+                  if (behavior === 'reject') return Promise.reject(Error('Private observer rejection'))
+                  return new Promise(() => {})
+                }
+              },
+              audio: { discard: true }
+            })
+            await conversion.execute()
+            const decoded = makeInput(new Blob([target.buffer]))
+            try {
+              observerFailures.push({ behavior, observations, pixel: await pixelAtZero(decoded) })
+            } finally {
+              decoded.dispose()
+            }
+          } finally {
+            input.dispose()
+          }
+        }
         const tracks = await output.getAudioTracks()
         const outputVideo = await output.getPrimaryVideoTrack()
         const after = await inputBytes(original)
@@ -217,6 +288,7 @@ test(
           originalUnchanged:
             before.length === after.length && before.every((value, index) => value === after[index]),
           sourcePixel: await pixelAtZero(source),
+          observerFailures,
           outputPixel: await pixelAtZero(output),
           paired: tracks.every((track) => track.canBePairedWith(outputVideo)),
           tracks: await Promise.all(tracks.map(inspectAudio)),
@@ -240,6 +312,17 @@ test(
     assert.equal(evidence.filename, 'generated.webm')
     assert.equal(evidence.title, 'Generated multitrack fixture')
     assert.equal(evidence.originalUnchanged, true)
+    assert.deepEqual(
+      evidence.observerFailures.map((result) => result.behavior),
+      ['throw', 'reject', 'pending']
+    )
+    for (const result of evidence.observerFailures) {
+      assert.ok(result.observations > 0)
+      assert.ok(
+        result.pixel.every((value, i) => Math.abs(value - evidence.sourcePixel[i]) < 8),
+        JSON.stringify(result)
+      )
+    }
     assert.equal(evidence.paired, true)
     assert.ok(evidence.outputPixel[0] > evidence.sourcePixel[0] + 15, JSON.stringify(evidence))
     assert.equal(evidence.cancellation, true)
@@ -258,6 +341,17 @@ test(
       [0, 1, 2]
     )
     assert.ok(stages[0].includes('output-ready'))
+    assert.ok(stages[0].includes('encoder-configured'))
+    assert.ok(stages[0].includes('encoder-encoded'))
+    assert.ok(stages[0].includes('encoder-output'))
+    assert.ok(stages[0].includes('encoder-flushed'))
+    const configured = traces[0].find((record) => record.stage === 'encoder-configured')
+    assert.match(configured.codec, /^vp09\.[0-9.]+$/)
+    assert.ok(configured.width > 0 && configured.height > 0)
+    assert.equal(configured.state, 'configured')
+    const encoded = traces[0].find((record) => record.stage === 'encoder-encoded')
+    assert.equal(encoded.submitted, 1)
+    assert.ok(Number.isSafeInteger(encoded.queueSize) && encoded.queueSize >= 0)
     assert.ok(stages[1].includes('conversion-failed'))
     assert.ok(stages[2].includes('conversion-failed'))
     assert.ok(traces.every((records) => records.at(-1).stage === 'input-dispose'))

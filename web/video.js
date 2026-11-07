@@ -4,6 +4,7 @@ import { applyWatermark } from './export-options.js'
 import { executeAudioExport, planAudioExport } from './audio-export.js'
 import {
   beginVideoExportTrace,
+  observeVideoEncoder,
   markVideoImport,
   markVideoSeek,
   observeVideoImportMedia,
@@ -278,7 +279,8 @@ export async function exportVideo(file, photo, args, { encode, decodeAac } = {})
     })
     trace?.('audio-planned')
     const output = new Output({ format: audioPlan?.outputFormat ?? format, target })
-    let firstFrame = true
+    let firstFrame = true,
+      encoderIndex = 0
     const video = async (track, signal) => {
       const [width, height] = await Promise.all([track.getDisplayWidth(), track.getDisplayHeight()])
       const size = geometry({ width, height }, photo.edit, args.maxSize ?? Infinity)
@@ -287,6 +289,7 @@ export async function exportVideo(file, photo, args, { encode, decodeAac } = {})
       frame.height = height
       const ctx = frame.getContext('2d')
       return {
+        onEncoderDiagnostic: observeVideoEncoder(trace, encoderIndex++),
         codec: mp4 ? 'avc' : 'vp9',
         bitrate: QUALITY_HIGH,
         allowRotationMetadata: false,

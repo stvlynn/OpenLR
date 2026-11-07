@@ -39,6 +39,16 @@ jobs:
         id: distribution
         if: ${{ !cancelled() && (success() || steps.windows-browser.outcome == 'failure') }}
         run: node scripts/desktop.mjs build -o build/release -platform ${{ runner.os == 'Windows' && 'windows/amd64' || runner.os == 'macOS' && 'darwin/universal' || 'linux/amd64' }}
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() && steps.distribution.outcome == 'success' }}
+        with:
+          name: OpenLR-${{ matrix.os }}
+          path: |
+            build/release/*/*.deb
+            build/release/*/*.tar.gz
+            build/release/*/*.dmg
+            build/release/*/openlr-setup-*.exe
+          if-no-files-found: error
       - name: Mount, copy and verify the macOS disk image
         if: ${{ !cancelled() && runner.os == 'macOS' && steps.distribution.outcome == 'success' }}
         timeout-minutes: 5
@@ -121,16 +131,6 @@ jobs:
           path: .workspace/native-audio-export-failures/**
           include-hidden-files: true
           if-no-files-found: ignore
-      - uses: actions/upload-artifact@v4
-        if: ${{ success() || (failure() && runner.os == 'macOS' && steps.distribution.outcome == 'success') }}
-        with:
-          name: OpenLR-${{ matrix.os }}
-          path: |
-            build/release/*/*.deb
-            build/release/*/*.tar.gz
-            build/release/*/*.dmg
-            build/release/*/openlr-setup-*.exe
-          if-no-files-found: error
       - uses: actions/upload-artifact@v4
         with:
           name: verification-${{ matrix.os }}

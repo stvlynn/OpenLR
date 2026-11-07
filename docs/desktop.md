@@ -19,6 +19,8 @@ WebM export on Linux uses WebKitGTK's GStreamer plugins for Opus, VP9 and its pa
 
 The CI matrix includes both `macos-15-intel` and `macos-15`. GitHub documents these as Intel and Apple Silicon runners respectively. Each builds the universal package and runs the same native CLI/image workflows on its host architecture; artifact names include the runner label to keep the two results distinct. Adding a job is not evidence that it passed: exact runtime results remain in [acceptance](acceptance.md). [GitHub runner architectures](https://docs.github.com/en/actions/reference/runners/github-hosted-runners)
 
+The matrix uploads the built package before starting native verification. This retains the matching executable if a later check exhausts the job deadline. The run's check results describe that package's verification outcome.
+
 Native adapters for [Local folders](local-folders.md), [external editor roundtrips](external-editors.md), [tethered capture](tethered-capture.md) and [shared album publication](shared-albums.md) all route through the same GUI command dispatcher and agent transport. Their separate documentation records filesystem/network boundaries and their actual validation scope.
 
 `saveExport(blob, filename)` in `web/desktop.js` returns `true` after completion, `false` when a native save dialog is canceled, and throws on failure. It uses `Desktop.BeginExport`, `WriteExport`, `FinishExport` and `CancelExport` in MyGo. Browser preview uses an ordinary Blob download. The transfer uses bounded-memory chunks and has no fixed total size cap. Temporary files protect an existing destination until transfer completion; the file replacement operation follows the host filesystem's semantics.
