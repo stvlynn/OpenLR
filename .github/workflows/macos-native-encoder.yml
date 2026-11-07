@@ -1,0 +1,42 @@
+name: Native encoder configuration probe
+on:
+  workflow_dispatch:
+  push:
+    branches: [experiment/native-encoder-ablation]
+    paths: [.github/workflows/macos-native-encoder.yml]
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: macos-15
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - uses: actions/setup-go@v6
+        with:
+          go-version: 1.27.3
+      - run: npm ci
+      - name: Install independent packet verification tools
+        run: command -v ffmpeg && command -v ffprobe || brew install ffmpeg
+      - name: Build the ordinary production-mode probe
+        run: |
+          mkdir -p build/native-encoder-probe
+          node scripts/build-native-encoder-probe.mjs build/native-encoder-probe 2>&1 | tee build/native-encoder-probe/build.log
+          sw_vers > build/native-encoder-probe/environment.txt
+          uname -a >> build/native-encoder-probe/environment.txt
+          ffmpeg -version >> build/native-encoder-probe/environment.txt
+          ffprobe -version >> build/native-encoder-probe/environment.txt
+      - name: Verify fixture reporting, ownership and actual packet decoding
+        run: |
+          OPENLR_FFMPEG_DIR="$(dirname "$(command -v ffmpeg)")" node --test tests/native-encoder-probe.test.js tests/native-video-probe.test.js 2>&1 | tee build/native-encoder-probe/focused-tests.log
+      - name: Compare five configurations in mirrored fresh hosts
+        run: node scripts/native-encoder-probe.mjs build/native-encoder-probe "$(dirname "$(command -v ffmpeg)")"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-encoder-macos-15
+          path: build/native-encoder-probe
+          if-no-files-found: warn
