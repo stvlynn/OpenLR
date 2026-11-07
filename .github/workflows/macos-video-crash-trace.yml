@@ -1,10 +1,17 @@
 name: macOS original signal calibration
 on:
   workflow_dispatch:
+    inputs:
+      source_run:
+        description: Symbolicate a completed signal-context observation run
+        type: string
+        default: ''
 permissions:
   contents: read
+  actions: read
 jobs:
   signal-context:
+    if: inputs.source_run == ''
     runs-on: macos-15
     timeout-minutes: 35
     env:
@@ -48,3 +55,24 @@ jobs:
           path: |
             build/signal-calibration
             build/video-export-trials
+  symbolication:
+    if: inputs.source_run != ''
+    runs-on: macos-15
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - name: Read the completed observation
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_RUN: ${{ inputs.source_run }}
+        run: gh run download "$SOURCE_RUN" --name original-signal-context --dir build/source-observation
+      - name: Resolve saved signal addresses
+        run: node scripts/symbolicate-signal-trials.mjs build/source-observation build/signal-symbolication.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: original-signal-symbolication
+          path: build/signal-symbolication.json
