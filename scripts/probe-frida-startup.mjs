@@ -252,6 +252,34 @@ async function main() {
       report.workers[mode] = { deadline: true, deadlineError: nativeError(error) }
       // Release the independently owned C target before terminating its worker.
       if (control) await stopOwned(control, true)
+      if (
+        !ownedProcess.output.closed &&
+        ownedProcess.child.exitCode === null &&
+        ownedProcess.child.signalCode === null &&
+        Number.isSafeInteger(ownedProcess.child.pid)
+      ) {
+        const samplePath = path.join(directory, mode + '.sample.txt')
+        const sampler = launch('/usr/bin/sample', [
+          String(ownedProcess.child.pid),
+          '1',
+          '1',
+          '-file',
+          samplePath
+        ])
+        owned.push([mode + '-sampler', sampler])
+        const observation = { pid: ownedProcess.child.pid, path: samplePath, closed: null }
+        report.workers[mode].sample = observation
+        try {
+          await within(sampler.output.completion, 10_000, 'Owned worker stack sampling exceeded its deadline')
+        } catch (error) {
+          observation.error = nativeError(error)
+          await stopOwned(sampler)
+        } finally {
+          observation.closed = sampler.output.closed
+          observation.truncated = sampler.output.truncated
+          await save(mode + '-sampler', sampler)
+        }
+      }
       await stopOwned(ownedProcess)
     } finally {
       await save(mode, ownedProcess)
