@@ -6,7 +6,7 @@ permissions:
 jobs:
   signal-context:
     runs-on: macos-15
-    timeout-minutes: 25
+    timeout-minutes: 35
     env:
       GOTOOLCHAIN: local
     steps:
@@ -36,8 +36,8 @@ jobs:
           curl --fail --location "https://storage.googleapis.com/chrome-for-testing-public/157.0.8103.38/mac-arm64/chrome-mac-arm64.zip" -o build/video-oracle/chrome.zip
           ditto -xk build/video-oracle/chrome.zip build/video-oracle
           echo "OPENLR_VIDEO_PROBE_CHROME=$PWD/build/video-oracle/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing" >> "$GITHUB_ENV"
-      - name: Observe the fixed eight-trial schedule
-        timeout-minutes: 15
+      - name: Observe the fixed twenty-four-trial schedule
+        timeout-minutes: 28
         env:
           OPENLR_DIAGNOSTICS: '1'
         run: node scripts/native-video-export-trials.mjs build/release/darwin-arm64/OpenLR.app/Contents/MacOS/OpenLR build/video-export-trials

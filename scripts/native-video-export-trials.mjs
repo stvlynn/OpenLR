@@ -13,7 +13,7 @@ await runVideoTrials({
   apps: compareAudioTrace ? { quiet: app, traced: app } : { [candidate]: app },
   order: compareAudioTrace
     ? Array.from({ length: 4 }, () => ['quiet', 'traced', 'traced', 'quiet']).flat()
-    : Array(8).fill(candidate),
+    : Array(24).fill(candidate),
   environments: compareAudioTrace
     ? { quiet: { OPENLR_AUDIO_DIAGNOSTICS: '0' }, traced: { OPENLR_AUDIO_DIAGNOSTICS: '1' } }
     : {},
