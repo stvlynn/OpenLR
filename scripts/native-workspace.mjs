@@ -98,17 +98,21 @@ export async function withNativeWorkspace(
     }
   }
   async function killAndWait(child, closed) {
-    child.kill()
-    await Promise.race([
+    const sent = child.kill()
+    const result = await Promise.race([
       closed,
       delay(5000, undefined, { ref: false }).then(() => {
         throw Error('Host did not exit')
       })
     ])
+    return { sent, result }
   }
   async function stop() {
     if (!host) return
+    const exitedBeforeStop =
+      lifecycle.exit !== undefined || host.exitCode !== null || Boolean(host.signalCode)
     lifecycle.stopRequested = true
+    let terminalFailure
     if (ownedApplication) {
       ownedApplication.stop()
       const result = await Promise.race([exited, delay(10_000, null, { ref: false })])
@@ -116,7 +120,17 @@ export async function withNativeWorkspace(
         result?.signal === null && [0, 1].includes(result.code),
         'Application launcher could not confirm cleanup'
       )
-    } else await killAndWait(host, exited)
+    } else {
+      const { sent, result } = await killAndWait(host, exited)
+      const terminal = `(code: ${result.code}, signal: ${result.signal ?? 'none'})`
+      if (exitedBeforeStop) terminalFailure = Error('Host exited before stop was requested ' + terminal)
+      else if (!sent) terminalFailure = Error('Host termination signal was not sent ' + terminal)
+      else if (
+        !(result.code === 0 && result.signal === null) &&
+        !(result.code === null && result.signal === 'SIGTERM')
+      )
+        terminalFailure = Error('Host exited unexpectedly during stop ' + terminal)
+    }
     try {
       await rm(session, { force: true })
     } finally {
@@ -124,6 +138,9 @@ export async function withNativeWorkspace(
       ownedApplication = null
       lifecycle = null
     }
+    // A closed process can be cleaned up even when its termination invalidates
+    // the workflow. Keep that failure separate from unconfirmed ownership.
+    if (terminalFailure) throw terminalFailure
   }
 
   function launchSecondary(args, cwd, launcher = executable) {

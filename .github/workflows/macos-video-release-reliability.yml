@@ -1,0 +1,59 @@
+name: macOS release video reliability
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/macos-video-release-reliability.yml
+permissions:
+  contents: read
+jobs:
+  release-video:
+    runs-on: macos-15
+    timeout-minutes: 35
+    env:
+      GOTOOLCHAIN: local
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - run: npm ci
+      - name: Verify native lifecycle outcome checks
+        run: node --test tests/native-workspace.test.js tests/native-startup-diagnostics.test.js
+      - name: Build the ordinary vendored release
+        run: |
+          node scripts/desktop.mjs build -o build/release -platform darwin/arm64
+          go version -m build/release/darwin-arm64/OpenLR.app/Contents/MacOS/OpenLR > build/release/build-info.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-video-package
+          path: build/release/darwin-arm64/*.dmg
+          if-no-files-found: error
+      - name: Provision the fixed independent video oracle
+        run: |
+          mkdir -p build/video-oracle
+          curl --fail --location "https://storage.googleapis.com/chrome-for-testing-public/157.0.8103.38/mac-arm64/chrome-mac-arm64.zip" -o build/video-oracle/chrome.zip
+          ditto -xk build/video-oracle/chrome.zip build/video-oracle
+          echo "OPENLR_VIDEO_PROBE_CHROME=$PWD/build/video-oracle/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing" >> "$GITHUB_ENV"
+      - name: Verify twenty-four ordinary release workspaces
+        timeout-minutes: 28
+        run: |
+          node --input-type=module <<'NODE'
+          import { runVideoTrials } from './scripts/native-video-trials.mjs'
+          await runVideoTrials({
+            apps: { release: 'build/release/darwin-arm64/OpenLR.app/Contents/MacOS/OpenLR' },
+            order: Array(24).fill('release'),
+            environments: { release: { OPENLR_DIAGNOSTICS: '0', OPENLR_AUDIO_DIAGNOSTICS: '0' } },
+            destination: 'build/release-video-trials'
+          })
+          NODE
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: release-video-evidence
+          path: |
+            build/release/build-info.txt
+            build/release-video-trials

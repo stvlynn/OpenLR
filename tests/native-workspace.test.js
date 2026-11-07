@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import childProcess from 'node:child_process'
-import { EventEmitter } from 'node:events'
+import { EventEmitter, once } from 'node:events'
 import { writeFileSync } from 'node:fs'
 import { access, mkdir, readFile, realpath, rm, writeFile } from 'node:fs/promises'
 import { syncBuiltinESMExports } from 'node:module'
@@ -10,7 +10,186 @@ import path from 'node:path'
 import timers from 'node:timers/promises'
 import { withNativeWorkspace } from '../scripts/native-workspace.mjs'
 
-function controlledHost(t, closes, { secondaryCloses = true } = {}) {
+function realHost(t, { stopSignal } = {}) {
+  const spawn = childProcess.spawn
+  const children = []
+  t.mock.method(childProcess, 'spawn', (...args) => {
+    const child = spawn(...args)
+    children.push({ child, closed: once(child, 'close') })
+    return child
+  })
+  syncBuiltinESMExports()
+  t.after(async () => {
+    t.mock.restoreAll()
+    syncBuiltinESMExports()
+    for (const { child, closed } of children) {
+      if (child.exitCode === null && child.signalCode === null) child.kill()
+      await closed
+    }
+  })
+  const program = `
+    const { createServer } = require('node:http')
+    const { writeFileSync } = require('node:fs')
+    const stopSignal = ${JSON.stringify(stopSignal)}
+    if (stopSignal) process.on('SIGTERM', () => process.kill(process.pid, stopSignal))
+    const server = createServer(async (request, response) => {
+      if (request.headers.authorization !== 'Bearer private-workspace-fixture') {
+        response.writeHead(401).end()
+        return
+      }
+      if (request.url === '/exit') {
+        response.on('finish', () => process.exit(23))
+        response.end('exiting')
+        return
+      }
+      let body = ''
+      for await (const chunk of request) body += chunk
+      const { command } = JSON.parse(body)
+      if (command !== 'state') process.exit(24)
+      response.end(JSON.stringify({ ok: true, result: { photos: [] } }))
+    })
+    server.listen(0, '127.0.0.1', () => {
+      writeFileSync(process.env.OPENLR_AGENT_FILE, JSON.stringify({
+        version: 1, pid: process.pid, token: 'private-workspace-fixture',
+        url: 'http://127.0.0.1:' + server.address().port
+      }))
+    })
+  `
+  return {
+    children,
+    async prepare({ root }) {
+      const script = path.join(root, 'host.cjs')
+      await writeFile(script, program)
+      return [script]
+    },
+    async exit({ session }) {
+      const { url, token } = JSON.parse(await readFile(session, 'utf8'))
+      const response = await fetch(new URL('/exit', url), {
+        headers: { Authorization: 'Bearer ' + token }
+      })
+      assert.equal(await response.text(), 'exiting')
+      const [code, signal] = await children.at(-1).closed
+      assert.deepEqual({ code, signal }, { code: 23, signal: null })
+    }
+  }
+}
+
+test('native workspace rejects a real host exit after the final assertion and still confirms cleanup', async (t) => {
+  const host = realHost(t)
+  let root,
+    cleanupCalls = 0
+  await assert.rejects(
+    withNativeWorkspace(
+      process.execPath,
+      async (workspace) => {
+        root = workspace.root
+        assert.deepEqual(workspace.initial, { photos: [] })
+        await host.exit(workspace)
+        return 'workflow assertions completed'
+      },
+      { prepare: host.prepare, onCleanup: () => cleanupCalls++ }
+    ),
+    (error) =>
+      error instanceof AggregateError &&
+      error.errors.some((failure) => /Host exited before stop was requested.*23/.test(failure.message))
+  )
+  assert.equal(cleanupCalls, 1)
+  await assert.rejects(access(root), { code: 'ENOENT' })
+})
+
+test('native workspace accepts requested termination of its real host', async (t) => {
+  const host = realHost(t)
+  let cleanupCalls = 0
+  const root = await withNativeWorkspace(
+    process.execPath,
+    ({ root, initial }) => {
+      assert.deepEqual(initial, { photos: [] })
+      return root
+    },
+    { prepare: host.prepare, onCleanup: () => cleanupCalls++ }
+  )
+  assert.deepEqual(await host.children[0].closed, [null, 'SIGTERM'])
+  assert.equal(cleanupCalls, 1)
+  await assert.rejects(access(root), { code: 'ENOENT' })
+})
+
+test('native workspace preserves a primary failure after its real host has exited', async (t) => {
+  const host = realHost(t)
+  const primary = Error('Primary workflow assertion failed')
+  const logs = []
+  t.mock.method(console, 'error', (...parts) => logs.push(parts))
+  let root,
+    cleanupCalls = 0
+  await assert.rejects(
+    withNativeWorkspace(
+      process.execPath,
+      async (workspace) => {
+        root = workspace.root
+        await host.exit(workspace)
+        throw primary
+      },
+      { prepare: host.prepare, onCleanup: () => cleanupCalls++ }
+    ),
+    (error) => error === primary
+  )
+  assert.equal(cleanupCalls, 1)
+  await assert.rejects(access(root), { code: 'ENOENT' })
+  assert.ok(logs.some(([message]) => message === 'Native workspace cleanup failed'))
+})
+
+test('native workspace stops a real host before starting its replacement on the same profile', async (t) => {
+  const host = realHost(t)
+  let root
+  await withNativeWorkspace(
+    process.execPath,
+    async (workspace) => {
+      root = workspace.root
+      const marker = path.join(root, 'profile-marker')
+      await writeFile(marker, 'same profile')
+      await workspace.stop()
+      assert.deepEqual(await host.children[0].closed, [null, 'SIGTERM'])
+      await assert.rejects(access(workspace.session), { code: 'ENOENT' })
+      assert.deepEqual(await workspace.start([path.join(root, 'host.cjs')]), { photos: [] })
+      assert.equal(await readFile(marker, 'utf8'), 'same profile')
+      assert.notEqual(host.children[0].child.pid, host.children[1].child.pid)
+    },
+    { prepare: host.prepare }
+  )
+  assert.equal(host.children.length, 2)
+  assert.deepEqual(await host.children[1].closed, [null, 'SIGTERM'])
+  await assert.rejects(access(root), { code: 'ENOENT' })
+})
+
+test(
+  'native workspace rejects an unmatched terminal signal from its real host',
+  { skip: process.platform === 'win32' && 'Windows does not deliver catchable SIGTERM to Node hosts' },
+  async (t) => {
+    const host = realHost(t, { stopSignal: 'SIGINT' })
+    let root,
+      cleanupCalls = 0
+    await assert.rejects(
+      withNativeWorkspace(
+        process.execPath,
+        (workspace) => {
+          root = workspace.root
+        },
+        { prepare: host.prepare, onCleanup: () => cleanupCalls++ }
+      ),
+      (error) =>
+        error instanceof AggregateError &&
+        error.errors.some((failure) => /Host exited unexpectedly during stop.*SIGINT/.test(failure.message))
+    )
+    assert.deepEqual(await host.children[0].closed, [null, 'SIGINT'])
+    assert.equal(cleanupCalls, 1)
+    await assert.rejects(access(root), { code: 'ENOENT' })
+  }
+)
+
+function controlledHost(
+  t,
+  closes,
+  { secondaryCloses = true, signalSent = true, terminal = { code: 0, signal: null } } = {}
+) {
   const errors = []
   const profileData = 'private test profile'
   const token = 'workspace-test-token'
@@ -44,10 +223,11 @@ function controlledHost(t, closes, { secondaryCloses = true } = {}) {
     host.kill = () => {
       stopCalls++
       if (closes) {
-        host.exitCode = 0
-        host.emit('close', 0, null)
+        host.exitCode = terminal.code
+        host.signalCode = terminal.signal
+        host.emit('close', terminal.code, terminal.signal)
       }
-      return true
+      return signalSent
     }
     writeFileSync(
       env.OPENLR_AGENT_FILE,
@@ -112,6 +292,38 @@ test('native workspace removes its disposable profile after confirmed host close
   await assert.rejects(access(root), { code: 'ENOENT' })
   assert.deepEqual(errors, [])
 })
+
+for (const [name, options, message] of [
+  ['unsent termination signal', { signalSent: false }, /Host termination signal was not sent/],
+  [
+    'nonzero termination',
+    { terminal: { code: 23, signal: null } },
+    /Host exited unexpectedly during stop.*23/
+  ],
+  [
+    'unmatched signal',
+    { terminal: { code: null, signal: 'SIGINT' } },
+    /Host exited unexpectedly during stop.*SIGINT/
+  ]
+]) {
+  test(`native workspace rejects ${name} while confirming an observed close`, async (t) => {
+    const { run } = controlledHost(t, true, options)
+    let root,
+      cleanupCalls = 0
+    await assert.rejects(
+      run(
+        (workspace) => {
+          root = workspace.root
+        },
+        { onCleanup: () => cleanupCalls++ }
+      ),
+      (error) =>
+        error instanceof AggregateError && error.errors.some((failure) => message.test(failure.message))
+    )
+    assert.equal(cleanupCalls, 1)
+    await assert.rejects(access(root), { code: 'ENOENT' })
+  })
+}
 
 test('native workspace reports confirmed cleanup even when the workflow failed', async (t) => {
   const { run } = controlledHost(t, true)
