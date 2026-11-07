@@ -20,9 +20,16 @@ export const audioReadTimingOrder = Array.from({ length: 6 }, () => [
   'original-workflow'
 ]).flat()
 
+export const audioRecoveryOrder = Array(24).fill('original-workflow')
+
 export function audioComparisonPlan(comparison = 'layout') {
-  assert.ok(['layout', 'read-timing'].includes(comparison), 'Choose layout or read-timing comparison')
-  const order = comparison === 'layout' ? audioLayoutOrder : audioReadTimingOrder
+  const orders = {
+    layout: audioLayoutOrder,
+    'read-timing': audioReadTimingOrder,
+    recovery: audioRecoveryOrder
+  }
+  assert.ok(Object.hasOwn(orders, comparison), 'Choose layout, read-timing or recovery comparison')
+  const order = orders[comparison]
   const arms = Object.fromEntries(
     [...new Set(order)].map((label) => [
       label,
@@ -41,7 +48,12 @@ export function audioLayoutOutcome(code, signal, log, expectedBeforeTrimChecks =
   const base = videoTrialOutcome(code, signal, log)
   const records = log.split(/\r?\n/).flatMap((line) => {
     try {
-      return line.startsWith('{') ? [JSON.parse(line)] : []
+      const prefix = 'OpenLR video import diagnostic: '
+      const index = line.indexOf(prefix)
+      const payload = index >= 0 ? line.slice(index + prefix.length) : line.startsWith('{') ? line : null
+      if (!payload) return []
+      const record = JSON.parse(payload)
+      return record && typeof record === 'object' && !Array.isArray(record) ? [record] : []
     } catch {
       return []
     }
@@ -58,6 +70,7 @@ export function audioLayoutOutcome(code, signal, log, expectedBeforeTrimChecks =
     evidence,
     beforeTrimChecks,
     expectedBeforeTrimChecks,
+    playbackLoadRetries: records.filter((record) => record.stage === 'playback-load-retry').length,
     exports,
     cleanupReceipts: records.filter((record) => record.nativeVideoCleanup || record.nativeVideoOracleCleanup),
     verified:
@@ -109,10 +122,16 @@ export async function runAudioLayoutComparison(
       arms,
       application: 'same stock executable for every arm',
       sourcePreparation: report,
+      ...(comparison === 'recovery' && {
+        candidateScope:
+          'Finite 24-host candidate schedule with the original workflow and exact original input; no added delay or forced fault. Retry events are observations, not a pass requirement.'
+      }),
       timingScope:
-        comparison === 'layout'
-          ? 'The added original export/read occurs in all three arms before trim. It changes timing; a null result does not exclude the original failure.'
-          : 'Both arms use the exact retained original. The original-workflow arm omits only the added pre-trim export/read; added-read performs it for both WebM and AAC. Post-trim original and all output assertions remain identical. A finite null result cannot establish elimination of an intermittent failure.',
+        comparison === 'recovery'
+          ? 'The only arm omits the added pre-trim original export/read and requires zero receipts. All strict post-trim and output assertions remain. A finite null result does not prove recovery from a genuine failure or establish its root cause.'
+          : comparison === 'layout'
+            ? 'The added original export/read occurs in all three arms before trim. It changes timing; a null result does not exclude the original failure.'
+            : 'Both arms use the exact retained original. The original-workflow arm omits only the added pre-trim export/read; added-read performs it for both WebM and AAC. Post-trim original and all output assertions remain identical. A finite null result cannot establish elimination of an intermittent failure.',
       assertions:
         'Unchanged trim, rotation, all-track WebM/MP4, 44.1kHz AAC, decoded PCM and original-byte checks'
     }
@@ -122,11 +141,11 @@ export async function runAudioLayoutComparison(
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const args = process.argv.slice(2)
   const modes = args.filter((arg) => arg.startsWith('--comparison='))
-  assert.ok(modes.length <= 1, 'Pass at most one --comparison=layout|read-timing option')
+  assert.ok(modes.length <= 1, 'Pass at most one --comparison=layout|read-timing|recovery option')
   const positional = args.filter((arg) => !arg.startsWith('--comparison='))
   assert.ok(
     positional.length >= 3 && positional.length <= 4,
-    'Pass executable, source directory, report directory, optional FFmpeg directory and --comparison=layout|read-timing'
+    'Pass executable, source directory, report directory, optional FFmpeg directory and --comparison=layout|read-timing|recovery'
   )
   await runAudioLayoutComparison(
     ...positional.slice(0, 3),

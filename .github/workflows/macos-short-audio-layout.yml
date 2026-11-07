@@ -5,8 +5,8 @@ on:
       comparison:
         description: Controlled short audio comparison
         type: choice
-        options: [read-timing, layout]
-        default: read-timing
+        options: [recovery, read-timing, layout]
+        default: recovery
   push:
     branches: [experiment/short-audio-layout]
     paths: [.github/workflows/macos-short-audio-layout.yml]
@@ -17,7 +17,7 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 35
     env:
-      AUDIO_COMPARISON: ${{ inputs.comparison || 'read-timing' }}
+      AUDIO_COMPARISON: ${{ inputs.comparison || 'recovery' }}
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5

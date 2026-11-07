@@ -7,6 +7,7 @@ import {
   audioLayoutOrder,
   audioLayoutOutcome,
   audioReadTimingOrder,
+  audioRecoveryOrder,
   audioComparisonPlan
 } from '../scripts/native-audio-layout-comparison.mjs'
 import { runVideoTrials } from '../scripts/native-video-trials.mjs'
@@ -145,5 +146,40 @@ test('read timing uses the exact original for 24 fixed trials and requires each 
   assert.equal(layout.order, audioLayoutOrder)
   assert.equal(Object.keys(layout.arms).length, 3)
   assert.ok(Object.values(layout.arms).every(({ originalReadBeforeTrim }) => originalReadBeforeTrim))
-  assert.throws(() => audioComparisonPlan('retry'), /Choose layout or read-timing/)
+  assert.throws(() => audioComparisonPlan('retry'), /Choose layout, read-timing or recovery/)
+})
+
+test('recovery schedules 24 original workflows without a pre-read and records optional native retries', () => {
+  const plan = audioComparisonPlan('recovery')
+  assert.equal(plan.order, audioRecoveryOrder)
+  assert.equal(plan.order.length, 24)
+  assert.deepEqual([...new Set(plan.order)], ['original-workflow'])
+  assert.deepEqual(plan.arms, {
+    'original-workflow': { filename: 'original-10000ns.webm', originalReadBeforeTrim: false }
+  })
+  const passed = lines([...evidence.slice(2), ...receipts])
+  const withoutRetry = audioLayoutOutcome(0, null, passed, 0)
+  assert.equal(withoutRetry.verified, true)
+  assert.equal(withoutRetry.playbackLoadRetries, 0)
+  const diagnostic = { operation: 'trim', sequence: 2, stage: 'playback-load-retry', elapsedMs: 3674 }
+  const prefixed = 'OpenLR video import diagnostic: ' + JSON.stringify(diagnostic)
+  const withRetries = audioLayoutOutcome(
+    0,
+    null,
+    [
+      passed,
+      prefixed,
+      '2026-11-08T00:00:00Z ' + prefixed,
+      JSON.stringify(diagnostic),
+      'OpenLR video import diagnostic: {"stage":"playback-load-retry"',
+      'OpenLR video import diagnostic: null',
+      'OpenLR video import diagnostic: ["playback-load-retry"]',
+      'OpenLR video import diagnostic: {"stage":3}',
+      'untyped playback-load-retry'
+    ].join('\n'),
+    0
+  )
+  assert.equal(withRetries.verified, true)
+  assert.equal(withRetries.playbackLoadRetries, 3)
+  assert.equal(audioLayoutOutcome(1, null, prefixed + '\n' + lines(receipts), 0).verified, false)
 })

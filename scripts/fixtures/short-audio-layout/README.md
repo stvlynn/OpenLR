@@ -62,7 +62,7 @@ image/audio/original-byte assertions remain the comparison runner's job.
 
 ## Native comparison modes
 
-The same runner and workflow support two controlled modes. After preparation,
+The same runner and workflow support three controlled modes. After preparation,
 pass a stock OpenLR executable, the prepared directory and a fresh report
 directory. FFmpeg and ffprobe must be on PATH; an optional fourth positional
 argument names their directory.
@@ -70,6 +70,7 @@ argument names their directory.
 ```sh
 node scripts/native-audio-layout-comparison.mjs PATH_TO_OPENLR build/short-audio-layout build/audio-layout-trials --comparison=layout
 node scripts/native-audio-layout-comparison.mjs PATH_TO_OPENLR build/short-audio-layout build/audio-read-trials --comparison=read-timing
+node scripts/native-audio-layout-comparison.mjs PATH_TO_OPENLR build/short-audio-layout build/audio-recovery-trials --comparison=recovery
 ```
 
 `layout` retains the three-arm schedule: original, reticked, regrouped,
@@ -90,12 +91,22 @@ rotation, multitrack export, decoded audio and exact frame-count assertion.
 There are no added delays or retries. A finite null timing result also cannot
 establish elimination of an intermittent failure.
 
-Both modes use the shared scheduler and actual owned host/browser cleanup.
+`recovery` runs the selected bounded initial playback recovery candidate against
+the original workflow: one `original-workflow` arm, 24 fresh hosts, the exact
+59,365-byte original and no added pre-trim read (zero required receipts).
+Every strict post-trim original, image, PCM, frame-count and all-track export
+assertion remains. The harness adds no delay or forced fault. Each trial's
+`playbackLoadRetries` counts parsed `playback-load-retry` diagnostic records;
+raw logs remain available. This count is observational and is not required for
+a pass. A finite clean cohort without such an event does not demonstrate
+recovery from a genuine failure or establish its root cause.
+
+All modes use the shared scheduler and actual owned host/browser cleanup.
 Semantic failures remain in the report; another host starts only after both
 cleanup receipts and the smoke process's actual close. Cohort completion does
 not mean every semantic assertion passed. The workflow's manual `comparison`
-choice selects either mode; its self-path push trigger defaults to
-`read-timing`. The 24-trial budget remains 28 minutes for the comparison and
+choice selects a mode; its self-path push trigger defaults to
+`recovery`. The 24-trial budget remains 28 minutes for the comparison and
 35 minutes for the job, with one preparation and one stock application build.
 
 ## Local verification
@@ -129,3 +140,14 @@ log is `.workspace/audio-layout-windows-75ea466.log`. Neither result establishes
 container causation or recovery from the native decode error. The original
 also passed, and all these observations included the added pre-trim read;
 the separate timing mode above tests that remaining design difference.
+
+The subsequent `9004d23` read-timing cohort completed all 24 trials with 23 strict
+passes: original-workflow passed 11/12 and added-read passed 12/12. Zero-based
+trial 15, without the added read, reached metadata at 20 ms and suspend at
+34 ms, then error 3 at 3,673 ms with ready state 0. No loaded data, seek or
+export followed; the host remained responsive with a 9 ms UI-pump reply. All
+24 host and browser cleanups were confirmed. Artifact `13581013252` is retained
+under `.workspace/audio-read-timing-9004d23/`. This finite result establishes
+neither a benefit from the added read nor the root cause of the failure. It
+motivates testing the selected recovery candidate with the original workflow
+and exact original input; it does not establish native recovery success.
