@@ -19,7 +19,7 @@ does not distinguish initial loading, an exhausted load retry, the initial
 trim-start seek, frame preparation or the requested 0.35-second seek. This is
 separate from the passing four-platform desktop matrix at the same revision.
 
-The isolated `experiment/macos-first-seek` branch is based on `df741d6` and
+The original `experiment/macos-first-seek` branch is based on `df741d6` and
 reuses the existing release workflow, stock vendored build, fixed 24-host
 driver, independent Chrome oracle and actual cleanup owners. Manual dispatch
 selects diagnostics `off`, `on` or `both`; a self-path push defaults to `off`.
@@ -49,9 +49,9 @@ process closure.
 
 The experimental branch's existing workflow self-path push trigger or manual
 dispatch starts this observation. The budget remains 35 minutes per job and
-28 minutes for each arm's cohort. Artifacts are `first-seek-package-off`,
-`first-seek-package-on`, `first-seek-evidence-off` and
-`first-seek-evidence-on`; evidence includes build identity, the source,
+28 minutes for each arm's cohort. The resource continuation uses
+`cohort-resources-package-off`, `cohort-resources-package-on`,
+`cohort-resources-evidence-off` and `cohort-resources-evidence-on`; evidence includes build identity, the source,
 provenance, observation settings, the complete/partial report and every raw
 trial log. Only artifacts for selected arms are produced. Observation metadata
 records the diagnostic mode, the retained source's `df741d6` revision and the
@@ -80,7 +80,7 @@ that a helper survived. The gate correctly retained this unconfirmed lifecycle
 and prevented another host from starting. These failures remain separate from
 the earlier main first-seek error.
 
-The next observation defaults to OFF-only, retaining the exact source, full
+The subsequent observation defaulted to OFF-only, retaining the exact source, full
 assertions and 24-host schedule while seeking a further natural rare failure
 with failure-only metadata. It is additional observation, not a retry that
 replaces the failed ON result. No ON repetition, forced fault, inserted wait,
@@ -89,3 +89,64 @@ separate runner environments limit comparisons between the prior OFF and ON
 outcomes; no timing benefit or first-seek fix is established. The actual build
 revision is recorded automatically so the owner-preservation follow-up is
 distinguished from the earlier observation.
+
+## Resource and power continuation
+
+`experiment/macos-cohort-resources` starts from exact revision `56c3f13`,
+without application, Go, codec or playback changes. That preceding OFF cohort
+passed 16 trials, then trial 16 passed frames and WebM but timed out in MP4;
+trial 17 timed out during startup and stopped at the oracle cleanup gate.
+Its owned browser parent positively exited by SIGKILL, while BrowserServer
+cleanup remained unconfirmed. The earlier ON cohort had the same order of
+failures one trial sooner. Summing baseline trial durations, the first
+MP4-stall hosts started at 599.37 s (ON) and 596.22 s (OFF). This roughly
+ten-minute alignment motivates observation; it proves no resource leak,
+power transition or codec cause. The ten fresh-host encoder microprobes
+passed separately and did not reproduce the full application's accumulated
+workload.
+
+The existing shared driver now opts into `OPENLR_COHORT_RESOURCES=1` only in
+this workflow. Before and after each trial it writes
+`cohort-resources.jsonl`, with wall/monotonic times and cleanup flags. Nine
+read-only diagnostic commands run in parallel within each snapshot; complete
+snapshots serialize, and the file closes only after active work finishes:
+
+- `ps -axo pid,ppid,uid,rss,vsz,state,comm`: only the current owned driver
+  tree, basenames and aggregate counters are retained. The full process list,
+  UID values, unrelated command names, arguments, environment and paths are
+  not written. System and same-UID process counts are separate. Named service
+  aggregates cover OpenLR, Chrome (including `chrome_crashpad_handler`),
+  WebKit, VideoToolbox and media services without claiming ownership.
+- `vm_stat` and `sysctl hw.memsize vm.swapusage kern.num_files kern.maxfiles
+kern.maxproc kern.maxprocperuid`: native output and units remain visible.
+  Compare same-UID counts with per-user limits, not total system counts.
+  A constant read-only shell also records inherited effective soft/hard
+  process limits using `ulimit -S -u` and `ulimit -H -u`; no limit is changed.
+- `pmset -g custom`, `assertions`, `systemstate`, `stats`, and
+  `powerstate IODisplayWrangler`: configuration, assertions, system state,
+  sleep/wake counts and the selected display driver's raw state are retained.
+  These are [documented getters](https://github.com/apple-oss-distributions/PowerManagement/blob/main/pmset/pmset.1),
+  not sleep prevention or wake requests. `control.active` describes export
+  batch progress and is not evidence of foreground or power state.
+
+Each diagnostic subprocess has a five-second timeout and bounded output;
+timeout termination applies only to that diagnostic child. Tool failures,
+unsupported getters and truncated output remain explicit. The sampled tree
+can omit reparented or launchd-owned helpers; service counts are aggregates,
+not permission to signal those processes. RSS sums double-count shared pages,
+boundary snapshots omit peaks, and process counts do not measure every
+thread, encoder session or private framework resource. Missing or unchanged
+counters cannot exclude unmeasured resource exhaustion.
+
+There is no `caffeinate`, power-setting change, synthetic wait, application
+trace, forced fault, debugger or extra recovery. The required boundary I/O
+does add inter-trial overhead: `observationMs` measures each full awaited
+snapshot separately from the unchanged trial-duration measurement, and
+`cohortElapsedMs` includes observer time. Raw collection/tool timings are
+also retained. This overhead may shift a time-sensitive recurrence and must
+be included when comparing cohort age with the earlier approximately 600 s
+alignment. All 24 source/output assertions, actual cleanup gates and stop-on-
+unconfirmed-cleanup behavior remain. Push defaults to OFF-only. The source
+fixture and product baseline are unchanged; actual observation revision is
+recorded from `GITHUB_SHA`. This experiment is observation, not a repair or a
+replacement for the retained failed runs.
