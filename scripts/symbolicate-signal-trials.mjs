@@ -102,8 +102,8 @@ function runAppleTool(args) {
   }
 }
 
-function checkedImage(imagePath, run) {
-  const tool = run(['dyld_info', '-uuid', imagePath])
+function checkedImage(imagePath, arch, run) {
+  const tool = run(['dyld_info', '-arch', arch, '-uuid', imagePath])
   try {
     assert.equal(tool.exitCode, 0, 'dyld_info failed')
     assert.equal(tool.error, null, 'dyld_info returned an execution error')
@@ -181,13 +181,22 @@ export async function symbolicateSignalTrials(artifactRoot, { run = runAppleTool
   report.calibrationKernel = sourceImages.get(kernelPath)
   const identityCache = new Map()
   const currentImage = (imagePath) => {
-    if (!identityCache.has(imagePath)) identityCache.set(imagePath, checkedImage(imagePath, run))
+    if (!identityCache.has(imagePath)) {
+      const arch = sourceImages.get(imagePath)?.arch || sourceImages.get(kernelPath).arch
+      assert.match(arch, /^arm64e?$/)
+      identityCache.set(imagePath, checkedImage(imagePath, arch, run))
+    }
     return identityCache.get(imagePath)
   }
   // Compare kernel identity before invoking atos.
   report.currentKernel = currentImage(kernelPath)
   report.calibrationKernelMatchesCurrent = report.currentKernel.uuid === report.calibrationKernel.uuid
   report.symbolicationCapabilityVerified = false
+  if (!report.calibrationKernelMatchesCurrent)
+    report.errors.push({
+      phase: 'kernel-identity',
+      error: 'Current kernel UUID must match source calibration'
+    })
   if (report.calibrationKernelMatchesCurrent) {
     try {
       const raised = calibration.results.find((result) => result.mode === 'raise')
