@@ -123,6 +123,58 @@ async function closeDebugger({ child, output }) {
   }
 }
 
+// Both post-fault capture and code inspection share actual debugger ownership,
+// deadlines, close confirmation, bounded streams, and persisted raw tool output.
+export async function runOwnedDebugger({ args, observation, inspect }) {
+  const owner = launchDebugger(args)
+  let failure,
+    inspected = false
+  const retain = () => {
+    inspected = true
+    inspect(owner.output, observation)
+  }
+  try {
+    await within(owner.output.completion, 45_000, 'Owned debugger did not finish')
+    retain()
+    assert.equal(owner.output.error, null)
+    assert.deepEqual(owner.output.closed, { code: 0, signal: null })
+    assert.equal(owner.output.truncated, false)
+  } catch (error) {
+    failure = error
+  } finally {
+    try {
+      await closeDebugger(owner)
+      observation.cleanupConfirmed = true
+    } catch (error) {
+      observation.cleanupError = { name: error.name, message: error.message }
+      failure ??= error
+    }
+    observation.debuggerExit = owner.output.closed
+    observation.debuggerError = owner.output.error
+    observation.truncated = owner.output.truncated
+    if (!inspected) {
+      try {
+        retain()
+      } catch (error) {
+        observation.parseError = { name: error.name, message: error.message }
+        failure ??= error
+      }
+    }
+    try {
+      await writeFile(observation.stdoutPath, owner.output.stdout)
+      await writeFile(observation.stderrPath, owner.output.stderr)
+    } catch (error) {
+      observation.persistenceError = { name: error.name, message: error.message }
+      failure ??= error
+    }
+  }
+  if (failure) {
+    failure.observation = observation
+    throw failure
+  }
+  return observation
+}
+
 export async function captureOriginalSignal({ pid, context, directory, name, nonce = randomUUID() }) {
   ownedPid(pid)
   assert.ok(path.isAbsolute(directory), 'Use an absolute capture directory')
@@ -152,7 +204,7 @@ export async function captureOriginalSignal({ pid, context, directory, name, non
     observation.requestPath,
     JSON.stringify({ pid, nonce, context: requestContext }, null, 2) + '\n'
   )
-  const owner = launchDebugger([
+  const args = [
     'lldb',
     '--batch',
     '--no-lldbinit',
@@ -160,57 +212,24 @@ export async function captureOriginalSignal({ pid, context, directory, name, non
     `command script import ${JSON.stringify(reader)}`,
     '-o',
     `openlr-capture-signal ${JSON.stringify(observation.requestPath)}`
-  ])
-  const retainCapture = () => {
-    const lines = owner.output.stdout.split(/\r?\n/).filter((line) => line.startsWith(captureMarker))
-    observation.captureRecords = lines.map((line) => JSON.parse(line.slice(captureMarker.length)))
-    if (observation.captureRecords.length === 1) observation.record = observation.captureRecords[0]
-    return lines.length
-  }
-  let failure
-  try {
-    await within(owner.output.completion, 45_000, 'Post-signal debugger did not finish')
-    const recordCount = retainCapture()
-    assert.equal(owner.output.error, null)
-    assert.deepEqual(owner.output.closed, { code: 0, signal: null })
-    assert.equal(owner.output.truncated, false)
-    assert.equal(recordCount, 1, 'Expected one independent post-signal capture')
-    assert.equal(observation.record.pid, pid)
-    assert.equal(observation.record.nonce, nonce)
-    assert.equal(observation.record.resumeSuccess, true, 'Debugger must resume original signal forwarding')
-    assert.equal(observation.record.sessionComplete, true, 'Debugger must observe its owned inferior exit')
-  } catch (error) {
-    failure = error
-  } finally {
-    try {
-      await closeDebugger(owner)
-      observation.cleanupConfirmed = true
-    } catch (error) {
-      observation.cleanupError = { name: error.name, message: error.message }
-      failure ??= error
-    }
-    observation.debuggerExit = owner.output.closed
-    observation.debuggerError = owner.output.error
-    observation.truncated = owner.output.truncated
-    if (!observation.captureRecords) {
+  ]
+  return await runOwnedDebugger({
+    args,
+    observation,
+    inspect(output) {
+      const lines = output.stdout.split(/\r?\n/).filter((line) => line.startsWith(captureMarker))
       try {
-        retainCapture()
+        observation.captureRecords = lines.map((line) => JSON.parse(line.slice(captureMarker.length)))
       } catch (error) {
         observation.parseError = { name: error.name, message: error.message }
-        failure ??= error
+        throw error
       }
+      if (observation.captureRecords.length === 1) observation.record = observation.captureRecords[0]
+      assert.equal(lines.length, 1, 'Expected one independent post-signal capture')
+      assert.equal(observation.record.pid, pid)
+      assert.equal(observation.record.nonce, nonce)
+      assert.equal(observation.record.resumeSuccess, true, 'Debugger must resume original signal forwarding')
+      assert.equal(observation.record.sessionComplete, true, 'Debugger must observe its owned inferior exit')
     }
-    try {
-      await writeFile(observation.stdoutPath, owner.output.stdout)
-      await writeFile(observation.stderrPath, owner.output.stderr)
-    } catch (error) {
-      observation.persistenceError = { name: error.name, message: error.message }
-      failure ??= error
-    }
-  }
-  if (failure) {
-    failure.observation = observation
-    throw failure
-  }
-  return observation
+  })
 }

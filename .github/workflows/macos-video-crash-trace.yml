@@ -29,6 +29,10 @@ on:
         description: Capture the original stack only after a native application fault
         type: boolean
         default: false
+      inspect_code:
+        description: Inspect captured JSC code on an identity-matched owned fixture
+        type: boolean
+        default: false
 permissions:
   contents: read
   actions: read
@@ -147,8 +151,16 @@ jobs:
         run: gh run download "$SOURCE_RUN" --name original-signal-context --dir build/source-observation
       - name: Resolve saved signal addresses
         run: node scripts/symbolicate-signal-trials.mjs build/source-observation build/signal-symbolication.json
+      - name: Inspect captured JSC function code
+        if: inputs.inspect_code
+        run: node scripts/inspect-signal-code.mjs build/source-observation build/signal-code
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: original-signal-symbolication
           path: build/signal-symbolication.json
+      - uses: actions/upload-artifact@v4
+        if: ${{ always() && inputs.inspect_code }}
+        with:
+          name: original-signal-code
+          path: build/signal-code
