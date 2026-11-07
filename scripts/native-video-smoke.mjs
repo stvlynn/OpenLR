@@ -385,7 +385,10 @@ try {
       mode === '--lldb-workflow'
         ? withHostCrashTrace(workspace, () => verifyWorkflow(workspace))
         : verifyWorkflow(workspace),
-    { onCleanup: () => console.log(JSON.stringify({ nativeVideoCleanup: 'confirmed' })) }
+    {
+      env: { DYLD_PRINT_SEGMENTS: '1' },
+      onCleanup: () => console.log(JSON.stringify({ nativeVideoCleanup: 'confirmed' }))
+    }
   )
 } finally {
   try {
