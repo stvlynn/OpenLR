@@ -48,6 +48,19 @@ def fault(process):
             "symbol": identifier(frame.GetFunctionName(), r"[A-Za-z0-9_.$:<>,()\[\] +\-~*&!]{1,128}"),
             "imageOffset": address - base if base <= address < lldb.LLDB_INVALID_ADDRESS else None,
         })
+    registers = {}
+    frame = thread.GetFrameAtIndex(0)
+    if frame.IsValid():
+        # Numeric stopped-thread state only; never dereference application buffers.
+        names = ("pc", "lr", "fp", "sp", "x0", "x1", "x2", "x3",
+                 "x19", "x20", "x21", "x22", "x23", "x24")
+        for name in names:
+            register = frame.FindRegister(name)
+            if register.IsValid():
+                error = lldb.SBError()
+                value = register.GetValueAsUnsigned(error)
+                if error.Success():
+                    registers[name] = hex(value)
     return {
         "thread": thread.GetIndexID(),
         "mainQueue": thread.GetQueueName() == "com.apple.main-thread",
@@ -55,6 +68,7 @@ def fault(process):
         "exception": exception.group() if exception else None,
         "signal": thread.GetStopReasonDataAtIndex(0) if reason == lldb.eStopReasonSignal else None,
         "frames": frames,
+        "registers": registers,
     }
 
 

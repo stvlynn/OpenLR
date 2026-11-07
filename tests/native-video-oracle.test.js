@@ -58,6 +58,12 @@ test('video oracle graceful cleanup confirms the actual owned Chrome process exi
   assert.equal(records.find((record) => record.nativeVideoOracle === 'owned').pid, owner.process().pid)
   const phases = records.map((record) => record.nativeVideoOracleCleanup)
   assert.ok(phases.indexOf('process-exited') < phases.indexOf('confirmed'))
+  assert.ok(phases.includes('process-closed'))
+  assert.ok(phases.includes('server-closed'))
+  assert.ok(phases.indexOf('operation-settled') < phases.indexOf('confirmed'))
+  const settled = records.find((record) => record.nativeVideoOracleCleanup === 'operation-settled')
+  assert.equal(settled.operation, 'close')
+  assert.equal(settled.status, 'fulfilled')
   assert.equal(phases.includes('kill-requested'), false)
   assert.equal(records.find((record) => record.nativeVideoOracleCleanup === 'confirmed').method, 'graceful')
 })
@@ -70,6 +76,7 @@ test('video oracle escalates a hanging graceful operation and kills only its own
   const oracle = ownVideoOracle(
     {
       process: () => owner.process(),
+      once: (...args) => owner.once(...args),
       close: () => new Promise(() => {}),
       kill: () => {
         kills++
@@ -86,6 +93,16 @@ test('video oracle escalates a hanging graceful operation and kills only its own
   const phases = records.map((record) => record.nativeVideoOracleCleanup)
   assert.ok(phases.indexOf('close-deadline') < phases.indexOf('kill-requested'))
   assert.ok(phases.indexOf('process-exited') < phases.indexOf('confirmed'))
+  assert.ok(phases.includes('process-closed'))
+  assert.ok(phases.includes('server-closed'))
+  const settled = records.find((record) => record.nativeVideoOracleCleanup === 'operation-settled')
+  assert.equal(settled.operation, 'kill')
+  assert.equal(settled.status, 'fulfilled')
+  assert.ok(records.indexOf(settled) < phases.indexOf('confirmed'))
+  const deadline = records.find((record) => record.nativeVideoOracleCleanup === 'close-deadline')
+  assert.equal(deadline.processExited, false)
+  assert.equal(deadline.processClosed, false)
+  assert.deepEqual(deadline.pendingOperations, ['close'])
   assert.equal(records.find((record) => record.nativeVideoOracleCleanup === 'confirmed').method, 'killed')
 })
 
@@ -94,10 +111,15 @@ test('video oracle refuses confirmation when shutdown methods resolve but real C
   if (!owner) return
   const records = []
   const oracle = ownVideoOracle(
-    { process: () => owner.process(), close: async () => {}, kill: async () => {} },
+    {
+      process: () => owner.process(),
+      once: (...args) => owner.once(...args),
+      close: async () => {},
+      kill: async () => {}
+    },
     { closeMs: 50, killMs: 50, log: (line) => records.push(JSON.parse(line)) }
   )
-  await assert.rejects(oracle.close(), /could not confirm termination/)
+  await assert.rejects(oracle.close(), /process termination is unconfirmed/)
   assert.equal(terminated(owner.process()), false)
   assert.equal(
     records.some((record) => record.nativeVideoOracleCleanup === 'confirmed'),
@@ -107,4 +129,52 @@ test('video oracle refuses confirmation when shutdown methods resolve but real C
     records.some((record) => record.nativeVideoOracleCleanup === 'failed'),
     true
   )
+  const deadline = records.find((record) => record.nativeVideoOracleCleanup === 'kill-deadline')
+  assert.equal(deadline.processExited, false)
+  assert.equal(deadline.processClosed, false)
+  assert.equal(deadline.operationStatus, 'fulfilled')
+  assert.deepEqual(deadline.pendingOperations, [])
+})
+
+test('video oracle distinguishes a terminated Chrome from an unsettled kill cleanup operation', async (t) => {
+  const owner = await launchOracle(t)
+  if (!owner) return
+  const records = []
+  let releaseKill, pendingKill
+  const gate = new Promise((resolve) => (releaseKill = resolve))
+  const oracle = ownVideoOracle(
+    {
+      process: () => owner.process(),
+      once: (...args) => owner.once(...args),
+      close: () => new Promise(() => {}),
+      kill: () => (pendingKill = owner.kill().then(() => gate))
+    },
+    { closeMs: 50, log: (line) => records.push(JSON.parse(line)) }
+  )
+  try {
+    await assert.rejects(oracle.close(), /browser process exited; shutdown cleanup remains unfinished/)
+    assert.equal(terminated(owner.process()), true)
+    const deadline = records.find((record) => record.nativeVideoOracleCleanup === 'kill-deadline')
+    assert.equal(deadline.processExited, true)
+    assert.equal(deadline.processClosed, true)
+    assert.equal(deadline.serverClosed, true)
+    assert.equal(deadline.operationStatus, 'pending')
+    assert.deepEqual(deadline.pendingOperations, ['close', 'kill'])
+    assert.equal(
+      records.some((record) => record.nativeVideoOracleCleanup === 'operation-settled'),
+      false
+    )
+  } finally {
+    releaseKill()
+    await pendingKill
+    // Let the helper's observer of the returned promise publish its settlement.
+    await new Promise((resolve) => setImmediate(resolve))
+  }
+  assert.equal(
+    records.some((record) => record.nativeVideoOracleCleanup === 'confirmed'),
+    false
+  )
+  const settled = records.find((record) => record.nativeVideoOracleCleanup === 'operation-settled')
+  assert.equal(settled.operation, 'kill')
+  assert.equal(settled.status, 'fulfilled')
 })

@@ -6,7 +6,7 @@ function within(operation, milliseconds, message) {
     operation,
     new Promise((resolve, reject) => {
       timer = setTimeout(
-        () => reject(Object.assign(new Error(message), { code: 'VIDEO_ORACLE_DEADLINE' })),
+        () => reject(Object.assign(new Error(message()), { code: 'VIDEO_ORACLE_DEADLINE' })),
         milliseconds
       )
     })
@@ -27,7 +27,48 @@ export function ownVideoOracle(owner, { log = console.log, closeMs = 5000, killM
         ...details
       })
     )
-  let exit
+  let exit,
+    processClosed = false,
+    serverClosed = false
+  const operations = {}
+  const snapshot = (operation) => ({
+    operation,
+    processExited: Boolean(exit),
+    processClosed,
+    serverClosed,
+    operationStatus: operations[operation] ?? 'not-started',
+    pendingOperations: Object.keys(operations).filter((name) => operations[name] === 'pending')
+  })
+  const deadlineMessage = (operation) =>
+    `Video oracle ${operation === 'kill' ? 'forced' : 'graceful'} shutdown exceeded its deadline: ` +
+    (exit
+      ? 'browser process exited; shutdown cleanup remains unfinished'
+      : 'browser process termination is unconfirmed')
+  const runOperation = (operation, run) => {
+    operations[operation] = 'pending'
+    return Promise.resolve()
+      .then(run)
+      .then(
+        (value) => {
+          operations[operation] = 'fulfilled'
+          report('operation-settled', { operation, status: 'fulfilled' })
+          return value
+        },
+        (error) => {
+          operations[operation] = 'rejected'
+          report('operation-settled', { operation, status: 'rejected', error: error.name })
+          throw error
+        }
+      )
+  }
+  child.once('close', (code, signal) => {
+    processClosed = true
+    report('process-closed', { code, signal })
+  })
+  owner.once('close', () => {
+    serverClosed = true
+    report('server-closed')
+  })
   const exited = new Promise((resolve) => {
     const observe = (code, signal) => {
       if (exit) return
@@ -44,27 +85,33 @@ export function ownVideoOracle(owner, { log = console.log, closeMs = 5000, killM
     close() {
       return (closing ??= (async () => {
         report('started')
+        let operation = 'close'
         try {
           let method = 'graceful'
           try {
-            await within(
-              Promise.all([Promise.resolve().then(() => owner.close()), exited]),
-              closeMs,
-              'Video oracle graceful shutdown exceeded its deadline'
+            await within(Promise.all([runOperation('close', () => owner.close()), exited]), closeMs, () =>
+              deadlineMessage('close')
             )
           } catch (error) {
-            report(error.code === 'VIDEO_ORACLE_DEADLINE' ? 'close-deadline' : 'close-failed')
+            report(
+              error.code === 'VIDEO_ORACLE_DEADLINE' ? 'close-deadline' : 'close-failed',
+              snapshot('close')
+            )
             report('kill-requested')
             method = 'killed'
-            await within(
-              Promise.all([Promise.resolve().then(() => owner.kill()), exited]),
-              killMs,
-              'Video oracle forced shutdown could not confirm termination within its deadline'
-            )
+            operation = 'kill'
+            try {
+              await within(Promise.all([runOperation('kill', () => owner.kill()), exited]), killMs, () =>
+                deadlineMessage('kill')
+              )
+            } catch (error) {
+              if (error.code === 'VIDEO_ORACLE_DEADLINE') report('kill-deadline', snapshot('kill'))
+              throw error
+            }
           }
           report('confirmed', { method, ...exit })
         } catch (error) {
-          report('failed', { error: error.name, ...(exit && { exit }) })
+          report('failed', { error: error.name, ...snapshot(operation), ...(exit && { exit }) })
           throw error
         }
       })())

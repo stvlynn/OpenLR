@@ -6,6 +6,10 @@ on:
         description: Symbolicate a completed signal-context observation run
         type: string
         default: ''
+      trace_workflow:
+        description: Attach the existing owned-host debugger before importing the fixture
+        type: boolean
+        default: false
 permissions:
   contents: read
   actions: read
@@ -44,6 +48,9 @@ jobs:
           echo "GOROOT=$PWD/build/signal-toolchain" >> "$GITHUB_ENV"
       - name: Calibrate foreign-thread breakpoints and raised signals
         run: node scripts/calibrate-signal-context.mjs
+      - name: Calibrate stopped-thread stack and register capture
+        if: inputs.trace_workflow
+        run: node scripts/calibrate-host-trace.mjs
       - name: Build the diagnostic native application
         run: node scripts/desktop.mjs build -o build/release -platform darwin/arm64
       - uses: actions/upload-artifact@v4
@@ -61,7 +68,11 @@ jobs:
         env:
           OPENLR_DIAGNOSTICS: '1'
           OPENLR_SIGNAL_RESOURCES: '1'
-        run: node scripts/native-video-export-trials.mjs build/release/darwin-arm64/OpenLR.app/Contents/MacOS/OpenLR build/video-export-trials
+          TRACE_WORKFLOW: ${{ inputs.trace_workflow }}
+        run: |
+          mode=()
+          if [ "$TRACE_WORKFLOW" = true ]; then mode=(--lldb-workflow); fi
+          node scripts/native-video-export-trials.mjs build/release/darwin-arm64/OpenLR.app/Contents/MacOS/OpenLR build/video-export-trials "${mode[@]}"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
