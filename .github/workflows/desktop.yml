@@ -75,7 +75,7 @@ jobs:
         timeout-minutes: 2
         run: node scripts/native-aac-input-probe.mjs build/audio-stream-probe
       - name: Verify the installed Linux distribution
-        if: runner.os == 'Linux'
+        if: ${{ !cancelled() && runner.os == 'Linux' && steps.distribution.outcome == 'success' }}
         run: bash scripts/native-deb-smoke.sh build/release/linux-amd64/openlr_*.deb
       - if: ${{ !cancelled() && runner.os == 'macOS' && steps.distribution.outcome == 'success' }}
         run: node scripts/native-suite.mjs build/release/darwin-universal/OpenLR.app/Contents/MacOS/OpenLR

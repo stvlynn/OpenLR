@@ -462,6 +462,8 @@ The optional export trace now observes the actual WebCodecs encoder through a se
 
 Native video checks also mark the start and completion of independent Chrome cleanup after the OpenLR workspace cleanup receipt. Both desktop and manual diagnostic workflows now upload the already-built package before running native checks, which also covers cancellation at the job deadline.
 
+The clean `a9dd869` Windows/MyGo package passed the native CLI video workflow with the same 27,479-byte fixture and Chrome 157.0.8103.38. The VP9 encoder reported 15 successful submissions and 15 native chunks, with queue size zero after flush. The actual configured codec was `vp09.00.10.08`, 64×96, quantizer bitrate mode and discarded alpha. Frame pixels, trimmed Opus tones, saved still and original-byte assertions passed, followed by both application and independent-browser cleanup receipts. Local log: `.workspace/video-encoder-observation-native.log`. The browser integration also verified that throwing, rejected and pending observation callbacks still produce decodable output.
+
 ### Video export without a playback session
 
 The shared preparation path formerly opened the preview source before handing the original to the container exporter. A Windows Chrome comparison imported the same generated VP9/Opus clip, stayed in Grid, and made native playback source assignment fail after import. The control failed at playback source assignment before conversion. With the redundant preparation removed, preview still reported the controlled playback error and the container export decoded to the expected blue frame and carried its Opus track. Grid selection and the absent playback session stayed the same, and original export matched the input bytes.
