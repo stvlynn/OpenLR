@@ -110,3 +110,7 @@ NASA astronaut and SpaceX rocket fixtures are public-domain photographs from sci
 Face and eye landmarks for assisted culling and red-eye correction use YuNet, face_detection_yunet_2023mar.onnx, under the MIT license (Shiqi Yu). Unmodified weights and license are in web/models/. [Fixed model source](https://github.com/opencv/opencv_zoo/tree/48b10fa505aeb51fbd127fc60a5c660040e823b7/models/face_detection_yunet).
 
 The packaged OpenLR icon uses the Lucide aperture glyph on an OpenLR background. Lucide notices are retained in web/vendor/icons/LICENSE.
+
+## Isolated runtime investigation tools
+
+The original-signal experiment acquires unmodified `rea-agents` 6.8.0 and its optional `frida` 17.23.2 Node binding under ignored `build/rea-runtime/` on the disposable macOS runner. REA declares MIT (copyright 2026 morluto); the Frida Node manifest declares `LGPL-2.0 WITH WxWindows-exception-3.1`. Their npm distributions retain their upstream licenses and notices. These are investigation tools outside the application bundle and root dependency manifest. OpenLR's observer and generated fixtures are independent source. [REA release source and license](https://github.com/morluto/rea/tree/160d821ac9a0310afcb8d1fc427862dd6508add5) · [Frida Node manifest](https://github.com/frida/frida-node/blob/17.23.2/package.json)

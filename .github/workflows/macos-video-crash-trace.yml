@@ -10,6 +10,10 @@ on:
         description: Attach the existing owned-host debugger before importing the fixture
         type: boolean
         default: false
+      frida_calibration:
+        description: Calibrate REA exception observation without starting application trials
+        type: boolean
+        default: false
 permissions:
   contents: read
   actions: read
@@ -51,19 +55,33 @@ jobs:
       - name: Calibrate stopped-thread stack and register capture
         if: inputs.trace_workflow
         run: node scripts/calibrate-host-trace.mjs
+      - name: Provision the pinned REA instrumentation runtime
+        if: inputs.frida_calibration
+        run: |
+          npm install --prefix build/rea-runtime --no-save --package-lock=false --no-audit --no-fund rea-agents@6.8.0
+          echo "OPENLR_REA_CLI=$PWD/build/rea-runtime/node_modules/rea-agents/scripts/rea.mjs" >> "$GITHUB_ENV"
+          node build/rea-runtime/node_modules/rea-agents/scripts/rea.mjs --version
+          node --input-type=module -e 'const f = await import(process.argv[1]); console.log("Frida local-device binding:", typeof f.getLocalDevice)' "$PWD/build/rea-runtime/node_modules/frida/build/src/frida.js"
+      - name: Calibrate original exception context through REA
+        if: inputs.frida_calibration
+        run: node scripts/calibrate-frida-signal.mjs
       - name: Build the diagnostic native application
+        if: ${{ !inputs.frida_calibration }}
         run: node scripts/desktop.mjs build -o build/release -platform darwin/arm64
       - uses: actions/upload-artifact@v4
+        if: ${{ !inputs.frida_calibration }}
         with:
           name: original-signal-macos-package
           path: build/release/darwin-arm64/*.dmg
       - name: Provision the fixed fixture browser
+        if: ${{ !inputs.frida_calibration }}
         run: |
           mkdir -p build/video-oracle
           curl --fail --location "https://storage.googleapis.com/chrome-for-testing-public/157.0.8103.38/mac-arm64/chrome-mac-arm64.zip" -o build/video-oracle/chrome.zip
           ditto -xk build/video-oracle/chrome.zip build/video-oracle
           echo "OPENLR_VIDEO_PROBE_CHROME=$PWD/build/video-oracle/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing" >> "$GITHUB_ENV"
       - name: Observe the fixed twenty-four-trial schedule
+        if: ${{ !inputs.frida_calibration }}
         timeout-minutes: 28
         env:
           OPENLR_DIAGNOSTICS: '1'

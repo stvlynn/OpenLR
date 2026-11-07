@@ -3,6 +3,7 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"os"
 	"sync/atomic"
@@ -35,6 +36,13 @@ func main() {
 		}
 		return value + 1
 	})
+	if os.Getenv("OPENLR_SIGNAL_PROBE_WAIT") == "1" {
+		fmt.Printf("OpenLR signal fixture {\"kind\":\"controller-ready\",\"pid\":%d}\n", os.Getpid())
+		if value, err := bufio.NewReader(os.Stdin).ReadByte(); err != nil || value != '\n' {
+			fmt.Fprintln(os.Stderr, "signal calibration controller did not release the fixture")
+			os.Exit(2)
+		}
+	}
 	// A foreign pthread enters Go once and returns to C before the trap. This
 	// exercises the runtime's extra-M signal path without a fixture handler.
 	status := start(callback, mode)
