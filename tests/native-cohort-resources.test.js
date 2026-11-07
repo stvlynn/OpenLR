@@ -37,7 +37,71 @@ test('resource process output keeps only the owned tree and aggregate system/ser
   assert.equal(JSON.stringify(result).includes('/private/'), false)
   assert.equal(JSON.stringify(result).includes('personal-app'), false)
   assert.equal(summarizeProcesses(listing + 'malformed\n', 10).malformedRows, 1)
+  const wide = summarizeProcesses(
+    listing +
+      '22 1 501 70 600 S /private/' +
+      'long-directory/'.repeat(20) +
+      'Google Chrome for Testing Helper (Renderer)\n',
+    10,
+    501
+  )
+  assert.equal(wide.serviceGroups.chrome.count, 2)
+  assert.equal(
+    wide.ownedTree.some(({ pid }) => pid === 22),
+    false
+  )
+  assert.equal(JSON.stringify(wide).includes('long-directory'), false)
   assert.throws(() => summarizeProcesses(listing, 0), /owned driver PID/)
+})
+
+test('actual pmset zero-exit internal failure is semantically unavailable and retains raw receipt', async () => {
+  const root = await mkdtemp(path.join(tmpdir(), 'openlr-pmset-availability-'))
+  assert.equal(path.dirname(root), path.resolve(tmpdir()))
+  // Exact stdout shape retained by c204bda native run 42400992680; exitCode was zero.
+  const failedOutput =
+    '\n      Driver ID  Current State  Max State  Current State Description\nInternal failure: Failed to get power state information\n'
+  try {
+    let available = false
+    const observer = await startCohortResourceObserver({
+      filePath: path.join(root, 'receipts.jsonl'),
+      rootPid: 10,
+      currentUid: 501,
+      platform: 'darwin',
+      run: async (command, args) => ({
+        command,
+        args,
+        exitCode: 0,
+        errorCode: null,
+        stderr: '',
+        stdout:
+          command === '/bin/ps'
+            ? listing
+            : args[1] === 'powerstate'
+              ? available
+                ? 'Driver ID  Current State  Max State\nIODisplayWrangler 4 4\n'
+                : failedOutput
+              : 'native output\n'
+      })
+    })
+    const failed = await observer.sample({ phase: 'before-trial' })
+    assert.equal(failed.status, 'partial')
+    const receipt = failed.systemTools.find(({ args }) => args[1] === 'powerstate')
+    assert.equal(receipt.exitCode, 0)
+    assert.equal(receipt.errorCode, null)
+    assert.equal(receipt.semanticStatus, 'unavailable')
+    assert.equal(receipt.semanticErrorCode, 'PMSET_POWERSTATE_UNAVAILABLE')
+    assert.equal(receipt.stdout, failedOutput)
+    available = true
+    assert.equal((await observer.sample({ phase: 'after-trial' })).status, 'observed')
+    await observer.close()
+    const records = (await readFile(path.join(root, 'receipts.jsonl'), 'utf8'))
+      .trim()
+      .split('\n')
+      .map(JSON.parse)
+    assert.equal(records[0].systemTools.find(({ args }) => args[1] === 'powerstate').stdout, failedOutput)
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
 })
 
 test('boundary snapshots serialize, preserve power/file-counter failures and finish before close', async () => {
@@ -95,6 +159,12 @@ test('boundary snapshots serialize, preserve power/file-counter failures and fin
     assert.equal(maximum, 9)
     assert.equal(active, 0)
     assert.ok(calls.some(([command, args]) => command.endsWith('sysctl') && args.includes('kern.num_files')))
+    assert.ok(
+      calls.some(
+        ([command, args]) =>
+          command === '/bin/ps' && args[0] === '-ww' && args.at(-1) === 'pid,ppid,uid,rss,vsz,state,comm'
+      )
+    )
     assert.ok(
       calls.some(([command, args]) => command.endsWith('pmset') && args.includes('IODisplayWrangler'))
     )

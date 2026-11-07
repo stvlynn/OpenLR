@@ -111,7 +111,7 @@ this workflow. Before and after each trial it writes
 read-only diagnostic commands run in parallel within each snapshot; complete
 snapshots serialize, and the file closes only after active work finishes:
 
-- `ps -axo pid,ppid,uid,rss,vsz,state,comm`: only the current owned driver
+- `ps -ww -axo pid,ppid,uid,rss,vsz,state,comm`: only the current owned driver
   tree, basenames and aggregate counters are retained. The full process list,
   UID values, unrelated command names, arguments, environment and paths are
   not written. System and same-UID process counts are separate. Named service
@@ -150,3 +150,40 @@ unconfirmed-cleanup behavior remain. Push defaults to OFF-only. The source
 fixture and product baseline are unchanged; actual observation revision is
 recorded from `GITHUB_SHA`. This experiment is observation, not a repair or a
 replacement for the retained failed runs.
+
+### Getter availability and process-name limits
+
+The `c204bda` native artifact from run `42400992680` retained an exit-zero
+`pmset -g powerstate IODisplayWrangler` receipt whose stdout instead said
+`Internal failure: Failed to get power state information` in every snapshot.
+The original `observed` summary represented process exit status and did not
+validate this getter's content. The display-driver state is unavailable in
+those records. The bounded follow-up recognizes that exact failure form,
+marks its receipt `semanticStatus: unavailable`, and marks the snapshot
+`partial`, preserving the original exit code and complete raw output. Other
+successful counters do not make this getter valid; system capabilities and
+sleep counts are separate evidence. The historical artifact is unchanged.
+
+Apple's `adv_cmds` source at
+[`6bed8737a34dbb54782a18f47dccf933a9967a12`](https://github.com/apple-oss-distributions/adv_cmds/tree/6bed8737a34dbb54782a18f47dccf933a9967a12/ps)
+documents repeated `-w` as unlimited width. Its
+[`ps.c`](https://github.com/apple-oss-distributions/adv_cmds/blob/6bed8737a34dbb54782a18f47dccf933a9967a12/ps/ps.c)
+also sets unlimited width for non-TTY stdout.
+[`keyword.c`](https://github.com/apple-oss-distributions/adv_cmds/blob/6bed8737a34dbb54782a18f47dccf933a9967a12/ps/keyword.c)
+maps `comm` to `just_command`, which calls `p_command_and_or_args` with
+arguments disabled;
+[`print.c`](https://github.com/apple-oss-distributions/adv_cmds/blob/6bed8737a34dbb54782a18f47dccf933a9967a12/ps/print.c)
+prints the
+final field in full when width is unlimited. Keeping `comm` last and adding
+explicit `-ww` is defensive. This source already predicts unlimited output
+for the prior piped invocation, so width truncation is not an established
+explanation for its zero Chrome/WebKit/VideoToolbox aggregate counts. The
+source is not an identity match to the installed macOS binary. Its process
+lookup can also fall back to a parenthesized accounting name; boundary
+sampling, lookup and name classification retain limits. Those zero counts
+do not establish service absence, ownership, or successful reaping.
+
+The follow-up has an exact-output regression test and a controlled long-path
+process-name test. It makes no product change and launches no new native
+cohort; the completed native run retains its own result and observation
+limits.

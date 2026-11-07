@@ -105,7 +105,7 @@ export async function startCohortResourceObserver({
     closing,
     closed = false
   const commands = [
-    ['/bin/ps', ['-axo', 'pid,ppid,uid,rss,vsz,state,comm']],
+    ['/bin/ps', ['-ww', '-axo', 'pid,ppid,uid,rss,vsz,state,comm']],
     ['/usr/bin/vm_stat', []],
     [
       '/usr/sbin/sysctl',
@@ -138,7 +138,22 @@ export async function startCohortResourceObserver({
       const results = await Promise.all(
         commands.map(async ([command, args]) => {
           try {
-            return await run(command, args)
+            const result = await run(command, args)
+            if (
+              command === '/usr/bin/pmset' &&
+              args[0] === '-g' &&
+              args[1] === 'powerstate' &&
+              /(?:^|\n)Internal failure:\s*Failed to get power state information\s*(?:\n|$)/.test(
+                result.stdout ?? ''
+              )
+            ) {
+              return {
+                ...result,
+                semanticStatus: 'unavailable',
+                semanticErrorCode: 'PMSET_POWERSTATE_UNAVAILABLE'
+              }
+            }
+            return result
           } catch (error) {
             return {
               command,
@@ -158,8 +173,10 @@ export async function startCohortResourceObserver({
         processTool,
         systemTools,
         status:
-          results.every((result) => result.exitCode === 0 && !result.errorCode && !result.truncated) &&
-          !processes.malformedRows
+          results.every(
+            (result) =>
+              result.exitCode === 0 && !result.errorCode && !result.truncated && !result.semanticErrorCode
+          ) && !processes.malformedRows
             ? 'observed'
             : 'partial'
       })
