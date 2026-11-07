@@ -30,6 +30,77 @@ The MP4 patch retains coded durations, existing AAC roll groups, and a separate 
 
 The local verification used Windows, Chrome and FFmpeg/ffprobe 8.1.2 Essentials from Gyan Doshi, a GPLv3 standalone Windows build linked by the FFmpeg project. Those executables were extracted only into the ignored workspace. They are verification tools. The fixture comparison verifies container metadata and playback through independent decoders. It does not establish native macOS converter integration. [FFmpeg download sources](https://www.ffmpeg.org/download.html) · [Windows build provenance and license](https://www.gyan.dev/ffmpeg/builds/#about-these-builds)
 
+## Declared Matroska duration candidate
+
+This isolated candidate addresses a public packet-reader defect, separately from
+the unresolved native source-load media error 3. MediaBunny 1.65.1 reads an
+explicit `BlockDuration`, then replaces it with the next same-track presentation
+timestamp distance while resolving a cluster. A 20 ms Opus packet followed by a
+200 ms hole is consequently reported as 220 ms. Laced blocks also acquire wrong
+member timestamps and durations from the inflated block duration. RFC 9559
+defines `BlockDuration` as the block's duration; next-timestamp inference is the
+default when the duration and track default are absent. The recorded explicit
+value must therefore survive inference. [Definition and default](https://www.rfc-editor.org/rfc/rfc9559.html#section-5.1.3.5.3)
+· [Pinned reader source](https://github.com/Vanilagy/mediabunny/blob/v1.65.1/src/matroska/matroska-demuxer.ts#L755-L770)
+
+`scripts/mediabunny/matroska-duration.patch` applies after the existing audio
+timing and video diagnostic patches to the pinned 1.65.1 npm source. It records
+whether a `BlockDuration` was present, preserves that duration (including zero)
+when resolving the cluster, and prevents lacing's default-duration fallback
+from replacing explicit zero. A track's `DefaultDuration` supplies each frame's
+duration before considering the next timestamp, including every member of a
+SimpleBlock lace. Next-timestamp inference applies only when both declarations
+are absent. RFC 9559 defines the track default in nanoseconds per frame; a
+BlockGroup on a track with this default must additionally carry explicit
+`BlockDuration`. The default-duration regressions therefore use SimpleBlocks,
+while the explicit-override controls use BlockGroups.
+[Per-frame default](https://www.rfc-editor.org/rfc/rfc9559.html#section-5.1.4.1.13).
+The existing no-default inference, final block fallback, timestamp scaling,
+codec delay, discard metadata, and
+reference/key classification paths remain in place. The source modification
+retains MediaBunny's MPL-2.0 terms and notices; no new library or outside
+implementation is introduced. The existing vendor command regenerates the
+tracked browser bundle from this three-patch series.
+
+`node --test tests/audio-track.test.js tests/audio-timing.test.js tests/audio-config.test.js`
+passed all 25 checks on Windows / Node 24.9.0. Before regenerating the bundle,
+the explicit single-packet, laced-packet and zero-duration regressions actually
+failed (7/10 checks passed in `audio-track.test.js`). The missing-duration and
+final-block controls already passed. The first explicit-only patch still failed
+the two new nonterminal DefaultDuration controls (single and laced blocks);
+those checks passed after applying the full declaration precedence. Controls
+also retain the existing no-default lace inference and explicit nonzero
+override of a different track default. After regeneration, all fourteen packet/audio
+track checks pass, including the existing real Opus PCM, lace discard and AAC
+edit tests. Evidence is retained in
+`.workspace/matroska-duration-{before,after}.log` and
+`.workspace/matroska-default-duration-{before,after}.log`. These tests exercise the real
+JavaScript `Input`/`EncodedPacketSink` API with generated EBML and existing Opus
+packets; they do not exercise native WebKit playback. In particular, this
+candidate is not evidence that native media error 3 is repaired.
+
+The existing independent verifier also completed successfully:
+`node scripts/verify-audio-timing.mjs /path/to/ffmpeg/bin`, using FFmpeg 8.1.2
+and actual Chrome 157.0.8103.38. Chrome returned 9,601 presented frames for
+Opus 48 kHz, AAC 48 kHz and AAC 44.1 kHz; the corresponding independent raw
+FFmpeg counts were 9,601 / 10,240 / 10,176, retaining the existing coded-versus-
+presented AAC checks. The comparison intentionally loads the upstream and
+patched libraries, which emits MediaBunny's duplicate-load warning. Its original
+log is `.workspace/matroska-duration-independent.log`; the successful rerun
+after correcting DefaultDuration precedence is
+`.workspace/matroska-default-duration-independent.log`.
+
+A separate read-only comparison reopened the retained 59,365-byte source and
+the discarded RAP-only two-cluster derivative that exposed this finding. With
+the new reader, all 28 video, 137 mono and 89 stereo packets match the original
+in compressed bytes, type, timestamp, duration and side data. In particular,
+the pre-gap packet returns 20 ms, versus the baseline reader's 220 ms. Video
+key/delta classification is unchanged. Patch apply/reverse restored the exact
+pre-patch source bytes, and a second vendor build produced identical bundle
+bytes. These checks are recorded in
+`.workspace/matroska-duration-validation.json`. The running three-arm native
+container experiment remains untouched and uses its original reader.
+
 ## Browser syntax target regression
 
 At `d397439`, Linux completed the photo workflows and decoded video previews, then failed the video export with `Unexpected identifier 'u'`. The regenerated media bundle retained TypeScript source `using` declarations because its new build script omitted a target. The pinned upstream MediaBunny build explicitly targets ES2021. The local script now uses that same target, which lowers resource disposal syntax for the supported WebKit engines. [Upstream build configuration](https://github.com/Vanilagy/mediabunny/blob/v1.65.1/scripts/bundle.ts#L14-L31)
