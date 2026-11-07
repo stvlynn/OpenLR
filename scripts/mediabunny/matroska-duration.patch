@@ -1,0 +1,60 @@
+diff --git a/src/matroska/matroska-demuxer.ts b/src/matroska/matroska-demuxer.ts
+index 8fba04b..1dc1ac3 100644
+--- a/src/matroska/matroska-demuxer.ts
++++ b/src/matroska/matroska-demuxer.ts
+@@ -169,6 +169,7 @@ type ClusterBlock = {
+ 	decoded: boolean;
+ 	postProcessed: boolean; // For codec-specific processing
+ 	mainAdditional: Uint8Array | null;
++	hasExplicitDuration?: boolean;
+ };
+ 
+ type CuePoint = {
+@@ -762,18 +763,18 @@ export class MatroskaDemuxer extends Demuxer {
+ 					trackData.firstKeyFrameTimestamp = currentBlock.timestamp;
+ 				}
+ 
+-				if (i < trackData.presentationTimestamps.length - 1) {
+-					// Update block durations based on presentation order
++				// Explicit BlockDuration is authoritative, including zero (RFC 9559, 5.1.3.5.3).
++				if (currentBlock.hasExplicitDuration) continue;
++
++				if (track.defaultDuration != null) {
++					if (currentBlock.lacing === BlockLacing.None) {
++						currentBlock.duration = track.defaultDuration;
++					}
++					// Laces apply DefaultDuration per frame during expansion below.
++				} else if (i < trackData.presentationTimestamps.length - 1) {
++					// Infer duration only when both BlockDuration and DefaultDuration are absent.
+ 					const nextEntry = trackData.presentationTimestamps[i + 1]!;
+ 					currentBlock.duration = nextEntry.timestamp - currentBlock.timestamp;
+-				} else if (currentBlock.duration === 0) {
+-					if (track.defaultDuration != null) {
+-						if (currentBlock.lacing === BlockLacing.None) {
+-							currentBlock.duration = track.defaultDuration;
+-						} else {
+-							// Handled by the lace resolution code
+-						}
+-					}
+ 				}
+ 			}
+ 
+@@ -944,7 +945,9 @@ export class MatroskaDemuxer extends Demuxer {
+ 				throw new Error('Invalid block lacing: frame sizes don\'t match the block.');
+ 			}
+ 
+-			const blockDuration = originalBlock.duration || frameCount * (track.defaultDuration ?? 0);
++			const blockDuration = originalBlock.hasExplicitDuration
++				? originalBlock.duration
++				: originalBlock.duration || frameCount * (track.defaultDuration ?? 0);
+ 
+ 			// Now, let's replace the block with one block per frame
+ 			for (let i = 0; i < frameCount; i++) {
+@@ -1813,6 +1816,7 @@ export class MatroskaDemuxer extends Demuxer {
+ 				if (!this.currentBlock) break;
+ 
+ 				this.currentBlock.duration = readUnsignedInt(slice, size);
++				this.currentBlock.hasExplicitDuration = true;
+ 			}; break;
+ 			case EBMLId.DiscardPadding: {
+ 				if (!this.currentBlock) break;

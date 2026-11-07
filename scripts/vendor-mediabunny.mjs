@@ -25,7 +25,7 @@ try {
     'git',
     [
       'apply',
-      ...['audio-timing.patch', 'video-diagnostics.patch'].map((patch) =>
+      ...['audio-timing.patch', 'video-diagnostics.patch', 'matroska-duration.patch'].map((patch) =>
         path.join(repo, 'scripts', 'mediabunny', patch)
       )
     ],

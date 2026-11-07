@@ -91,7 +91,7 @@ Original + settings archives use fflate 0.8.3 (MIT, Arjun Barrett). Unmodified b
 
 The native application menu in menu.go adapts MyGo menu construction, separators and action callback routing from Arion's apps/desktop/bootstrap/windows.go at 3b1acc15ce251014ba720ee333c3cd74a75ea49b, AGPL-3.0-only. OpenLR supplies its own labels, photo actions and frontend event routing.
 
-Video conversion uses MediaBunny 1.65.1 (MPL-2.0) with source patches for audio presentation timing and optional encoder diagnostics. The browser distribution and license are in `web/vendor/mediabunny/`. `scripts/vendor-mediabunny.mjs` applies the patches to the pinned npm source and regenerates the bundle. [Upstream source](https://github.com/Vanilagy/mediabunny/tree/v1.65.1) · [Audio timing changes](scripts/mediabunny/audio-timing.patch) · [Encoder observation changes](scripts/mediabunny/video-diagnostics.patch)
+Video conversion uses MediaBunny 1.65.1 (MPL-2.0) with source patches for audio presentation timing, declared Matroska block/frame durations, and optional encoder diagnostics. The browser distribution and license are in `web/vendor/mediabunny/`. `scripts/vendor-mediabunny.mjs` applies the patches to the pinned npm source and regenerates the bundle. [Upstream source](https://github.com/Vanilagy/mediabunny/tree/v1.65.1) · [Audio timing changes](scripts/mediabunny/audio-timing.patch) · [Encoder observation changes](scripts/mediabunny/video-diagnostics.patch) · [Declared duration changes](scripts/mediabunny/matroska-duration.patch)
 
 ## Raw Opus packet decoder
 

@@ -43,26 +43,36 @@ function opusHead(preSkip) {
   return bytes
 }
 
-function opusLace(packets, { at = 0, discard = 0, scale = 10000 } = {}) {
+function opusBlock(packets, at, simple = false) {
   const payloads = packets.map(({ data }) => Buffer.from(data, 'hex'))
-  const flags = packets.length === 1 ? 0 : 0x02
+  const flags = (packets.length === 1 ? 0 : 0x02) | (simple ? 0x80 : 0)
   const laceSizes = payloads
     .slice(0, -1)
     .flatMap(({ length }) => [...Array(Math.floor(length / 255)).fill(255), length % 255])
-  const lace = flags ? Buffer.from([packets.length - 1, ...laceSizes]) : Buffer.alloc(0)
-  const block = group(Buffer.from([0x81]), number(at, 2), Buffer.from([flags]), lace, ...payloads)
+  const lace = packets.length > 1 ? Buffer.from([packets.length - 1, ...laceSizes]) : Buffer.alloc(0)
+  return group(Buffer.from([0x81]), number(at, 2), Buffer.from([flags]), lace, ...payloads)
+}
+
+function opusSimple(packets, { at = 0 } = {}) {
+  return element('a3', opusBlock(packets, at, true))
+}
+
+function opusLace(packets, { at = 0, discard = 0, scale = 10000, durationTicks } = {}) {
+  const block = opusBlock(packets, at)
   const frames = packets.reduce((total, packet) => total + packet.frames, 0)
   return element(
     'a0',
     group(
       element('a1', block),
-      element('9b', number(Math.round((frames * 1e9) / (rate * scale)))),
+      ...(durationTicks === null
+        ? []
+        : [element('9b', number(durationTicks ?? Math.round((frames * 1e9) / (rate * scale))))]),
       ...(discard ? [element('75a2', number(Math.round((discard * 1e9) / rate)))] : [])
     )
   )
 }
 
-function opusWebm(blocks, { preSkip = 312, scale = 10000 } = {}) {
+function opusWebm(blocks, { preSkip = 312, scale = 10000, defaultDurationNs } = {}) {
   const frequency = Buffer.alloc(8)
   frequency.writeDoubleBE(rate)
   return new Input({
@@ -83,6 +93,7 @@ function opusWebm(blocks, { preSkip = 312, scale = 10000 } = {}) {
                   element('73c5', number(1, 1)),
                   element('83', number(2, 1)),
                   element('9c', number(1, 1)),
+                  ...(defaultDurationNs === undefined ? [] : [element('23e383', number(defaultDurationNs))]),
                   element('86', ascii('A_OPUS')),
                   element('63a2', opusHead(preSkip)),
                   element('56aa', number(Math.round((preSkip * 1e9) / rate))),
@@ -98,6 +109,188 @@ function opusWebm(blocks, { preSkip = 312, scale = 10000 } = {}) {
     )
   })
 }
+
+async function encodedPackets(input) {
+  try {
+    return await Array.fromAsync(new EncodedPacketSink((await input.getAudioTracks())[0]).packets())
+  } finally {
+    input.dispose()
+  }
+}
+
+test('WebM packet API retains explicit 20 ms BlockDuration before a same-cluster 200 ms gap', async () => {
+  const encoded = opusPackets.find(({ frames }) => frames === 960)
+  const packets = await encodedPackets(opusWebm([opusLace([encoded]), opusLace([encoded], { at: 22000 })]))
+  assert.deepEqual(
+    packets.map(({ timestamp, duration, type, data }) => ({
+      timestamp,
+      duration,
+      type,
+      data
+    })),
+    [
+      {
+        timestamp: -0.0065,
+        duration: 0.02,
+        type: 'key',
+        data: new Uint8Array(Buffer.from(encoded.data, 'hex'))
+      },
+      {
+        timestamp: 0.2135,
+        duration: 0.02,
+        type: 'key',
+        data: new Uint8Array(Buffer.from(encoded.data, 'hex'))
+      }
+    ]
+  )
+  assert.equal(
+    Math.round((packets[1].timestamp - packets[0].timestamp - packets[0].duration) * 1e9),
+    200000000
+  )
+})
+
+test('WebM missing BlockDuration still infers the next presentation timestamp and retains final explicit duration', async () => {
+  const encoded = opusPackets.find(({ frames }) => frames === 960)
+  const packets = await encodedPackets(
+    opusWebm([opusLace([encoded], { durationTicks: null }), opusLace([encoded], { at: 22000 })])
+  )
+  assert.deepEqual(
+    packets.map(({ duration }) => duration),
+    [0.22, 0.02]
+  )
+})
+
+test('WebM explicit laced duration preserves packet spacing and the following gap', async () => {
+  const encoded = opusPackets.find(({ frames }) => frames === 960)
+  const packets = await encodedPackets(
+    opusWebm([opusLace([encoded, encoded]), opusLace([encoded], { at: 24000 })])
+  )
+  assert.deepEqual(
+    packets.map(({ timestamp, duration }) => [Math.round(timestamp * 1e9), duration]),
+    [
+      [-6500000, 0.02],
+      [13500000, 0.02],
+      [233500000, 0.02]
+    ]
+  )
+  assert.deepEqual(
+    packets.slice(0, 2).map(({ sideData }) => sideData.audioLace),
+    [
+      { index: 0, count: 2, timestamp: -0.0065 },
+      { index: 1, count: 2, timestamp: -0.0065 }
+    ]
+  )
+})
+
+test('WebM explicit zero BlockDuration stays zero with a following block or a default track duration', async () => {
+  const encoded = opusPackets.find(({ frames }) => frames === 960)
+  for (const laced of [false, true]) {
+    const packets = await encodedPackets(
+      opusWebm(
+        [
+          opusLace(laced ? [encoded, encoded] : [encoded], { durationTicks: 0 }),
+          opusLace([encoded], { at: 22000, durationTicks: 0 })
+        ],
+        { defaultDurationNs: 20000000 }
+      )
+    )
+    assert.ok(packets.every(({ duration }) => duration === 0))
+  }
+})
+
+test('WebM final SimpleBlock keeps the existing default-duration or unknown-duration behavior', async () => {
+  const encoded = opusPackets.find(({ frames }) => frames === 960)
+  const simple = opusSimple([encoded])
+  for (const defaultDurationNs of [undefined, 20000000]) {
+    const packets = await encodedPackets(opusWebm([simple], { defaultDurationNs }))
+    assert.deepEqual(
+      packets.map(({ duration }) => duration),
+      [defaultDurationNs === undefined ? 0 : 0.02]
+    )
+  }
+})
+
+test('WebM nonterminal SimpleBlock uses the track DefaultDuration rather than the next timestamp distance', async () => {
+  const encoded = opusPackets.find(({ frames }) => frames === 960)
+  const packets = await encodedPackets(
+    opusWebm([opusSimple([encoded]), opusSimple([encoded], { at: 22000 })], { defaultDurationNs: 20000000 })
+  )
+  assert.deepEqual(
+    packets.map(({ timestamp, duration, type }) => [Math.round(timestamp * 1e9), duration, type]),
+    [
+      [-6500000, 0.02, 'key'],
+      [213500000, 0.02, 'key']
+    ]
+  )
+  assert.equal(
+    Math.round((packets[1].timestamp - packets[0].timestamp - packets[0].duration) * 1e9),
+    200000000
+  )
+  for (const packet of packets)
+    assert.deepEqual(packet.data, new Uint8Array(Buffer.from(encoded.data, 'hex')))
+})
+
+test('WebM nonterminal SimpleBlock lace applies DefaultDuration per frame and retains the following gap', async () => {
+  const encoded = opusPackets.find(({ frames }) => frames === 960)
+  const packets = await encodedPackets(
+    opusWebm([opusSimple([encoded, encoded]), opusSimple([encoded], { at: 24000 })], {
+      defaultDurationNs: 20000000
+    })
+  )
+  assert.deepEqual(
+    packets.map(({ timestamp, duration }) => [Math.round(timestamp * 1e9), duration]),
+    [
+      [-6500000, 0.02],
+      [13500000, 0.02],
+      [233500000, 0.02]
+    ]
+  )
+  assert.equal(
+    Math.round((packets[2].timestamp - packets[1].timestamp - packets[1].duration) * 1e9),
+    200000000
+  )
+  assert.deepEqual(
+    packets.slice(0, 2).map(({ sideData }) => sideData.audioLace),
+    [
+      { index: 0, count: 2, timestamp: -0.0065 },
+      { index: 1, count: 2, timestamp: -0.0065 }
+    ]
+  )
+  for (const packet of packets)
+    assert.deepEqual(packet.data, new Uint8Array(Buffer.from(encoded.data, 'hex')))
+})
+
+test('WebM explicit nonzero BlockDuration takes precedence over a different track DefaultDuration', async () => {
+  const encoded = opusPackets.find(({ frames }) => frames === 960)
+  const packets = await encodedPackets(
+    opusWebm([opusLace([encoded]), opusLace([encoded, encoded], { at: 22000 })], {
+      defaultDurationNs: 10000000
+    })
+  )
+  assert.deepEqual(
+    packets.map(({ timestamp, duration }) => [Math.round(timestamp * 1e9), duration]),
+    [
+      [-6500000, 0.02],
+      [213500000, 0.02],
+      [233500000, 0.02]
+    ]
+  )
+})
+
+test('WebM SimpleBlock lace without either declared duration retains next-timestamp inference', async () => {
+  const encoded = opusPackets.find(({ frames }) => frames === 960)
+  const packets = await encodedPackets(
+    opusWebm([opusSimple([encoded, encoded]), opusSimple([encoded], { at: 24000 })])
+  )
+  assert.deepEqual(
+    packets.map(({ timestamp, duration }) => [Math.round(timestamp * 1e9), duration]),
+    [
+      [-6500000, 0.12],
+      [113500000, 0.12],
+      [233500000, 0]
+    ]
+  )
+})
 
 test('real WebM laced BlockGroup exposes its coded origin, signed discard, and declared seek preroll', async (t) => {
   const input = opusWebm([
