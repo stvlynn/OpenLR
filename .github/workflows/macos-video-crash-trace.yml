@@ -33,6 +33,10 @@ on:
         description: Inspect captured JSC code on an identity-matched owned fixture
         type: boolean
         default: false
+      stack_boundary_comparison:
+        description: Compare public JSC collection on native and Go callback waiting stacks
+        type: boolean
+        default: false
 permissions:
   contents: read
   actions: read
@@ -78,8 +82,11 @@ jobs:
         if: ${{ inputs.trace_workflow && !(inputs.frida_calibration && inputs.frida_stage == 'startup') }}
         run: node scripts/calibrate-host-trace.mjs
       - name: Calibrate post-fault capture and original signal continuation
-        if: ${{ inputs.post_signal_calibration || inputs.post_signal_workflow }}
+        if: ${{ inputs.post_signal_calibration || inputs.post_signal_workflow || inputs.stack_boundary_comparison }}
         run: node scripts/calibrate-post-signal.mjs
+      - name: Compare native and Go callback waiting stacks
+        if: inputs.stack_boundary_comparison
+        run: node scripts/compare-jsc-stacks.mjs build/jsc-stack-comparison
       - name: Provision the pinned REA instrumentation runtime
         if: inputs.frida_calibration
         run: |
@@ -94,7 +101,7 @@ jobs:
         if: ${{ inputs.frida_calibration && inputs.frida_stage == 'startup' }}
         run: node scripts/probe-frida-startup.mjs build/signal-calibration/frida-startup
       - name: Build the diagnostic native application
-        if: ${{ !inputs.frida_calibration && !inputs.post_signal_calibration }}
+        if: ${{ !inputs.frida_calibration && !inputs.post_signal_calibration && !inputs.stack_boundary_comparison }}
         env:
           POST_SIGNAL_WORKFLOW: ${{ inputs.post_signal_workflow }}
         run: |
@@ -104,19 +111,19 @@ jobs:
           node scripts/desktop.mjs build -o build/release -platform darwin/arm64
           go version -m build/release/darwin-arm64/OpenLR.app/Contents/MacOS/OpenLR > build/signal-calibration/application-build-info.txt
       - uses: actions/upload-artifact@v4
-        if: ${{ always() && !inputs.frida_calibration && !inputs.post_signal_calibration }}
+        if: ${{ always() && !inputs.frida_calibration && !inputs.post_signal_calibration && !inputs.stack_boundary_comparison }}
         with:
           name: original-signal-macos-package
           path: build/release/darwin-arm64/*.dmg
       - name: Provision the fixed fixture browser
-        if: ${{ !inputs.frida_calibration && !inputs.post_signal_calibration }}
+        if: ${{ !inputs.frida_calibration && !inputs.post_signal_calibration && !inputs.stack_boundary_comparison }}
         run: |
           mkdir -p build/video-oracle
           curl --fail --location "https://storage.googleapis.com/chrome-for-testing-public/157.0.8103.38/mac-arm64/chrome-mac-arm64.zip" -o build/video-oracle/chrome.zip
           ditto -xk build/video-oracle/chrome.zip build/video-oracle
           echo "OPENLR_VIDEO_PROBE_CHROME=$PWD/build/video-oracle/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing" >> "$GITHUB_ENV"
       - name: Observe the fixed twenty-four-trial schedule
-        if: ${{ !inputs.frida_calibration && !inputs.post_signal_calibration }}
+        if: ${{ !inputs.frida_calibration && !inputs.post_signal_calibration && !inputs.stack_boundary_comparison }}
         timeout-minutes: 28
         env:
           OPENLR_DIAGNOSTICS: '1'
@@ -135,6 +142,7 @@ jobs:
           path: |
             build/signal-calibration
             build/video-export-trials
+            build/jsc-stack-comparison
   symbolication:
     if: inputs.source_run != ''
     runs-on: macos-15
