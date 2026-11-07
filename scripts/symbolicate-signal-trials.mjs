@@ -43,8 +43,11 @@ export function inspectTrialSignal(log) {
   assert.equal(BigInt(context.sig), 5n, 'Original marker signal differs from the owned SIGTRAP exit')
   const pid = pids[0]
   const addresses = Object.fromEntries(
-    ['pc', 'lr'].map((register) => {
-      const address = context[register]
+    [
+      ['pc', context.pc],
+      ['lr', context.lr],
+      ['lrPreviousInstruction', '0x' + (BigInt(context.lr) - 4n).toString(16)]
+    ].map(([register, address]) => {
       try {
         const image = mappedSignalImage(log, pid, address)
         return [
@@ -56,6 +59,8 @@ export function inspectTrialSignal(log) {
       }
     })
   )
+  addresses.lrPreviousInstruction.derivation =
+    'LR minus one ARM64 instruction; a possible call site when LR holds the return address'
   return { pid, host: traps.at(-1).host, context, addresses }
 }
 
