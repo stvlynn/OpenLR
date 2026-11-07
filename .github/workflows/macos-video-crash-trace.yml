@@ -21,6 +21,10 @@ on:
           - exception
           - startup
         default: exception
+      post_signal_calibration:
+        description: Calibrate stopped original-context capture without application trials
+        type: boolean
+        default: false
 permissions:
   contents: read
   actions: read
@@ -65,6 +69,9 @@ jobs:
       - name: Calibrate stopped-thread stack and register capture
         if: ${{ inputs.trace_workflow && !(inputs.frida_calibration && inputs.frida_stage == 'startup') }}
         run: node scripts/calibrate-host-trace.mjs
+      - name: Calibrate post-fault capture and original signal continuation
+        if: inputs.post_signal_calibration
+        run: node scripts/calibrate-post-signal.mjs
       - name: Provision the pinned REA instrumentation runtime
         if: inputs.frida_calibration
         run: |
@@ -79,22 +86,22 @@ jobs:
         if: ${{ inputs.frida_calibration && inputs.frida_stage == 'startup' }}
         run: node scripts/probe-frida-startup.mjs build/signal-calibration/frida-startup
       - name: Build the diagnostic native application
-        if: ${{ !inputs.frida_calibration }}
+        if: ${{ !inputs.frida_calibration && !inputs.post_signal_calibration }}
         run: node scripts/desktop.mjs build -o build/release -platform darwin/arm64
       - uses: actions/upload-artifact@v4
-        if: ${{ !inputs.frida_calibration }}
+        if: ${{ !inputs.frida_calibration && !inputs.post_signal_calibration }}
         with:
           name: original-signal-macos-package
           path: build/release/darwin-arm64/*.dmg
       - name: Provision the fixed fixture browser
-        if: ${{ !inputs.frida_calibration }}
+        if: ${{ !inputs.frida_calibration && !inputs.post_signal_calibration }}
         run: |
           mkdir -p build/video-oracle
           curl --fail --location "https://storage.googleapis.com/chrome-for-testing-public/157.0.8103.38/mac-arm64/chrome-mac-arm64.zip" -o build/video-oracle/chrome.zip
           ditto -xk build/video-oracle/chrome.zip build/video-oracle
           echo "OPENLR_VIDEO_PROBE_CHROME=$PWD/build/video-oracle/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing" >> "$GITHUB_ENV"
       - name: Observe the fixed twenty-four-trial schedule
-        if: ${{ !inputs.frida_calibration }}
+        if: ${{ !inputs.frida_calibration && !inputs.post_signal_calibration }}
         timeout-minutes: 28
         env:
           OPENLR_DIAGNOSTICS: '1'

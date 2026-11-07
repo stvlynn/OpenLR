@@ -21,13 +21,16 @@ const hook = `${entry}
 	}
 `
 const helper = String.raw`
+// Linker-selected only in the opt-in post-fault diagnostic build.
+var openlrFreezeSignal = "0"
+
 // OpenLR diagnostic addition. The Go runtime source retains its BSD-3-Clause license.
 // Called after badsignal has obtained an M and before the original signal is re-raised.
 // The signal code has already been normalized by Darwin fixsigcode.
 //go:nosplit
 //go:nowritebarrierrec
 func openlrOriginalSignal(sig uint32, c *sigctxt) {
-	var record [160]byte
+	var record [320]byte
 	n := copy(record[:], "OpenLR forwarded signal sig/code/pc/lr/sp ")
 	values := [5]uint64{uint64(sig), uint64(c.sigcode()), uint64(c.sigpc()), uint64(c.siglr()), uint64(c.sigsp())}
 	const digits = "0123456789abcdef"
@@ -44,6 +47,25 @@ func openlrOriginalSignal(sig uint32, c *sigctxt) {
 	}
 	record[n] = '\n'
 	writeErrData(&record[0], int32(n+1))
+
+	n = copy(record[:], "OpenLR forwarded registers fp/x0/x1/x2/x3/x19/x20/x21/x22/x23/x24 ")
+	registers := [11]uint64{c.r29(), c.r0(), c.r1(), c.r2(), c.r3(), c.r19(), c.r20(), c.r21(), c.r22(), c.r23(), c.r24()}
+	for _, value := range registers {
+		record[n] = '0'
+		record[n+1] = 'x'
+		n += 2
+		for shift := 60; shift >= 0; shift -= 4 {
+			record[n] = digits[(value>>uint(shift))&15]
+			n++
+		}
+		record[n] = ' '
+		n++
+	}
+	record[n] = '\n'
+	writeErrData(&record[0], int32(n+1))
+	if openlrFreezeSignal == "1" {
+		raiseproc(_SIGSTOP)
+	}
 }
 `
 await writeFile(sourcePath, source.replace(entry, hook) + helper)
