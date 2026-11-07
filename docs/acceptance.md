@@ -8,7 +8,7 @@
 
 独立专项的零基第 3 轮使用同一份 27,479 字节生成素材，导入通过后，首个 `video-seek --time 0.35` 在 `native-video-smoke.mjs:209` 返回 `Media failed to decode`；尚未出现 `frames-passed` 标记，也未执行到导出。宿主仍存活，health 返回 200、control 正常，生产构建的 UI-pump 端点返回预期的 404；宿主清理已确认，独立浏览器优雅退出。诊断关闭，故原始日志不能确定原生数值错误码、metadata 准入条件、恢复次数或具体发生于加载、初始跳转、帧准备还是绘制。不能把此前 `c53` 自然恢复事件或受控注入的数值 3 借用于这次失败。原始日志保留在 `.workspace/main-release-df741d6/release-video-trials/3-release.log`，对应 artifact `13582860897`。
 
-当前未完成工作是定位这一首个 seek 命令内的失败边界：准备通过既有错误响应携带 failure-only `error.details.video`，并在隔离分支补充诊断 OFF／ON 各 24 轮观察。两组均保留严格图像、音频、原件与清理断言；ON 的桥接 trace 会改变时序，不能视为修复证据。该观察尚未执行，没有新增 codec 修复或失败已消除的结论。
+当前未完成工作仍是定位这一首个 seek 命令内的失败边界。携带 failure-only `error.details.video` 的后续隔离观察已结束：OFF 通过 24/24 并确认全部清理；ON 在 17 轮后停止，15 轮通过，另有 MP4 编码等待超时和 renderer-gone 启动失败。后一轮已确认独立浏览器父进程被 SIGKILL 终止，但 BrowserServer 后续清理未在期限内完成，驱动正确阻止继续启动。首个 seek 故障没有再次返回，仍不能据此确定原失败阶段或声称修复；ON trace 会改变时序，两组环境也不同。新的 OFF 延续观察及独立编码微探针准备仍在进行，未声称结果。[终态观察与清理边界](../research/native-video.md#main-first-seek-failure-and-paired-observation--2026-11-08)
 
 `a8c07ee` 的四平台完整验收全部通过。Windows 浏览器共 534 项，525 通过、9 项跳过、零失败；原生包、NSIS 安装与卸载及六种文件关联也通过。Ubuntu 验证实际 Debian 安装、原生套件和随包 CLI。两种 macOS 验证 DMG 复制、真实文件夹与保存面板、原生照片工作流及短多音轨 WebM／MP4、44.1 kHz AAC。该修订包含本地桥接修复、Matroska 声明时长优先级修正和有边界的初次解码恢复。[四平台结果](https://github.com/stvlynn/OpenLR/actions/runs/42389833465) · [桥接决策](decisions/022-macos-local-bridge.md) · [时长规范与实测](../research/audio-container-timing.md)
 
