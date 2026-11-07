@@ -6,7 +6,9 @@
 
 `fc44a93` 的 GitHub Actions 在 Windows、Ubuntu、macOS Intel 和 Apple Silicon 全部通过。Windows 浏览器共 506 项，498 通过、8 项可选资源跳过；两种 macOS 也通过独立短多音轨 WebM／MP4 和 44.1 kHz AAC 检查。视频命令加载失败时保留当前 Grid 画面、共享状态、存储编辑和原件，成功后再进入 Detail。此次 push 未启用可选 macOS 原生对话框步骤，其证据仍以先前专项为准。[四平台验收](https://github.com/stvlynn/OpenLR/actions/runs/42343182557) · [失败状态回归与原生范围](../research/native-video.md#source-image-identity-and-memory-observation)
 
-后续 ARM 故障后观察完成 24 轮：23 轮通过实际像素、两种音频与原件检查，1 轮宿主真实 SIGTRAP，全部确认应用、辅助进程与独立校验浏览器退出。已捕获 JavaScriptCore 保守根扫描缓冲区扩展的分配调用链。独立 C／Go 栈对照中，Go 栈等待两次均复现相同故障，原生栈四次均完成实际垃圾回收，两次失败的分配值均与观察栈边界的计算完全一致。该结果支持夹具中的栈边界机制，正式宿主修复和最终稳定性验收仍未完成。[调用链、指令与对照证据](../research/native-video.md#allocating-caller-captured-during-conservative-root-gathering)
+后续 ARM 故障后观察完成 24 轮：23 轮通过实际像素、两种音频与原件检查，1 轮宿主真实 SIGTRAP，全部确认应用、辅助进程与独立校验浏览器退出。已捕获 JavaScriptCore 保守根扫描缓冲区扩展的分配调用链。独立 C／Go 栈对照中，Go 栈等待两次均复现相同故障，原生栈四次均完成实际垃圾回收，两次失败的分配值均与观察栈边界的计算完全一致。该结果支持夹具中的栈边界机制。[调用链、指令与对照证据](../research/native-video.md#allocating-caller-captured-during-conservative-root-gathering)
+
+尚未合入的 `feat/macos-scheme-bridge` 候选随后通过原生桥接 40 项断言、24 轮诊断应用测试和 24 轮普通正式包测试。普通正式包使用标准 Go SDK，关闭诊断，无调试器或额外启动包装；每轮均验证实际图像、两种 72,000 帧／48 kHz 单声道音频、27,479 字节原件及退出清理。完整候选矩阵中 Ubuntu、Windows、macOS Intel 通过，Apple Silicon 的独立短多音轨检查在首帧加载前返回解码错误，宿主仍正常响应，尚未执行跳转或导出。原始生成素材已保留，正在进行独立容器布局对照；候选的完整平台验收和最终交付仍未完成。[桥接夹具](https://github.com/stvlynn/OpenLR/actions/runs/42377530724) · [诊断应用](https://github.com/stvlynn/OpenLR/actions/runs/42378126957) · [普通正式包 24 轮](https://github.com/stvlynn/OpenLR/actions/runs/42382782290) · [候选完整矩阵](https://github.com/stvlynn/OpenLR/actions/runs/42381349345)
 
 `678c889` 的 Windows Chrome 完整回归 **500/500**，零失败、零跳过，322.9 秒，包含独立色彩和元数据校验。Windows、Ubuntu 24.04、macOS Intel 和 macOS Apple Silicon 的 GitHub Actions 原生验收全部通过。导出确认在选图变更后不写文件，已预留的批量目录会关闭。Windows WebView2 的独立原生 CLI 验证覆盖三个导出命令、正确目标的字节读回和历史设置保留。Photos 10.0 的实际 IPTC 侧车也已在 macOS Apple Silicon 和 Windows 原生包完成迁移。[导出验证](../research/confirmation-targets.md#export-confirmation-follow-up--2026-11-07) · [四平台作业](https://github.com/stvlynn/OpenLR/actions/runs/42316534448) · [Photos 验证](catalog-migration.md#verification-and-dependency)
 
