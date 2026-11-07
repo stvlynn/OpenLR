@@ -2,11 +2,13 @@ import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 import { copyFile, mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
+import { setTimeout as delay } from 'node:timers/promises'
 import { chromium } from 'playwright-core'
 import { serveWorkspace } from '../tests/browser-server.mjs'
 import { fixtureBurst, multitrackFixture } from '../tests/fixtures/multitrack-video.mjs'
 import { serveMultitrackVideoFixture } from '../tests/fixtures/video.mjs'
 import { withNativeWorkspace } from './native-workspace.mjs'
+import { ownVideoOracle } from './native-video-oracle.mjs'
 
 const [executable, ffmpegBin] = process.argv.slice(2)
 assert.ok(executable, 'Pass the OpenLR executable and optionally the directory containing FFmpeg and ffprobe')
@@ -358,6 +360,9 @@ async function prepareClip(call, file, startFrame, rate) {
   assert.deepEqual(added.failed, [])
   assert.equal(added.added.length, 1)
   const [id] = added.added
+  // All comparison arms perform this read before trim; it also changes timing.
+  await checkOriginal(call, file, await readFile(file), 'before-trim-original-')
+  console.log(JSON.stringify({ nativeAudioExport: 'original-before-trim-passed' }))
   const trim = { start: startFrame / rate, end: (startFrame + shortFrames) / rate }
   const state = await call('video-trim', '--start', String(trim.start), '--end', String(trim.end))
   assert.equal(state.selected, id)
@@ -372,13 +377,13 @@ async function unchanged(call, state, source, bytes) {
     assert.deepEqual(after[key], state[key], key)
 }
 
-async function checkOriginal(call, source, bytes) {
+async function checkOriginal(call, source, bytes, prefix = 'original-') {
   const result = await call(
     'export',
     '--format',
     'original',
     '--output',
-    path.join(path.dirname(source), 'original-' + path.basename(source))
+    path.join(path.dirname(source), prefix + path.basename(source))
   )
   assert.deepEqual(await readFile(result.path), bytes)
 }
@@ -387,23 +392,50 @@ const tools = Object.fromEntries(
   ['ffmpeg', 'ffprobe'].map((tool) => [tool, run(tool, '-version').toString().split(/\r?\n/)[0]])
 )
 const server = await serveWorkspace()
-let browser
+let oracle,
+  primaryFailure = false
 try {
   const oracleChrome = process.env.OPENLR_AUDIO_ORACLE_CHROME
-  browser = await chromium.launch(
-    oracleChrome ? { executablePath: oracleChrome } : { channel: process.env.CHROME_CHANNEL || 'chrome' }
-  )
+  const owner = await chromium.launchServer({
+    ...(oracleChrome
+      ? { executablePath: oracleChrome }
+      : { channel: process.env.CHROME_CHANNEL || 'chrome' }),
+    host: '127.0.0.1'
+  })
+  oracle = ownVideoOracle(owner)
+  const browser = await chromium.connect(owner.wsEndpoint(), { timeout: 45_000 })
   tools.chrome = browser.version()
-  const page = await browser.newPage()
-  await page.route(server.url + '/', (route) =>
-    route.fulfill({ contentType: 'text/html', body: '<title>Independent audio export oracle</title>' })
-  )
-  await serveMultitrackVideoFixture(page)
-  await page.goto(server.url)
-  const opusBytes = Buffer.from(
-    await page.evaluate(async () => {
-      const { createMultitrackVideoFixture } = await import('/__fixtures/multitrack-video.mjs')
-      return [...(await createMultitrackVideoFixture())]
+  console.log(JSON.stringify({ nativeVideoBrowser: tools.chrome }))
+  const prepare = async () => {
+    const page = await browser.newPage()
+    await page.route(server.url + '/', (route) =>
+      route.fulfill({ contentType: 'text/html', body: '<title>Independent audio export oracle</title>' })
+    )
+    await serveMultitrackVideoFixture(page)
+    await page.goto(server.url)
+    const retainedSource = process.env.OPENLR_AUDIO_SOURCE
+    const opusBytes = retainedSource
+      ? await readFile(path.resolve(retainedSource))
+      : Buffer.from(
+          await page.evaluate(async () => {
+            const { createMultitrackVideoFixture } = await import('/__fixtures/multitrack-video.mjs')
+            return [...(await createMultitrackVideoFixture())]
+          })
+        )
+    return { page, opusBytes }
+  }
+  const timer = new AbortController()
+  const { page, opusBytes } = await Promise.race([
+    prepare(),
+    delay(45_000, undefined, { signal: timer.signal }).then(() => {
+      throw Error('The independent audio browser did not prepare within 45 seconds')
+    })
+  ]).finally(() => timer.abort())
+  console.log(
+    JSON.stringify({
+      nativeAudioExport: 'source-ready',
+      bytes: opusBytes.length,
+      retained: Boolean(process.env.OPENLR_AUDIO_SOURCE)
     })
   )
   const smoke = async ({ root, call, initial }) => {
@@ -516,11 +548,22 @@ try {
       )
     })
     if (failures.length) throw new AggregateError(failures, 'Packaged audio export verification failed')
+    console.log(JSON.stringify({ nativeAudioExport: 'passed', originalBytes: opusBytes.length }))
   }
-  await withNativeWorkspace(executable, smoke, { env: { OPENLR_DIAGNOSTICS: '1' } })
+  await withNativeWorkspace(executable, smoke, {
+    env: { OPENLR_DIAGNOSTICS: '1' },
+    onCleanup: () => console.log(JSON.stringify({ nativeVideoCleanup: 'confirmed' }))
+  })
+} catch (error) {
+  primaryFailure = true
+  throw error
 } finally {
   try {
-    await browser?.close()
+    if (oracle) await oracle.close()
+    else console.log(JSON.stringify({ nativeVideoOracleCleanup: 'failed', error: 'OwnershipUnavailable' }))
+  } catch (error) {
+    if (!primaryFailure) throw error
+    console.error('Audio oracle cleanup failed: ' + error.message)
   } finally {
     server.close()
   }

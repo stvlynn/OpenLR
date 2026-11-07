@@ -1,0 +1,53 @@
+name: macOS ARM short audio source layout comparison
+on:
+  workflow_dispatch:
+  push:
+    branches: [experiment/short-audio-layout]
+    paths: [.github/workflows/macos-short-audio-layout.yml]
+permissions:
+  contents: read
+jobs:
+  comparison:
+    runs-on: macos-15
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - run: npm ci
+      - name: Record the native observation environment
+        run: |
+          mkdir -p build/short-audio-layout
+          { uname -a; sw_vers; } > build/short-audio-layout/system.log
+      - name: Provision independent audio verification tools
+        run: command -v ffmpeg && command -v ffprobe || brew install ffmpeg
+      - name: Provision the pinned independent audio browser
+        run: |
+          mkdir -p build/audio-oracle
+          curl --fail --location "https://storage.googleapis.com/chrome-for-testing-public/157.0.8103.38/mac-arm64/chrome-mac-arm64.zip" -o build/audio-oracle/chrome.zip
+          ditto -xk build/audio-oracle/chrome.zip build/audio-oracle
+          echo "OPENLR_AUDIO_ORACLE_CHROME=$PWD/build/audio-oracle/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing" >> "$GITHUB_ENV"
+      - name: Prepare the retained source and two packet-equivalent layouts once
+        run: node scripts/prepare-short-audio-layout.mjs build/short-audio-layout
+      - name: Build one stock vendored application for all three arms
+        run: node scripts/desktop.mjs build -o build/audio-layout-app -platform darwin/universal
+      - name: Run four fixed mirrored six-trial blocks with fresh owned hosts
+        timeout-minutes: 28
+        run: >-
+          node scripts/native-audio-layout-comparison.mjs
+          build/audio-layout-app/darwin-universal/OpenLR.app/Contents/MacOS/OpenLR
+          build/short-audio-layout build/short-audio-layout-trials
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: short-audio-layout-arm
+          path: |
+            build/short-audio-layout/**
+            build/short-audio-layout-trials/**
+            .workspace/native-audio-export-failures/**
+          include-hidden-files: true
+          if-no-files-found: error

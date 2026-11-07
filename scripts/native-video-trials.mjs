@@ -31,7 +31,17 @@ export function videoTrialOutcome(code, signal, log) {
   }
 }
 
-export async function runVideoTrials({ apps, order, destination, args = [], environments = {} }) {
+export async function runVideoTrials({
+  apps,
+  order,
+  destination,
+  args = [],
+  environments = {},
+  script = 'scripts/native-video-smoke.mjs',
+  outcome = videoTrialOutcome,
+  sharedFixture = true,
+  metadata = {}
+}) {
   await mkdir(destination, { recursive: true })
   const fixture = path.resolve(destination, 'fixture.webm')
   const trials = []
@@ -41,20 +51,16 @@ export async function runVideoTrials({ apps, order, destination, args = [], envi
     const started = performance.now()
     let code, signal
     try {
-      const child = spawn(
-        process.execPath,
-        ['scripts/native-video-smoke.mjs', path.resolve(apps[candidate]), ...args],
-        {
-          env: {
-            ...process.env,
-            OPENLR_DIAGNOSTICS: '1',
-            ...environments[candidate],
-            OPENLR_VIDEO_PROBE_FIXTURE: fixture
-          },
-          stdio: ['ignore', output.fd, output.fd],
-          windowsHide: true
-        }
-      )
+      const child = spawn(process.execPath, [script, path.resolve(apps[candidate]), ...args], {
+        env: {
+          ...process.env,
+          OPENLR_DIAGNOSTICS: '1',
+          ...environments[candidate],
+          ...(sharedFixture && { OPENLR_VIDEO_PROBE_FIXTURE: fixture })
+        },
+        stdio: ['ignore', output.fd, output.fd],
+        windowsHide: true
+      })
       ;[code, signal] = await new Promise((resolve, reject) => {
         child.once('error', reject)
         child.once('close', (code, signal) => resolve([code, signal]))
@@ -62,8 +68,8 @@ export async function runVideoTrials({ apps, order, destination, args = [], envi
     } finally {
       await output.close()
     }
-    const outcome = videoTrialOutcome(code, signal, await readFile(logPath, 'utf8'))
-    const trial = { index, candidate, elapsedMs: performance.now() - started, ...outcome }
+    const result = outcome(code, signal, await readFile(logPath, 'utf8'))
+    const trial = { index, candidate, elapsedMs: performance.now() - started, ...result }
     trials.push(trial)
     console.log(JSON.stringify(trial))
     await writeFile(
@@ -72,6 +78,7 @@ export async function runVideoTrials({ apps, order, destination, args = [], envi
         {
           platform: process.platform,
           arch: process.arch,
+          ...(Object.keys(metadata).length ? { metadata } : {}),
           order,
           complete: trials.length === order.length,
           trials
@@ -80,7 +87,7 @@ export async function runVideoTrials({ apps, order, destination, args = [], envi
         2
       )
     )
-    if (!outcome.continueTrials)
+    if (!result.continueTrials)
       throw Error('Video trial cleanup was not confirmed; no further host will start')
   }
   assert.ok(
