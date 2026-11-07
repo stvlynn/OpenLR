@@ -14,5 +14,6 @@ web/vendor/codecs/jxl/codec/enc/jxl_color_enc*.js whitespace=-blank-at-eol
 web/vendor/opus/LICENSE.EMSCRIPTEN whitespace=-blank-at-eol,-blank-at-eof
 # Unified patch context lines preserve their upstream indentation.
 scripts/fixtures/mygo-startup/*.patch whitespace=-blank-at-eol,-space-before-tab
+scripts/fixtures/scheme-bridge/*.patch whitespace=-blank-at-eol,-space-before-tab
 scripts/mediabunny/*.patch whitespace=-blank-at-eol,-space-before-tab
 

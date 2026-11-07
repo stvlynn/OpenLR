@@ -6,6 +6,7 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
+  readdirSync,
   realpathSync,
   writeFileSync
 } from 'node:fs'
@@ -46,9 +47,17 @@ const sourceDirectory =
   selected.Dir || JSON.parse(run(go, ['mod', 'download', '-json', `${moduleName}@${version}`], true)).Dir
 if (!sourceDirectory) throw Error('Pinned MyGo source directory was not available')
 mkdirSync(output, { recursive: true })
-withDiagnosticBuildStage(root, (scratch) => {
+const build = withDiagnosticBuildStage(root, (scratch) => {
   const copy = path.join(scratch, 'mygo')
   cpSync(sourceDirectory, copy, { recursive: true })
+  // Go's module cache uses read-only directories. Only the disposable copy
+  // needs writable parents for replacement files and later owned cleanup.
+  const writableDirectories = (directory) => {
+    chmodSync(directory, 0o755)
+    for (const entry of readdirSync(directory, { withFileTypes: true }))
+      if (entry.isDirectory()) writableDirectories(path.join(directory, entry.name))
+  }
+  writableDirectories(copy)
   for (const name of [
     'bridge.go',
     'internal/bridge/bridge.go',
@@ -84,20 +93,16 @@ withDiagnosticBuildStage(root, (scratch) => {
   run(go, ['build', '-o', path.join(output, 'scheme-bridge-probe'), './scripts/fixtures/scheme-bridge'])
   const buildInfo = run(go, ['version', '-m', path.join(output, 'scheme-bridge-probe')], true)
   writeFileSync(path.join(output, 'build-info.txt'), buildInfo)
-  writeFileSync(
-    path.join(output, 'build.json'),
-    JSON.stringify(
-      {
-        candidate: 'OpenLR local-frontend scheme transport; diagnostic only',
-        mygo: version,
-        sourceRevision: run('git', ['rev-parse', 'HEAD'], true).trim(),
-        goos: env.GOOS || 'darwin',
-        goarch: env.GOARCH || process.arch,
-        sourcePatch: 'scripts/fixtures/scheme-bridge/mygo-v0.7.4.patch',
-        disposableModuleRemovedAfterBuild: true
-      },
-      null,
-      2
-    ) + '\n'
-  )
+  return {
+    candidate: 'OpenLR local-frontend scheme transport; diagnostic only',
+    mygo: version,
+    sourceRevision: run('git', ['rev-parse', 'HEAD'], true).trim(),
+    goos: env.GOOS || 'darwin',
+    goarch: env.GOARCH || process.arch,
+    sourcePatch: 'scripts/fixtures/scheme-bridge/mygo-v0.7.4.patch'
+  }
 })
+writeFileSync(
+  path.join(output, 'build.json'),
+  JSON.stringify({ ...build, disposableModuleRemovedAfterBuild: true }, null, 2) + '\n'
+)
