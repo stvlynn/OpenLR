@@ -25,7 +25,10 @@ twice, substituting only `web/video.js`: baseline `ba16d3c` and candidate
 `197e89b`. It appends this directory's `preload.js` to the temporary `main.go`
 `PageOptions.PreloadScript`. No production source or hook is changed. The direct
 stock build uses `CGO_ENABLED=0`, `-mod=vendor`, `-tags mygo_noinspector` and the
-existing MyGo production flag. These executables do not prove ordinary package
+existing MyGo production flag. `-buildvcs=false` prevents these temporary copies
+from inheriting the enclosing checkout's unrelated revision stamp; the manifest
+records their explicit source revisions and retained instrumentation. These
+executables do not prove ordinary package
 installation or platform dialogs.
 
 The artifact retains project and dependency license texts beside the direct test

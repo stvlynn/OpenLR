@@ -242,6 +242,7 @@ export async function runInitialDecodeComparison(destination, ffmpegBin) {
       go,
       [
         'build',
+        '-buildvcs=false',
         '-mod=vendor',
         '-tags',
         'mygo_noinspector',
