@@ -24,12 +24,17 @@ on run argv
             my waitForExport(targetProcess)
             keystroke "i" using command down
             set keywordField to my waitFor(targetProcess, "AXTextField", {"Add a Keyword", "Add a Keyword…", "Add Keywords"})
-            set value of attribute "AXFocused" of keywordField to true
-            delay 0.2
+            set {fieldX, fieldY} to position of keywordField
+            set {fieldWidth, fieldHeight} to size of keywordField
+            click at {fieldX + (fieldWidth div 2), fieldY + (fieldHeight div 2)}
+            delay 0.25
             keystroke "v" using command down
             delay 0.4
+            set keywordValue to value of keywordField
+            if keywordValue is missing value then set keywordValue to ""
+            log ("Photos keyword field before Return: " & keywordValue)
             key code 36
-            delay 0.3
+            delay 1
             keystroke "i" using command down
             click my waitForExport(targetProcess)
             set xmpToggle to my waitFor(targetProcess, "AXCheckBox", {"Export IPTC as XMP"})

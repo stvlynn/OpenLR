@@ -20,8 +20,14 @@ assert.deepEqual(await readFile(exported), bytes)
 const exec = promisify(execFile)
 const keywordPath = "//*[local-name()='subject' and namespace-uri()='http://purl.org/dc/elements/1.1/']" +
   "//*[local-name()='li' and namespace-uri()='http://www.w3.org/1999/02/22-rdf-syntax-ns#']"
-const { stdout } = await exec('/usr/bin/xmllint', ['--nonet', '--xpath', 'string(' + keywordPath + ')', sidecar])
-assert.equal(stdout.trim(), keyword)
+const readField = async (xpath) => {
+  const { stdout } = await exec('/usr/bin/xmllint', ['--nonet', '--xpath', 'string(' + xpath + ')', sidecar])
+  return stdout.trim()
+}
+const datePath = "//*[local-name()='DateCreated' and namespace-uri()='http://ns.adobe.com/photoshop/1.0/']"
+const captureDate = await readField(datePath)
+assert.ok(Number.isFinite(Date.parse(captureDate)))
+assert.equal(await readField(keywordPath), keyword)
 
 const authorized = { id: 'photos-export-fixture', name: path.basename(source), path: source }
 await withNativeWorkspace(
@@ -41,6 +47,7 @@ await withNativeWorkspace(
     const [photo] = state.photos
     assert.equal(photo.name, filename)
     assert.equal(photo.keywords, keyword)
+    assert.equal(photo.metadata.DateTimeOriginal, captureDate)
     assert.equal(photo.reference.root, authorized.id)
     await call('select', '--id', photo.id)
     const preview = await call('preview', '--output', path.join(root, 'preview.png'))
@@ -54,7 +61,7 @@ await withNativeWorkspace(
     assert.deepEqual(await readFile(original.path), bytes)
     assert.deepEqual(await readFile(exported), bytes)
     assert.deepEqual(await readFile(sidecar), xmp)
-    console.log(JSON.stringify({ genuinePhotosExport: 'passed', keyword, dimensions: [32, 24], originalBytes: bytes.length, sidecarBytes: xmp.length }))
+    console.log(JSON.stringify({ genuinePhotosExport: 'passed', keyword, captureDate, dimensions: [32, 24], originalBytes: bytes.length, sidecarBytes: xmp.length }))
   },
   {
     prepare: async ({ root }) => {
