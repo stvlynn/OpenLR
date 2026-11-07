@@ -192,13 +192,13 @@ test('real GUI rendering remembers only completed native-boundary saves and dist
   // is an adapter simulation, not a native file-dialog acceptance claim.
   await page.evaluate(() => {
     window.exportBoundary = { mode: '', calls: [], chunks: [], started: 0, completed: 0 }
-    const dialog = document.getElementById('export-dialog'),
-      originalClose = dialog.onclose
-    dialog.onclose = async function (event) {
+    const form = document.querySelector('#export-dialog form'),
+      originalSubmit = form.onsubmit
+    form.onsubmit = async function (event) {
       const attempt = ++window.exportBoundary.started,
         mode = window.exportBoundary.mode
       try {
-        await originalClose.call(this, event)
+        await originalSubmit.call(this, event)
       } finally {
         window.exportBoundary.completedMode = mode
         window.exportBoundary.completed = attempt

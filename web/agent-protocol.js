@@ -46,6 +46,25 @@ const expectedIds = {
   items: { type: 'string' },
   description: 'Optional exact selected-photo membership guard; order is ignored'
 }
+const exportPhotoId = string('Require this active photo ID before preparing the export')
+const exportOptions = {
+  format: string('Image format', { enum: EXPORT_TYPES }),
+  maxSize: {
+    type: 'integer',
+    minimum: 1,
+    maximum: Number.MAX_SAFE_INTEGER,
+    description: 'Longest edge in pixels. Defaults to original size.'
+  },
+  watermark: string('Optional text at lower right'),
+  metadata: string('Photo metadata to include in rendered output', { enum: EXPORT_METADATA_POLICIES }),
+  outputSharpening: string('Sharpen the rendered photo at its final output size', {
+    enum: OUTPUT_SHARPENING_LEVELS
+  }),
+  colorSpace: string('Output RGB encoding for JPEG, PNG, TIFF, AVIF and JPEG XL', {
+    enum: Object.keys(COLOR_SPACES)
+  }),
+  quality: number('JPEG/AVIF/JPEG XL quality; 1 selects lossless AVIF/JXL', 0, 1)
+}
 export const PHOTO_MENU_PHOTO_COMMANDS = Object.freeze([
   'virtual-copy',
   'save-frame',
@@ -1094,9 +1113,12 @@ export const definitions = {
     [],
     { returns: 'image/png' }
   ),
-  'export-previous': entry('Export the current photo or video using its remembered export settings', {}, [], {
-    returns: 'image'
-  }),
+  'export-previous': entry(
+    'Export the current photo or video using its remembered export settings',
+    { photoId: exportPhotoId },
+    [],
+    { returns: 'image' }
+  ),
   'export-settings': entry(
     'Read remembered photo/video export settings, or replace one media slot explicitly',
     {
@@ -1109,24 +1131,7 @@ export const definitions = {
   ),
   export: entry(
     'Export selected photo bytes without opening a native save dialog',
-    {
-      format: string('Image format', { enum: EXPORT_TYPES }),
-      maxSize: {
-        type: 'integer',
-        minimum: 1,
-        maximum: Number.MAX_SAFE_INTEGER,
-        description: 'Longest edge in pixels. Defaults to original size.'
-      },
-      watermark: string('Optional text at lower right'),
-      metadata: string('Photo metadata to include in rendered output', { enum: EXPORT_METADATA_POLICIES }),
-      outputSharpening: string('Sharpen the rendered photo at its final output size', {
-        enum: OUTPUT_SHARPENING_LEVELS
-      }),
-      colorSpace: string('Output RGB encoding for JPEG, PNG, TIFF, AVIF and JPEG XL', {
-        enum: Object.keys(COLOR_SPACES)
-      }),
-      quality: number('JPEG/AVIF/JPEG XL quality; 1 selects lossless AVIF/JXL', 0, 1)
-    },
+    { ...exportOptions, photoId: exportPhotoId },
     [],
     { returns: 'image' }
   )
@@ -1135,7 +1140,8 @@ export const definitions = {
 definitions['export-selection'] = entry(
   'Export the selected visible group sequentially to a folder, preserving the active editor',
   {
-    ...definitions.export.parameters.properties,
+    ...exportOptions,
+    expectedIds,
     ids: {
       type: 'array',
       items: { type: 'string' },
@@ -1271,7 +1277,7 @@ export function validateArgs(command, args) {
   if (command === 'export-settings') {
     if (Object.hasOwn(args, 'media') !== Object.hasOwn(args, 'options'))
       throw Error('Provide media and options together')
-    if (args.options !== undefined) validateArgs('export', args.options)
+    if (args.options !== undefined) validateExportOptions(args.options)
   }
   if (command === 'preview' && (args.source !== undefined || args.draftId !== undefined)) {
     if (!args.draftId || args.source === undefined || args.maxSize !== undefined)
@@ -1313,4 +1319,9 @@ export function validateArgs(command, args) {
     validateDepthChanges(Object.fromEntries(Object.entries(args).filter(([key]) => key !== 'photoId')))
   if (command === 'optics') validateOptics(args.changes)
   return args
+}
+
+export function validateExportOptions(options) {
+  validateArgs('export', options)
+  if (Object.hasOwn(options, 'photoId')) throw Error('Unknown argument: photoId')
 }

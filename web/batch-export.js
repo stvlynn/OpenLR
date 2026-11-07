@@ -6,6 +6,7 @@ import {
 } from './export-settings.js'
 import { isVideo } from './video.js'
 import { validateDngSource } from './dng.js'
+import { assertSelection } from './organization.js'
 
 export const BATCH_EXPORT_MESSAGES = {
   action: (count) => (count > 1 ? `Export ${count}` : 'Export'),
@@ -13,6 +14,7 @@ export const BATCH_EXPORT_MESSAGES = {
   complete: (count) => `Exported ${count} files`,
   empty: 'Select photos to export',
   invalid: 'Choose unique photos from the current view',
+  changedSelection: 'The selection changed. Open Export again.',
   previousOptions: 'Previous export settings cannot be combined with new export options',
   failed: (completed, total, name, message) => `Exported ${completed} of ${total} files. ${name}: ${message}`
 }
@@ -43,7 +45,7 @@ async function performExportSelection({
   reservedFolder,
   job
 }) {
-  const { ids = [...selection], previous = false, outputDirectory, ...options } = args
+  const { ids = [...selection], expectedIds, previous = false, outputDirectory, ...options } = args
   const files = []
   const signal = job?.signal
   let folder,
@@ -68,6 +70,12 @@ async function performExportSelection({
   }
   try {
     signal?.throwIfAborted()
+    if (expectedIds !== undefined)
+      assertSelection(
+        visible.filter((photo) => selection.has(photo.id)),
+        expectedIds,
+        BATCH_EXPORT_MESSAGES.changedSelection
+      )
     if (!ids.length) throw Error(BATCH_EXPORT_MESSAGES.empty)
     const chosen = new Set(ids)
     if (chosen.size !== ids.length || ids.some((id) => !visible.some((photo) => photo.id === id)))

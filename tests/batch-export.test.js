@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { chromium } from 'playwright-core'
 import { serveWorkspace } from './browser-server.mjs'
 import { waitForAsyncFunction } from './browser-wait.mjs'
+import { holdCatalogThumbnail } from './catalog-thumbnail-hold.mjs'
 import { makePng } from './fixtures/png.mjs'
 import { saveExportSettingsBatch } from '../web/export-settings.js'
 import { exportSelection } from '../web/batch-export.js'
@@ -241,6 +242,103 @@ test('GUI multi-selection export and Export again share current recipes and pers
       original.bytes,
       Array.from(fixture(['b.png', 'a.png', 'c.png'].indexOf(original.name) * 20))
     )
+})
+
+test('Export confirmation rejects a changed photo or group before writing', async (t) => {
+  const page = await workspace(t)
+  const [a, b, c] = (await run(page, 'photos')).photos.map((photo) => photo.id)
+  await run(page, 'export-settings', { media: 'photo', options: { format: 'original' } })
+  const settings = await run(page, 'export-settings')
+  const dialog = page.locator('#export-dialog')
+  for (const { ids, next, notice } of [
+    { ids: [a], next: [c], notice: /selected photo changed/i },
+    { ids: [a, b], next: [c], notice: /selection changed/i },
+    { ids: [a, b], next: [a, c], notice: /selection changed/i }
+  ]) {
+    await run(page, 'select-many', { ids })
+    await page.locator('#export').click()
+    await page.evaluate(() => {
+      document.querySelector('#notice').textContent = ''
+    })
+    await dialog.locator('#format').selectOption('image/png')
+    await run(page, 'select-many', { ids: next })
+    await dialog.locator('button[value=ok]').click()
+    await page.waitForFunction(
+      (text) => new RegExp(text, 'i').test(document.querySelector('#notice').textContent),
+      notice.source
+    )
+    assert.equal(await dialog.isVisible(), false)
+    assert.deepEqual(await page.evaluate(() => window.folderMock.calls), [])
+    assert.deepEqual(await run(page, 'export-settings'), settings)
+  }
+
+  for (const command of ['export', 'export-previous']) {
+    const options = command === 'export' ? { format: 'original' } : {}
+    await assert.rejects(run(page, command, { ...options, photoId: b }), /selected photo changed/i)
+    const result = await page.evaluate(
+      ([command, args]) => window.openlr.dispatch(command, args),
+      [command, { ...options, photoId: a }]
+    )
+    assert.equal(result.ok, true)
+    assert.equal(result.result.filename, 'a.png')
+    assert.deepEqual(Buffer.from(result.result.base64, 'base64'), Buffer.from(fixture(20)))
+    assert.deepEqual(result.result.exportSettings, { media: 'photo', options: { format: 'original' } })
+  }
+  await assert.rejects(
+    run(page, 'export-selection', { format: 'original', expectedIds: [a, b] }),
+    /selection changed/i
+  )
+  assert.deepEqual(await page.evaluate(() => window.folderMock.calls), [])
+  const batch = await run(page, 'export-selection', { previous: true, expectedIds: [c, a] })
+  assert.deepEqual(
+    batch.files.map((file) => file.id),
+    [a, c]
+  )
+  assert.deepEqual(await run(page, 'export-settings'), settings)
+})
+
+test('a queued selection change closes the reserved export folder without writing', async (t) => {
+  const page = await workspace(t)
+  const [a, b, c] = (await run(page, 'photos')).photos.map((photo) => photo.id)
+  await run(page, 'select-many', { ids: [a, b] })
+  await page.locator('#export').click()
+  // Hold a real edit's thumbnail read so the queued selection only executes
+  // after the trusted submit event has reserved the folder.
+  await holdCatalogThumbnail(page)
+  await page.evaluate(
+    (ids) => {
+      const call = window.mygo.call
+      window.mygo.call = async (method, ...args) => {
+        const result = await call(method, ...args)
+        if (method === 'Desktop.BeginExportFolder')
+          await new Promise((resolve) => {
+            window.resolveFolder = resolve
+          })
+        return result
+      }
+      window.openlr.run('edit', { key: 'Exposure', value: 0.5 })
+      window.queuedSelection = window.openlr.run('select-many', { ids })
+    },
+    [a, c]
+  )
+  await page.waitForFunction(() => Boolean(window.catalogThumbnailHold.release))
+  await page.locator('#export-dialog button[value=ok]').click()
+  await page.waitForFunction(() => Boolean(window.resolveFolder))
+  await page.evaluate(async () => {
+    window.catalogThumbnailHold.release()
+    await window.queuedSelection
+    window.resolveFolder()
+  })
+  await page.waitForFunction(() =>
+    document.querySelector('#notice').textContent.includes('The selection changed')
+  )
+  const result = await page.evaluate(() => ({
+    calls: window.folderMock.calls.map(([method]) => method),
+    files: window.folderMock.files
+  }))
+  assert.deepEqual(result, { calls: ['Desktop.BeginExportFolder', 'Desktop.EndExportFolder'], files: [] })
+  assert.deepEqual((await run(page, 'state')).selection, [a, c])
+  assert.deepEqual(await run(page, 'export-settings'), { photo: null, video: null })
 })
 
 test('mixed-media batch preserves originals and exports video stills at trimmed start without moving playback', async (t) => {

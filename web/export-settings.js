@@ -1,4 +1,4 @@
-import { validateArgs } from './agent-protocol.js'
+import { validateExportOptions } from './agent-protocol.js'
 import { EXPORT_FORMATS } from './formats.js'
 import { exportColorSpaces, validateExportColorSpace } from './export-color.js'
 import { validateExportMetadataPolicy } from './export-metadata.js'
@@ -8,6 +8,7 @@ export const EXPORT_SETTINGS_MESSAGES = {
   previous: 'Export again',
   previousDescription: 'Export with previous settings',
   missing: 'Choose export settings first',
+  changedPhoto: 'The selected photo changed. Open Export again.',
   rememberFailed: 'Export saved, but settings could not be remembered: ',
   selectVideo: 'Select a video',
   invalidMedia: 'Choose a photo or video',
@@ -20,7 +21,7 @@ function validateMedia(media) {
 
 export function normalizeExportSettings(options, media) {
   validateMedia(media)
-  validateArgs('export', options)
+  validateExportOptions(options)
   const format = options.format ?? (media === 'video' ? 'video/mp4' : 'image/jpeg'),
     definition = EXPORT_FORMATS.find((item) => item.value === format),
     colorSpace = validateExportColorSpace(format, options.colorSpace),

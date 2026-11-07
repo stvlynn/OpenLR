@@ -197,6 +197,8 @@ Basic adjustment sliders, aspect changes and **Clear crop** also submit the phot
 
 ## Selection export
 
+Use `export --photoId PHOTO_ID` or `export-previous --photoId PHOTO_ID` to require the active photo when the command executes. Use `export-selection --expectedIds '["ID1","ID2"]'` to require the selected group. The GUI binds these targets when opening Export or invoking **Export again**. Omitting the guards retains execution-time targeting. See [single export](export-settings.md) and [batch export](batch-export.md).
+
 `export-selection --format image/png --output-dir ./exports --capture workspace.png` writes the selected visible group in display order, returns completed file paths/byte counts, and can capture the actual workspace. `--previous true` reuses each media slot. Single `export` still returns one active-photo file. See [batch export](batch-export.md) for IDs, mixed media, collisions, partial errors and completion semantics.
 
 `export-status` and `export-cancel --id JOB_ID` remain responsive during a batch, independently of queued edits. `watch --command export-status --images ./progress` emits current job data and actual workspace captures. Cancellation requests are cooperative; wait for a terminal status before assuming output stopped. A timeout or disconnected observer does not cancel the batch. IDs and the latest terminal record are scoped to the current GUI session.

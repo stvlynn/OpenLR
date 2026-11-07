@@ -1072,13 +1072,19 @@ const exportProgress = new ExportProgress((job) => {
 })
 async function execute(command, args, context = {}) {
   const p = active()
-  if (args.expectedIds !== undefined && command !== 'purge') {
+  if (args.expectedIds !== undefined && command !== 'purge' && command !== 'export-selection') {
     if (command === 'auto-stack')
       assertSelection(stackCandidates(visible()), args.expectedIds, STACK_MESSAGES.changedView)
     else assertSelection(organization.targets(photos), args.expectedIds)
   }
   if (PHOTO_MENU_PHOTO_COMMANDS.includes(command) && args.photoId !== undefined && args.photoId !== p?.id)
     throw Error('The selected photo changed')
+  if (
+    (command === 'export' || command === 'export-previous') &&
+    args.photoId !== undefined &&
+    args.photoId !== p?.id
+  )
+    throw Error(EXPORT_SETTINGS_MESSAGES.changedPhoto)
   if (context.draftSource?.canceled && command !== 'draft-cancel') return null
   if (args.draft && context.draftSource && (!p || p.edit !== context.draftEdit || p.id !== args.photoId))
     return null
@@ -2507,13 +2513,15 @@ async function execute(command, args, context = {}) {
           return execute('export', previous)
         }
         case 'export':
-        case 'preview':
-          return preparePhotoExport(p, args, {
+        case 'preview': {
+          const { photoId, ...options } = args
+          return preparePhotoExport(p, options, {
             original,
             source: (id) => source(id, p.edit),
             preview: command === 'preview',
             comparison: compare
           })
+        }
         default:
           throw Error('Unknown command: ' + command)
       }
@@ -2900,9 +2908,17 @@ function updateExportProgress(job) {
   exportCancelButton.textContent =
     job.status === 'cancelling' ? EXPORT_PROGRESS_MESSAGES.cancelling : EXPORT_PROGRESS_MESSAGES.cancel
 }
+const exportDialog = $('export-dialog')
+let exportDialogTarget
+function selectedExportTarget() {
+  return organization.selection.size > 1
+    ? { expectedIds: [...organization.selection] }
+    : { photoId: selected }
+}
 $('export').onclick = () => {
   try {
-    const media = isVideo(active()) ? 'video' : 'photo',
+    const target = selectedExportTarget(),
+      media = isVideo(active()) ? 'video' : 'photo',
       previous = loadExportSettings()[media],
       options = previous ?? normalizeExportSettings({}, media)
     for (const item of $('format').options)
@@ -2915,10 +2931,11 @@ $('export').onclick = () => {
     if (options.colorSpace) exportColorSelect.value = options.colorSpace
     exportMetadataSelect.value = options.metadata ?? 'none'
     exportSharpeningSelect.value = options.outputSharpening ?? 'none'
-    $('export-dialog').querySelector('h2').textContent = BATCH_EXPORT_MESSAGES.title(
-      organization.selection.size
+    exportDialog.querySelector('h2').textContent = BATCH_EXPORT_MESSAGES.title(
+      target.expectedIds?.length ?? 1
     )
-    $('export-dialog').showModal()
+    exportDialog.showModal()
+    exportDialogTarget = target
   } catch (error) {
     notice(error.message)
   }
@@ -2929,11 +2946,18 @@ function reserveExportFolder() {
   pending.catch(() => {})
   return pending
 }
-async function savePreparedExport(command, options, exportSink) {
-  if (organization.selection.size > 1) {
+async function savePreparedExport(command, options, target) {
+  if (target.expectedIds) {
+    assertSelection(
+      organization.targets(visible()),
+      target.expectedIds,
+      BATCH_EXPORT_MESSAGES.changedSelection
+    )
+    // A browser folder picker must start during the actual submit or button gesture.
+    const exportSink = reserveExportFolder()
     const result = await run(
       'export-selection',
-      command === 'export-previous' ? { previous: true } : options,
+      { ...(command === 'export-previous' ? { previous: true } : options), ...target },
       undefined,
       { exportSink }
     )
@@ -2944,7 +2968,7 @@ async function savePreparedExport(command, options, exportSink) {
     )
     return
   }
-  const result = await run(command, options)
+  const result = await run(command, { ...options, ...target })
   if (await saveExport(result.blob, result.filename)) {
     try {
       await run('export-settings', result.exportSettings)
@@ -2955,11 +2979,7 @@ async function savePreparedExport(command, options, exportSink) {
 }
 previousExportButton.onclick = async () => {
   try {
-    await savePreparedExport(
-      'export-previous',
-      undefined,
-      organization.selection.size > 1 ? reserveExportFolder() : undefined
-    )
+    await savePreparedExport('export-previous', undefined, selectedExportTarget())
   } catch (error) {
     if (error.code === 'EXPORT_SETTINGS_MISSING') $('export').click()
     else notice(error.message)
@@ -3027,22 +3047,15 @@ $('format').onchange = (e) => {
     $(id).closest('label').hidden = !renderOptions
   }
 }
-$('export-dialog')
-  .querySelector('form')
-  .addEventListener('submit', (event) => {
-    if (event.submitter?.value !== 'ok' || organization.selection.size < 2) return
-    event.preventDefault()
-    // Request directory permission during the actual user gesture, before queueing work.
-    const exportSink = reserveExportFolder()
-    $('export-dialog').close('')
-    savePreparedExport('export', readExportOptions(), exportSink).catch((error) => notice(error.message))
-  })
-$('export-dialog').onclose = async (e) => {
-  const accepted = e.target.returnValue === 'ok'
-  e.target.returnValue = ''
-  if (!accepted) return
+exportDialog.querySelector('form').onsubmit = async (event) => {
+  const target = exportDialogTarget
+  if (event.submitter?.value !== 'ok' || !exportDialog.open || !target) return
+  event.preventDefault()
+  exportDialogTarget = null
   try {
-    await savePreparedExport('export', readExportOptions())
+    const options = readExportOptions()
+    exportDialog.close('')
+    await savePreparedExport('export', options, target)
   } catch (err) {
     notice(err.message)
   }

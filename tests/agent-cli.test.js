@@ -21,6 +21,7 @@ test('selection guards validate photo IDs during offline command preview', async
     ['stack'],
     ['cull'],
     ['auto-stack'],
+    ['export-selection'],
     ['purge']
   ]) {
     assert.throws(
@@ -30,6 +31,17 @@ test('selection guards validate photo IDs during offline command preview', async
     const result = await execute(parse([...args, '--expectedIds', '["b","a"]', '--dry-run']))
     assert.deepEqual(result.request.args.expectedIds, ['b', 'a'])
   }
+})
+
+test('single export target guards are discoverable without becoming remembered settings', async () => {
+  for (const command of ['export', 'export-previous']) {
+    const result = await execute(parse([command, '--photoId', 'photo-a', '--dry-run']))
+    assert.deepEqual(result.request.args, { photoId: 'photo-a' })
+  }
+  assert.throws(
+    () => parse(['export-settings', '--media', 'photo', '--options', '{"photoId":"photo-a"}', '--dry-run']),
+    /Unknown argument: photoId/
+  )
 })
 
 test('offline discovery and dry runs validate real command arguments', async () => {
