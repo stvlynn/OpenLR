@@ -147,14 +147,10 @@ async function runCase(mode, debuggerMode) {
       record.capture = JSON.parse(lines[0].slice(captureMarker.length))
       assert.equal(record.capture.pid, probe.child.pid)
       assert.equal(record.capture.nonce, request.nonce)
-      assert.equal(record.capture.detachSuccess, true, 'Debugger must detach while retaining the stop')
-      record.detachedState = state(probe.child.pid)
-      assert.ok(
-        record.detachedState.includes('T'),
-        'Detached fixture must remain stopped until parent continuation'
-      )
+      assert.equal(record.capture.detachSuccess, true, 'Debugger must detach from its owned fixture')
     }
-    probe.child.kill('SIGCONT')
+    record.continueRequested = probe.child.exitCode === null && probe.child.signalCode === null
+    if (record.continueRequested) probe.child.kill('SIGCONT')
     await within(
       probe.output.completion,
       10_000,
@@ -192,6 +188,20 @@ async function runCase(mode, debuggerMode) {
       assert.equal(frames[0].uuid.replaceAll('-', '').toLowerCase(), verified.image.uuid)
       const pc = BigInt(record.capture.context.normalized.pc)
       assert.equal(pc, BigInt(record.context.pc), 'Original instruction must not change under normalization')
+      assert.equal(
+        BigInt(frames[0].base),
+        BigInt(verified.image.base),
+        'Loaded image base must match fixture metadata'
+      )
+      assert.equal(BigInt(frames[0].imageOffset), pc - BigInt(verified.image.base))
+      const fp = BigInt(record.capture.context.normalized.fp)
+      assert.ok(
+        fp >= BigInt(verified.ready.stackLow) && fp < BigInt(verified.ready.stackHigh),
+        'Original FP must belong to the independently reported foreign-thread stack'
+      )
+      record.normalizedReturnAddresses = record.capture.records.filter(
+        (entry) => entry.rawSavedLR && BigInt(entry.rawSavedLR) !== BigInt(entry.savedLR)
+      ).length
       const fixtureUUID = verified.images.find((image) => image.role === 'fixture').uuid
       assert.ok(
         frames.slice(1).some((frame) => frame.uuid?.replaceAll('-', '').toLowerCase() === fixtureUUID),

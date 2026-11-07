@@ -243,10 +243,14 @@ def capture_signal(debugger, command, _context, _result, _internal):
     finally:
         if attached:
             try:
-                detached = process.Detach(True)
+                report["detachRequestedKeepStopped"] = False
+                detached = process.Detach(False)
                 report["detachSuccess"] = bool(detached.Success())
                 if not detached.Success():
-                    report["detachError"] = "Keep-stopped detach failed"
+                    report["detachError"] = {
+                        "code": detached.GetError(),
+                        "message": (detached.GetCString() or "Normal detach failed")[:240],
+                    }
                     report["status"] = "error"
             except Exception as error:
                 report["detachSuccess"] = False
