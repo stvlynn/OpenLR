@@ -21,10 +21,11 @@ separate from the passing four-platform desktop matrix at the same revision.
 
 The isolated `experiment/macos-first-seek` branch is based on `df741d6` and
 reuses the existing release workflow, stock vendored build, fixed 24-host
-driver, independent Chrome oracle and actual cleanup owners. Its matrix has
-two independent arms, diagnostics `off` and `on`, with fail-fast disabled.
-Each arm builds once and runs 24 fresh hosts against these same retained
-bytes. Before starting
+driver, independent Chrome oracle and actual cleanup owners. Manual dispatch
+selects diagnostics `off`, `on` or `both`; a self-path push defaults to `off`.
+The matrix expands only the selected arm or arms, with fail-fast disabled.
+Each selected arm builds once and runs 24 fresh hosts against these same
+retained bytes. Before starting
 any host, the workflow copies this source to the driver's usual
 `build/release-video-trials/fixture.webm` and directly compares the copied
 bytes. There is no hash gate and no replacement fixture generation. The main
@@ -52,7 +53,39 @@ dispatch starts this observation. The budget remains 35 minutes per job and
 `first-seek-package-on`, `first-seek-evidence-off` and
 `first-seek-evidence-on`; evidence includes build identity, the source,
 provenance, observation settings, the complete/partial report and every raw
-trial log. Observation metadata records each arm's diagnostic mode.
+trial log. Only artifacts for selected arms are produced. Observation metadata
+records the diagnostic mode, the retained source's `df741d6` revision and the
+actual application/workflow revision from `GITHUB_SHA`.
 Diagnostics add bridge traffic and may change timing. A finite
 passing cohort without recurrence would not identify the earlier failure
 phase or establish a repair.
+
+## Completed paired observation
+
+Run [42396115647](https://github.com/stvlynn/OpenLR/actions/runs/42396115647)
+completed the OFF arm with 24/24 strict passes and all host/oracle cleanup
+confirmed, job `128473726352`, artifact `13584251655`. The original first-seek
+failure did not recur. This finite result does not identify that failure's
+phase or establish a repair.
+
+The ON arm stopped after 17 trials: 15 strict passes and two failures, job
+`128473726384`, artifact `13583503194`. Zero-based trial 15 timed out after
+30 seconds in MP4 export with video worker 0 pending and audio worker 1 done.
+Trial 16 reported `renderer-gone` during startup. Its owned oracle parent
+positively exited by SIGKILL ten milliseconds after escalation, but
+Playwright's BrowserServer cleanup operation did not settle within the
+five-second forced-cleanup deadline. The receipts do not distinguish delayed
+child stdio closure from pending temporary-directory cleanup and do not prove
+that a helper survived. The gate correctly retained this unconfirmed lifecycle
+and prevented another host from starting. These failures remain separate from
+the earlier main first-seek error.
+
+The next observation defaults to OFF-only, retaining the exact source, full
+assertions and 24-host schedule while seeking a further natural rare failure
+with failure-only metadata. It is additional observation, not a retry that
+replaces the failed ON result. No ON repetition, forced fault, inserted wait,
+SDK or debugger is required by this schedule. Diagnostic trace traffic and
+separate runner environments limit comparisons between the prior OFF and ON
+outcomes; no timing benefit or first-seek fix is established. The actual build
+revision is recorded automatically so the owner-preservation follow-up is
+distinguished from the earlier observation.
