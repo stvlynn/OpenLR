@@ -50,6 +50,9 @@ export async function runVideoTrials({ apps, order, destination, args = [], envi
             ...process.env,
             OPENLR_DIAGNOSTICS: '1',
             ...environments[candidate],
+            ...(args.includes('--post-signal') && {
+              OPENLR_POST_SIGNAL_DIRECTORY: path.resolve(destination, `${index}-post-signal`)
+            }),
             OPENLR_VIDEO_PROBE_FIXTURE: fixture
           },
           stdio: ['ignore', output.fd, output.fd],

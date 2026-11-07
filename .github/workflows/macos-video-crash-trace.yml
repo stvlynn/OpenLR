@@ -25,6 +25,10 @@ on:
         description: Calibrate stopped original-context capture without application trials
         type: boolean
         default: false
+      post_signal_workflow:
+        description: Capture the original stack only after a native application fault
+        type: boolean
+        default: false
 permissions:
   contents: read
   actions: read
@@ -70,7 +74,7 @@ jobs:
         if: ${{ inputs.trace_workflow && !(inputs.frida_calibration && inputs.frida_stage == 'startup') }}
         run: node scripts/calibrate-host-trace.mjs
       - name: Calibrate post-fault capture and original signal continuation
-        if: inputs.post_signal_calibration
+        if: ${{ inputs.post_signal_calibration || inputs.post_signal_workflow }}
         run: node scripts/calibrate-post-signal.mjs
       - name: Provision the pinned REA instrumentation runtime
         if: inputs.frida_calibration
@@ -87,7 +91,17 @@ jobs:
         run: node scripts/probe-frida-startup.mjs build/signal-calibration/frida-startup
       - name: Build the diagnostic native application
         if: ${{ !inputs.frida_calibration && !inputs.post_signal_calibration }}
-        run: node scripts/desktop.mjs build -o build/release -platform darwin/arm64
+        env:
+          POST_SIGNAL_WORKFLOW: ${{ inputs.post_signal_workflow }}
+        run: |
+          if [ "$POST_SIGNAL_WORKFLOW" = true ]; then
+            export MYGO_LDFLAGS="${MYGO_LDFLAGS:+$MYGO_LDFLAGS }-X runtime.openlrFreezeSignal=1"
+          fi
+          node scripts/desktop.mjs build -o build/release -platform darwin/arm64
+          go version -m build/release/darwin-arm64/OpenLR.app/Contents/MacOS/OpenLR > build/signal-calibration/application-build-info.txt
+          if [ "$POST_SIGNAL_WORKFLOW" = true ]; then
+            node --input-type=module -e 'import assert from "node:assert/strict"; import { readFile } from "node:fs/promises"; assert.ok((await readFile("build/signal-calibration/application-build-info.txt", "utf8")).includes("-X runtime.openlrFreezeSignal=1"), "The diagnostic application must retain its opt-in signal stop linker setting")'
+          fi
       - uses: actions/upload-artifact@v4
         if: ${{ !inputs.frida_calibration && !inputs.post_signal_calibration }}
         with:
@@ -107,9 +121,11 @@ jobs:
           OPENLR_DIAGNOSTICS: '1'
           OPENLR_SIGNAL_RESOURCES: '1'
           TRACE_WORKFLOW: ${{ inputs.trace_workflow }}
+          POST_SIGNAL_WORKFLOW: ${{ inputs.post_signal_workflow }}
         run: |
           mode=()
-          if [ "$TRACE_WORKFLOW" = true ]; then mode=(--lldb-workflow); fi
+          if [ "$POST_SIGNAL_WORKFLOW" = true ]; then mode=(--post-signal);
+          elif [ "$TRACE_WORKFLOW" = true ]; then mode=(--lldb-workflow); fi
           node scripts/native-video-export-trials.mjs build/release/darwin-arm64/OpenLR.app/Contents/MacOS/OpenLR build/video-export-trials "${mode[@]}"
       - uses: actions/upload-artifact@v4
         if: always()

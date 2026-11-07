@@ -1,14 +1,14 @@
 import assert from 'node:assert/strict'
-import { spawn, spawnSync } from 'node:child_process'
-import { randomUUID } from 'node:crypto'
+import { spawn } from 'node:child_process'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
-import { setTimeout as delay } from 'node:timers/promises'
+import { validateSignalCalibration } from './calibrate-signal-context.mjs'
 import {
-  parseSignalContext,
-  parseSignalContexts,
-  validateSignalCalibration
-} from './calibrate-signal-context.mjs'
+  captureOriginalSignal,
+  originalRegisterNames as registerNames,
+  parseOriginalSignalRecords,
+  waitForOriginalSignal
+} from './post-signal-observer.mjs'
 
 assert.equal(process.platform, 'darwin', 'Post-signal calibration requires macOS')
 assert.equal(process.arch, 'arm64', 'Post-signal calibration requires ARM64')
@@ -18,9 +18,6 @@ const baseline = JSON.parse(await readFile('build/signal-calibration/calibration
 assert.equal(baseline.verified, true)
 const executable = path.join(directory, 'signal-context-probe')
 const library = path.resolve('build/signal-calibration/signal-context-native.dylib')
-const marker = 'OpenLR forwarded registers fp/x0/x1/x2/x3/x19/x20/x21/x22/x23/x24 '
-const captureMarker = 'OpenLR post signal capture '
-const registerNames = ['fp', 'x0', 'x1', 'x2', 'x3', 'x19', 'x20', 'x21', 'x22', 'x23', 'x24']
 const report = { verified: false, cases: [] }
 
 async function within(operation, milliseconds, message) {
@@ -73,93 +70,31 @@ async function terminate(owner, continueOriginalSignal = false) {
   }
 }
 
-function state(pid) {
-  const result = spawnSync('/bin/ps', ['-o', 'state=', '-p', String(pid)], {
-    encoding: 'utf8',
-    timeout: 2000
-  })
-  assert.equal(result.error, undefined, 'Owned process state lookup must return')
-  assert.equal(result.status, 0, 'Owned process must remain present')
-  return result.stdout.trim()
-}
-
-function registerRecords(stderr) {
-  const lines = stderr.split(/\r?\n/).filter((line) => line.startsWith(marker))
-  return lines.map((line) => {
-    const values = line.slice(marker.length).trim().split(' ')
-    assert.equal(values.length, registerNames.length)
-    for (const value of values) assert.match(value, /^0x[0-9a-f]{16}$/)
-    return Object.fromEntries(registerNames.map((name, index) => [name, values[index]]))
-  })
-}
-
-function context(stderr) {
-  const original = parseSignalContext(stderr)
-  const records = registerRecords(stderr)
-  assert.equal(records.length, 1, 'Exactly one initial original register record is required')
-  return { ...original, ...records[0] }
-}
-
 async function runCase(mode, debuggerMode) {
   const name = `${mode}-${debuggerMode}`
   const record = { mode, debuggerMode, verified: false, cleanup: {} }
   report.cases.push(record)
   const probe = launch(executable, [library, mode], { ...process.env, DYLD_PRINT_SEGMENTS: '1' })
-  let debuggerOwner
+  let captureObservation
   try {
     assert.ok(Number.isSafeInteger(probe.child.pid) && probe.child.pid > 0)
     record.pid = probe.child.pid
-    await within(
-      (async () => {
-        while (!probe.output.stderr.includes(marker) || !probe.output.stderr.endsWith('\n')) {
-          assert.equal(probe.output.closed, null, 'Fixture exited before publishing its original context')
-          await delay(20)
-        }
-        while (!state(probe.child.pid).includes('T')) {
-          assert.equal(probe.output.closed, null, 'Fixture exited before its opt-in stop')
-          await delay(20)
-        }
-      })(),
-      10_000,
-      'Fixture did not stop after its original context record'
-    )
-    record.context = context(probe.output.stderr)
-    record.stoppedState = state(probe.child.pid)
+    const stopped = await waitForOriginalSignal(probe)
+    record.context = stopped.context
+    record.stoppedState = stopped.stoppedState
     if (debuggerMode !== 'resume') {
-      const request = {
-        pid: probe.child.pid,
-        nonce: randomUUID(),
-        context: {
-          ...Object.fromEntries(
-            Object.entries(record.context).filter(([, value]) => typeof value === 'string')
-          ),
-          ...(debuggerMode === 'invalid' ? { fp: '0x0000000000000001' } : {})
-        }
+      try {
+        captureObservation = await captureOriginalSignal({
+          pid: probe.child.pid,
+          directory,
+          name,
+          context: { ...record.context, ...(debuggerMode === 'invalid' ? { fp: '0x0000000000000001' } : {}) }
+        })
+      } catch (error) {
+        captureObservation = error.observation
+        throw error
       }
-      const requestPath = path.join(directory, name + '.request.json')
-      await writeFile(requestPath, JSON.stringify(request, null, 2) + '\n')
-      debuggerOwner = launch('xcrun', [
-        'lldb',
-        '--batch',
-        '--no-lldbinit',
-        '-o',
-        `command script import ${JSON.stringify(path.resolve('scripts/fixtures/post_signal_trace.py'))}`,
-        '-o',
-        `openlr-capture-signal ${JSON.stringify(requestPath)}`
-      ])
-      await within(debuggerOwner.output.completion, 45_000, 'Post-signal debugger did not finish')
-      assert.equal(debuggerOwner.output.error, null)
-      assert.deepEqual(debuggerOwner.output.closed, { code: 0, signal: null })
-      assert.equal(debuggerOwner.output.truncated, false)
-      const lines = debuggerOwner.output.stdout
-        .split(/\r?\n/)
-        .filter((line) => line.startsWith(captureMarker))
-      assert.equal(lines.length, 1, 'Expected one independent post-signal capture')
-      record.capture = JSON.parse(lines[0].slice(captureMarker.length))
-      assert.equal(record.capture.pid, probe.child.pid)
-      assert.equal(record.capture.nonce, request.nonce)
-      assert.equal(record.capture.resumeSuccess, true, 'Debugger must resume original signal forwarding')
-      assert.equal(record.capture.sessionComplete, true, 'Debugger must observe its owned inferior exit')
+      record.capture = captureObservation.record
     }
     record.continueRequested = probe.child.exitCode === null && probe.child.signalCode === null
     if (record.continueRequested) probe.child.kill('SIGCONT')
@@ -171,8 +106,9 @@ async function runCase(mode, debuggerMode) {
     assert.equal(probe.output.error, null)
     assert.equal(probe.output.truncated, false)
     record.termination = probe.output.closed
-    record.forwardedContexts = parseSignalContexts(probe.output.stderr)
-    record.forwardedRegisters = registerRecords(probe.output.stderr)
+    const forwarded = parseOriginalSignalRecords(probe.output.stderr)
+    record.forwardedContexts = forwarded.contexts
+    record.forwardedRegisters = forwarded.registers
     const verified = validateSignalCalibration(
       {
         mode,
@@ -239,10 +175,15 @@ async function runCase(mode, debuggerMode) {
     record.error = { name: error.name, message: error.message }
     throw error
   } finally {
-    for (const [kind, owner] of [
-      ['debugger', debuggerOwner],
-      ['fixture', probe]
-    ]) {
+    if (captureObservation) {
+      record.capture ??= captureObservation.record
+      record.debuggerObservation = captureObservation
+      record.cleanup.debugger = captureObservation.cleanupConfirmed
+        ? captureObservation.debuggerExit
+        : { error: captureObservation.cleanupError?.message || 'Debugger cleanup remains unconfirmed' }
+      if (!captureObservation.cleanupConfirmed) record.verified = false
+    }
+    for (const [kind, owner] of [['fixture', probe]]) {
       if (!owner) continue
       try {
         await terminate(owner, kind === 'fixture')

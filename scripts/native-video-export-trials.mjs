@@ -4,11 +4,21 @@ const [app, destination, mode] = process.argv.slice(2)
 if (
   !app ||
   !destination ||
-  (mode !== undefined && !['--lldb', '--lldb-workflow', '--compare-audio-trace'].includes(mode))
+  (mode !== undefined &&
+    !['--lldb', '--lldb-workflow', '--post-signal', '--compare-audio-trace'].includes(mode))
 )
-  throw Error('Pass app, report directory and optional --lldb, --lldb-workflow or --compare-audio-trace')
+  throw Error(
+    'Pass app, report directory and optional --lldb, --lldb-workflow, --post-signal or --compare-audio-trace'
+  )
 const compareAudioTrace = mode === '--compare-audio-trace'
-const candidate = mode === '--lldb-workflow' ? 'workflow-debugger' : mode ? 'debugger' : 'ordinary'
+const candidate =
+  mode === '--post-signal'
+    ? 'post-fault'
+    : mode === '--lldb-workflow'
+      ? 'workflow-debugger'
+      : mode
+        ? 'debugger'
+        : 'ordinary'
 await runVideoTrials({
   apps: compareAudioTrace ? { quiet: app, traced: app } : { [candidate]: app },
   order: compareAudioTrace

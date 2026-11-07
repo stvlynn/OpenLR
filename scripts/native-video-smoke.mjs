@@ -12,11 +12,19 @@ import {
 import { withHostCrashTrace } from './native-crash-trace.mjs'
 import { withNativeWorkspace } from './native-workspace.mjs'
 import { ownVideoOracle } from './native-video-oracle.mjs'
+import { createPostSignalWorkspace } from './post-signal-workspace.mjs'
 
 const [executable, mode] = process.argv.slice(2)
-if (mode !== undefined && (!['--lldb', '--lldb-workflow'].includes(mode) || process.platform !== 'darwin'))
-  throw Error('Optional video debugger modes require macOS')
+if (
+  mode !== undefined &&
+  (!['--lldb', '--lldb-workflow', '--post-signal'].includes(mode) || process.platform !== 'darwin')
+)
+  throw Error('Optional video diagnostic modes require macOS')
 if (!executable) throw Error('Pass the path to a built OpenLR executable')
+const postSignal =
+  mode === '--post-signal'
+    ? createPostSignalWorkspace({ directory: process.env.OPENLR_POST_SIGNAL_DIRECTORY })
+    : null
 const turnedSize = [64, 96],
   trim = { start: 1.2, end: 2.7 }
 
@@ -391,9 +399,12 @@ try {
     (workspace) =>
       mode === '--lldb-workflow'
         ? withHostCrashTrace(workspace, () => verifyWorkflow(workspace))
-        : verifyWorkflow(workspace),
+        : postSignal
+          ? postSignal.wrap(verifyWorkflow)(workspace)
+          : verifyWorkflow(workspace),
     {
       env: { DYLD_PRINT_SEGMENTS: '1' },
+      ...(postSignal && { launch: postSignal.launch }),
       onCleanup: () => console.log(JSON.stringify({ nativeVideoCleanup: 'confirmed' }))
     }
   )
