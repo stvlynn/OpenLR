@@ -369,6 +369,91 @@ test('a fallback frame failure after a completed requested seek is identified as
   assert.equal(result.retried.playback.time, 0.5)
 })
 
+test('a held error keeps its first player context when a later catch sees another recovered player', async (t) => {
+  const { page, id } = await workspace(t)
+  const result = await page.evaluate(async (id) => {
+    const { openVideo } = await import('./video.js')
+    const { annotateVideoError } = await import('./video-errors.js')
+    const db = await import('./catalog.js')
+    const { file } = await db.original(id)
+    const first = await openVideo(file)
+    let second, release, captured
+    const gate = new Promise((resolve) => {
+      release = resolve
+    })
+    const caught = new Promise((resolve) => {
+      captured = resolve
+    })
+    Object.defineProperty(first.video, 'error', { value: { code: 3, message: 'Media failed to decode' } })
+    const pending = first.seek(0.35).catch(async (error) => {
+      captured(error)
+      await gate
+      return annotateVideoError(error, { operation: 'draw-frame', video: second?.video })
+    })
+    const originalError = await caught
+    const before = structuredClone(originalError.details.video)
+    first.close()
+    const prototype = HTMLMediaElement.prototype
+    const src = Object.getOwnPropertyDescriptor(prototype, 'src')
+    let assignments = 0
+    Object.defineProperty(prototype, 'src', {
+      ...src,
+      set(url) {
+        if (++assignments === 1)
+          this.addEventListener(
+            'loadedmetadata',
+            () => {
+              Object.defineProperty(this, 'error', {
+                value: { code: 3, message: 'Controlled replacement load failure' }
+              })
+              this.dispatchEvent(new Event('error'))
+            },
+            { once: true }
+          )
+        src.set.call(this, url)
+      }
+    })
+    try {
+      second = await openVideo(file)
+      const frame = await second.frameAt()
+      const canvas = new OffscreenCanvas(1, 1),
+        context = canvas.getContext('2d')
+      context.drawImage(frame, 0, 0, 1, 1)
+      const pixel = [...context.getImageData(0, 0, 1, 1).data]
+      const replacement = await second.seek(99).catch((error) => error.details.video)
+      release()
+      const annotated = await pending
+      return {
+        before,
+        after: annotated.details.video,
+        sameError: annotated === originalError,
+        replacement,
+        assignments,
+        pixel
+      }
+    } finally {
+      release()
+      first.close()
+      second?.close()
+      Object.defineProperty(prototype, 'src', src)
+    }
+  }, id)
+  assert.equal(result.sameError, true)
+  assert.equal(result.assignments, 2)
+  assert.equal(result.replacement.attempt, 2)
+  assert.equal(result.replacement.retriesUsed, 1)
+  assert.equal(result.replacement.failedLoads.length, 1)
+  assert.equal(result.after.operation, 'draw-frame')
+  const { operation, ...after } = result.after
+  assert.deepEqual(after, result.before)
+  assert.equal(result.after.attempt, 1)
+  assert.deepEqual(result.after.failedLoads, [])
+  assert.ok(
+    result.pixel[0] > 130 && result.pixel[1] < 100 && result.pixel[2] < 100 && result.pixel[3] === 255,
+    JSON.stringify(result.pixel)
+  )
+})
+
 test('trial reports retain a full whitelisted failure without changing success or cleanup gates', () => {
   const metadata = {
     seen: true,

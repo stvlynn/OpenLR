@@ -48,6 +48,7 @@ const errorNames = new Set([
   'TimeoutError'
 ])
 const loads = new WeakMap()
+const errorLoads = new WeakMap()
 
 export function videoErrorContext(video, load) {
   loads.set(video, load)
@@ -102,6 +103,8 @@ export function annotateVideoError(error, { phase, operation, origin, video, loa
     )
       return error
     load ??= loads.get(video)
+    const owner = errorLoads.get(error)
+    const ownsLoad = !owner || owner === load
     const previous = videoFailureDetails(error.details?.video) ?? {}
     const description = { ...previous }
     if (!description.errorName && errorNames.has(error.name)) description.errorName = error.name
@@ -114,11 +117,12 @@ export function annotateVideoError(error, { phase, operation, origin, video, loa
     }
     if (!description.phase && (phase || operation)) description.phase = phase || operation
     if (!description.operation && operation) description.operation = operation
-    if (!description.origin || description.origin === 'unknown') description.origin = origin ?? 'unknown'
+    if (ownsLoad && (!description.origin || description.origin === 'unknown'))
+      description.origin = origin ?? 'unknown'
     if (!Object.hasOwn(description, 'mediaErrorCode')) description.mediaErrorCode = video?.error?.code ?? null
     if (!Object.hasOwn(description, 'readyState')) description.readyState = video?.readyState ?? null
     if (!Object.hasOwn(description, 'networkState')) description.networkState = video?.networkState ?? null
-    if (load)
+    if (load && ownsLoad)
       Object.assign(description, {
         attempt: load.attempt,
         retriesUsed: load.attempt - 1,
@@ -130,6 +134,7 @@ export function annotateVideoError(error, { phase, operation, origin, video, loa
       ...error.details,
       video: { ...error.details?.video, ...videoFailureDetails(description) }
     }
+    if (load && ownsLoad) errorLoads.set(error, load)
   } catch {
     // Diagnostic annotation must preserve even a non-extensible original failure.
   }
