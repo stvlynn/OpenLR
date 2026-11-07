@@ -579,6 +579,63 @@ test('video trim, grading, playback and export preserve the audio track and sele
   assert.ok(Math.abs(result.playback.time - 0.4) < 0.025)
 })
 
+test('video container export from Grid uses the original when native playback cannot open', async (t) => {
+  const server = await serveWorkspace()
+  t.after(server.close)
+  const browser = await chromium.launch({ channel: process.env.CHROME_CHANNEL || 'chrome' })
+  t.after(() => browser.close())
+  const page = await browser.newPage()
+  await page.goto(server.url)
+  const bytes = Array.from(await makeVideoFixture(page))
+  const result = await page.evaluate(async (bytes) => {
+    const m = await import('./vendor/mediabunny/mediabunny.mjs')
+    const run = window.openlr.run
+    const file = new File([Uint8Array.from(bytes)], 'grid.webm', { type: 'video/webm' })
+    const { added, failed } = await run('import', { files: [file] })
+    if (failed.length) throw Error(failed[0].error)
+    const before = await run('view', { mode: 'grid' })
+    const prototype = HTMLMediaElement.prototype
+    const src = Object.getOwnPropertyDescriptor(prototype, 'src')
+    Object.defineProperty(prototype, 'src', {
+      ...src,
+      set() {
+        throw Error('Controlled native playback failure')
+      }
+    })
+    let output, previewError
+    try {
+      previewError = await run('preview').catch(({ message }) => message)
+      output = await run('export', { format: 'video/webm', photoId: added[0] })
+    } finally {
+      Object.defineProperty(prototype, 'src', src)
+    }
+    const after = await run('state')
+    const { blob: original } = await run('export', { format: 'original', photoId: added[0] })
+    const input = new m.Input({ source: new m.BlobSource(output.blob), formats: m.ALL_FORMATS })
+    try {
+      const track = await input.getPrimaryVideoTrack()
+      const sample = await new m.CanvasSink(track).getCanvas(2.35)
+      return {
+        previewError,
+        before: [before.mode, before.selected === added[0], before.playback],
+        after: [after.mode, after.selected === added[0], after.playback],
+        pixel: Array.from(sample.canvas.getContext('2d').getImageData(1, 1, 1, 1).data),
+        audio: await (await input.getPrimaryAudioTrack()).getCodec(),
+        original: Array.from(new Uint8Array(await original.arrayBuffer()))
+      }
+    } finally {
+      input.dispose()
+    }
+  }, bytes)
+  assert.equal(result.previewError, 'Controlled native playback failure')
+  assert.deepEqual(result.before, ['grid', true, null])
+  assert.deepEqual(result.after, result.before)
+  const [red, green, blue, alpha] = result.pixel
+  assert.ok(red < 100 && green < 100 && blue > 130 && alpha === 255, JSON.stringify(result.pixel))
+  assert.equal(result.audio, 'opus')
+  assert.deepEqual(result.original, bytes)
+})
+
 test('opt-in video import diagnostics report pending media and preserve success or the original failure', async (t) => {
   const server = await serveWorkspace()
   t.after(server.close)

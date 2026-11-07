@@ -99,6 +99,8 @@ Closing a player rejects its pending native media waits with `AbortError` and re
 
 `video-toggle --photoId PHOTO_ID` uses the same Play/Pause action as the video bar. It reads the clip's actual playback state when the command executes and returns the resulting `playback` state. `video-play` and `video-pause` remain available for explicit playback requests. `video-seek --time 0.75` moves the playhead, and `video-trim --start 0.5 --end 1.5` saves the trim and moves the playhead to its start. The video bar sends the ID of the clip it displays for Play/Pause, seeking and trimming. The `photoId` guard is optional for these three CLI commands.
 
+Video-container export decodes from the original and applies the captured edits to the source tracks. A Grid export can run with no playback session. Preview and still-frame output keep their existing frame sources.
+
 Sample-accurate audio export supports mono and stereo 48 kHz Opus and 44.1/48 kHz AAC-LC. It uses the bundled Opus decoder and selects WebCodecs or macOS AudioToolbox according to the source and output codec configuration. The selected samples share the video trim timeline, including delayed starts and gaps. In a mixed export, every additional track needs a codec that preserves its sample rate and channels. A replacement track with no audible overlap fails before saving. Other formats and layouts retain the ordinary conversion path when available. Cancellation closes the export's codec handles. The tested configurations and commands are recorded in [the audio export record](../research/native-audio-export.md).
 
 ```powershell

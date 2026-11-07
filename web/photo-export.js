@@ -46,7 +46,8 @@ export async function preparePhotoExport(
     const colorSpace = validateExportColorSpace(format, args.colorSpace)
     if (format.startsWith('video/')) {
       if (!isVideo(p)) throw Error('Select a video')
-      await source(p.id)
+      if (p.local?.sidecarError) throw Error(p.local.sidecarError)
+      if (processingVersion(p.edit) === 2) throw Error(PROCESS_MESSAGES.video)
       return finished(await exportVideo((await original(p.id)).file, p, { ...args, format, signal }))
     }
     if (format === 'original') return finished({ blob: (await original(p.id)).file, filename: p.name })

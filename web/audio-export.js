@@ -330,7 +330,7 @@ export async function executeAudioExport(media, { input, output, trim, video, pl
       composable: true,
       copy: false,
       tracks: 'all',
-      video: (track) => ({ ...video(abort.signal), group: groups.get(track) }),
+      video: async (track) => ({ ...(await video(track, abort.signal)), group: groups.get(track) }),
       audio: (track) =>
         replacements.has(track)
           ? { discard: true }

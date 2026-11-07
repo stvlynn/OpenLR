@@ -268,6 +268,7 @@ export async function exportVideo(file, photo, args, { encode, decodeAac } = {})
       target = new BufferTarget()
     const format = mp4 ? new Mp4OutputFormat() : new WebMOutputFormat()
     trace?.('duration')
+    if (!(await input.getPrimaryVideoTrack())) throw Error('No playable video track')
     const trim = clipRange(photo.edit.trim, await input.computeDuration())
     trace?.('audio-plan')
     const audioPlan = await planAudioExport(media, input, format, mp4, {
@@ -277,31 +278,34 @@ export async function exportVideo(file, photo, args, { encode, decodeAac } = {})
     })
     trace?.('audio-planned')
     const output = new Output({ format: audioPlan?.outputFormat ?? format, target })
-    const size = geometry(photo, photo.edit, args.maxSize ?? Infinity)
-    const frame = document.createElement('canvas')
-    frame.width = photo.width
-    frame.height = photo.height
-    const ctx = frame.getContext('2d')
     let firstFrame = true
-    const video = (signal) => ({
-      codec: mp4 ? 'avc' : 'vp9',
-      bitrate: QUALITY_HIGH,
-      allowRotationMetadata: false,
-      processedWidth: size.turn % 2 ? size.height : size.width,
-      processedHeight: size.turn % 2 ? size.width : size.height,
-      async process(sample) {
-        if (firstFrame) trace?.('first-frame')
-        signal?.throwIfAborted()
-        if (frame.width !== sample.displayWidth) frame.width = sample.displayWidth
-        if (frame.height !== sample.displayHeight) frame.height = sample.displayHeight
-        sample.draw(ctx, 0, 0)
-        const canvas = await render(frame, photo.edit, args.maxSize ?? Infinity, { signal })
-        applyWatermark(canvas, args.watermark)
-        if (firstFrame) trace?.('first-frame-rendered')
-        firstFrame = false
-        return canvas
+    const video = async (track, signal) => {
+      const [width, height] = await Promise.all([track.getDisplayWidth(), track.getDisplayHeight()])
+      const size = geometry({ width, height }, photo.edit, args.maxSize ?? Infinity)
+      const frame = document.createElement('canvas')
+      frame.width = width
+      frame.height = height
+      const ctx = frame.getContext('2d')
+      return {
+        codec: mp4 ? 'avc' : 'vp9',
+        bitrate: QUALITY_HIGH,
+        allowRotationMetadata: false,
+        processedWidth: size.turn % 2 ? size.height : size.width,
+        processedHeight: size.turn % 2 ? size.width : size.height,
+        async process(sample) {
+          if (firstFrame) trace?.('first-frame')
+          signal?.throwIfAborted()
+          if (frame.width !== sample.displayWidth) frame.width = sample.displayWidth
+          if (frame.height !== sample.displayHeight) frame.height = sample.displayHeight
+          sample.draw(ctx, 0, 0)
+          const canvas = await render(frame, photo.edit, args.maxSize ?? Infinity, { signal })
+          applyWatermark(canvas, args.watermark)
+          if (firstFrame) trace?.('first-frame-rendered')
+          firstFrame = false
+          return canvas
+        }
       }
-    })
+    }
     if (audioPlan) {
       await executeAudioExport(media, {
         input,
@@ -314,7 +318,12 @@ export async function exportVideo(file, photo, args, { encode, decodeAac } = {})
       })
     } else {
       trace?.('conversion-init')
-      const conversion = await Conversion.init({ input, output, trim, video: video(args.signal) })
+      const conversion = await Conversion.init({
+        input,
+        output,
+        trim,
+        video: (track) => video(track, args.signal)
+      })
       if (!conversion.isValid || conversion.discardedTracks.length)
         throw Error('This device cannot encode every source track in the selected video format')
       trace?.('conversion-execute')
