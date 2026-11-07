@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { videoFailureDetails } from '../web/video-errors.js'
 import { spawn } from 'node:child_process'
 import { mkdir, open, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
@@ -17,6 +18,7 @@ export function videoTrialOutcome(code, signal, log) {
   const cleanupConfirmed = records.some((record) => record.nativeVideoCleanup === 'confirmed')
   const oracleCleanupConfirmed = records.some((record) => record.nativeVideoOracleCleanup === 'confirmed')
   const evidence = records.find((record) => record.nativeVideo === 'passed')
+  const failure = videoFailureDetails(records.find((record) => record.nativeVideo === 'failed')?.failure)
   const browser = records.find((record) => record.nativeVideoBrowser)?.nativeVideoBrowser
   return {
     code,
@@ -26,6 +28,7 @@ export function videoTrialOutcome(code, signal, log) {
     verified:
       code === 0 && signal === null && cleanupConfirmed && oracleCleanupConfirmed && Boolean(evidence),
     evidence,
+    ...(failure && { failure }),
     browser,
     continueTrials: cleanupConfirmed && oracleCleanupConfirmed && signal === null
   }

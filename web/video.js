@@ -2,6 +2,7 @@ import { renderPrepared as render } from './render.js'
 import { geometry } from './geometry.js'
 import { applyWatermark } from './export-options.js'
 import { executeAudioExport, planAudioExport } from './audio-export.js'
+import { annotateVideoError, videoErrorContext, videoFailureDetails } from './video-errors.js'
 import {
   beginVideoExportTrace,
   observeVideoEncoder,
@@ -31,7 +32,7 @@ class InitialVideoDecodeFailure {
   }
 }
 function mediaError(video) {
-  return new NativeMediaError(video)
+  return annotateVideoError(new NativeMediaError(video), { origin: 'native-media', video })
 }
 
 function waitForMedia(video, event, action, signal) {
@@ -84,10 +85,23 @@ function nativeVideoPixelsReadable(video) {
 }
 
 export async function openVideo(file, diagnostic, seekTrace, preparePoster = false) {
+  const failedLoads = []
   for (let attempt = 0; attempt < 2; attempt++) {
+    const load = {
+      attempt: attempt + 1,
+      retryLimit: globalThis.openlrNativePlatform === 'darwin' && !preparePoster ? 1 : 0,
+      metadata: { seen: false, trusted: null, width: null, height: null, readyState: null, admitted: false },
+      failedLoads
+    }
     try {
-      return await openVideoAttempt(file, diagnostic, seekTrace, preparePoster)
+      return await openVideoAttempt(file, diagnostic, seekTrace, preparePoster, load)
     } catch (failure) {
+      const error = failure instanceof InitialVideoDecodeFailure ? failure.error : failure
+      const summary = videoFailureDetails(error?.details?.video, false)
+      if (summary) {
+        failedLoads.push(summary)
+        annotateVideoError(error, { load })
+      }
       if (!(failure instanceof InitialVideoDecodeFailure)) throw failure
       if (attempt || globalThis.openlrNativePlatform !== 'darwin' || preparePoster) throw failure.error
       // The failed attempt is fully closed before opening the unchanged source once more.
@@ -96,7 +110,7 @@ export async function openVideo(file, diagnostic, seekTrace, preparePoster = fal
   }
 }
 
-async function openVideoAttempt(file, diagnostic, seekTrace, preparePoster) {
+async function openVideoAttempt(file, diagnostic, seekTrace, preparePoster, load) {
   markVideoImport(diagnostic, 'media-load')
   const url = URL.createObjectURL(file),
     video = document.createElement('video'),
@@ -107,6 +121,7 @@ async function openVideoAttempt(file, diagnostic, seekTrace, preparePoster) {
   video.muted = true
   let closed = false,
     frameSource
+  const failure = videoErrorContext(video, load)
   const close = () => {
     if (closed) return
     closed = true
@@ -121,6 +136,7 @@ async function openVideoAttempt(file, diagnostic, seekTrace, preparePoster) {
     video.load()
     URL.revokeObjectURL(url)
   }
+  let loadPhase = 'initial-load'
   try {
     markVideoSeek(seekTrace, 'playback-load', video)
     const stopObservingLoad = observeVideoPlaybackLoad(seekTrace, video)
@@ -135,8 +151,16 @@ async function openVideoAttempt(file, diagnostic, seekTrace, preparePoster) {
       }
       let metadataAdmitted = false
       const admitMetadata = (event) => {
+        const metadata = {
+          seen: true,
+          trusted: event.isTrusted,
+          readyState: video.readyState,
+          width: video.videoWidth,
+          height: video.videoHeight
+        }
         metadataAdmitted =
-          event.isTrusted && video.readyState >= 1 && video.videoWidth > 0 && video.videoHeight > 0
+          metadata.trusted && metadata.readyState >= 1 && metadata.width > 0 && metadata.height > 0
+        load.metadata = { ...metadata, admitted: metadataAdmitted }
       }
       video.addEventListener('loadedmetadata', admitMetadata)
       try {
@@ -156,6 +180,7 @@ async function openVideoAttempt(file, diagnostic, seekTrace, preparePoster) {
         video.removeEventListener('loadedmetadata', admitMetadata)
       }
       if (presented) {
+        loadPhase = 'poster-presentation'
         // WebKit can report loadeddata before the native first frame can be copied.
         // An inactive window may never send the callback, so retain the ready-frame path.
         frameTimer = setTimeout(resolvePresentation, 2000, false)
@@ -168,6 +193,7 @@ async function openVideoAttempt(file, diagnostic, seekTrace, preparePoster) {
       if (frameCallback !== undefined) video.cancelVideoFrameCallback(frameCallback)
       stopObservingLoad?.()
     }
+    loadPhase = 'initial-finalize'
     markVideoSeek(seekTrace, 'playback-loaded', video)
     markVideoImport(diagnostic, 'media-duration', video)
     video.width = video.videoWidth
@@ -187,44 +213,64 @@ async function openVideoAttempt(file, diagnostic, seekTrace, preparePoster) {
       if (closed) throw new DOMException('The video is closed', 'AbortError')
       frameSource ??= (async () => {
         markVideoImport(diagnostic, 'frame-access', video)
-        if (nativeVideoPixelsReadable(video)) return null
+        try {
+          if (nativeVideoPixelsReadable(video)) return null
+        } catch (error) {
+          throw failure(error, 'frame-access', 'native-pixels')
+        }
         markVideoImport(diagnostic, 'frame-decode')
         markVideoSeek(seekTrace, 'playback-frame-decoder')
-        const { decodeVideoFrames } = await import('./video-frames.js')
-        return decodeVideoFrames(file)
+        try {
+          const { decodeVideoFrames } = await import('./video-frames.js')
+          return await decodeVideoFrames(file)
+        } catch (error) {
+          throw failure(error, 'frame-decode', 'frame-decoder')
+        }
       })()
       const source = await frameSource
       if (closed) throw new DOMException('The video is closed', 'AbortError')
       return source
     }
     const seek = async (time, force = false, trace) => {
-      lifetime.signal.throwIfAborted()
-      if (!(time >= 0 && time <= duration)) throw Error('Time is outside the video')
-      if (video.error) throw mediaError(video)
-      const detail = trace && { seekTime: time }
-      if (force || Math.abs(video.currentTime - time) > 0.0001) {
-        markVideoSeek(trace, 'seek-start', video, detail)
-        const stopObserving = observeVideoSeek(trace, video, time)
-        try {
-          await waitForMedia(
-            video,
-            'seeked',
-            () => {
-              video.currentTime = time
-              markVideoSeek(trace, 'seek-assigned', video, detail)
-            },
-            lifetime.signal
-          )
-        } finally {
-          stopObserving?.()
-        }
-        markVideoSeek(trace, 'seek-completed', video, detail)
-      } else markVideoSeek(trace, 'seek-unchanged', video, detail)
+      try {
+        lifetime.signal.throwIfAborted()
+        if (!(time >= 0 && time <= duration)) throw Error('Time is outside the video')
+        if (video.error) throw mediaError(video)
+        const detail = trace && { seekTime: time }
+        if (force || Math.abs(video.currentTime - time) > 0.0001) {
+          markVideoSeek(trace, 'seek-start', video, detail)
+          const stopObserving = observeVideoSeek(trace, video, time)
+          try {
+            await waitForMedia(
+              video,
+              'seeked',
+              () => {
+                video.currentTime = time
+                markVideoSeek(trace, 'seek-assigned', video, detail)
+              },
+              lifetime.signal
+            )
+          } finally {
+            stopObserving?.()
+          }
+          markVideoSeek(trace, 'seek-completed', video, detail)
+        } else markVideoSeek(trace, 'seek-unchanged', video, detail)
+      } catch (error) {
+        throw failure(error, 'seek')
+      }
     }
     async function frameAt(time = video.currentTime) {
-      const source = await frames()
-      markVideoImport(diagnostic, 'frame-read', video)
-      return source ? source.at(time) : video
+      try {
+        const source = await frames()
+        markVideoImport(diagnostic, 'frame-read', video)
+        try {
+          return source ? await source.at(time) : video
+        } catch (error) {
+          throw failure(error, 'frame-read', 'frame-decoder')
+        }
+      } catch (error) {
+        throw failure(error, 'frame-read')
+      }
     }
     return {
       video,
@@ -254,16 +300,23 @@ async function openVideoAttempt(file, diagnostic, seekTrace, preparePoster) {
         }
       },
       async snapshot() {
-        const source = await frames()
-        const time = video.currentTime
-        const image = source ? await source.at(time) : await createImageBitmap(video)
-        return { time, image }
+        let origin
+        try {
+          const source = await frames()
+          origin = source ? 'frame-decoder' : 'native-pixels'
+          const time = video.currentTime
+          const image = source ? await source.at(time) : await createImageBitmap(video)
+          return { time, image }
+        } catch (error) {
+          throw failure(error, 'frame-read', origin)
+        }
       },
       async playbackFrames() {
         return (await frames())?.playback(video.currentTime) ?? null
       }
     }
   } catch (err) {
+    failure(err instanceof InitialVideoDecodeFailure ? err.error : err, loadPhase)
     recordVideoImportState(diagnostic, video)
     close()
     throw err
