@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
 import { mkdir, open, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
+import { startSignalResourceMonitor } from './native-signal-resources.mjs'
 
 export function videoTrialOutcome(code, signal, log) {
   const records = log
@@ -15,16 +16,19 @@ export function videoTrialOutcome(code, signal, log) {
       }
     })
   const cleanupConfirmed = records.some((record) => record.nativeVideoCleanup === 'confirmed')
+  const oracleCleanupConfirmed = records.some((record) => record.nativeVideoOracleCleanup === 'confirmed')
   const evidence = records.find((record) => record.nativeVideo === 'passed')
   const browser = records.find((record) => record.nativeVideoBrowser)?.nativeVideoBrowser
   return {
     code,
     signal,
     cleanupConfirmed,
-    verified: code === 0 && signal === null && cleanupConfirmed && Boolean(evidence),
+    oracleCleanupConfirmed,
+    verified:
+      code === 0 && signal === null && cleanupConfirmed && oracleCleanupConfirmed && Boolean(evidence),
     evidence,
     browser,
-    continueTrials: cleanupConfirmed && signal === null
+    continueTrials: cleanupConfirmed && oracleCleanupConfirmed && signal === null
   }
 }
 
@@ -36,7 +40,7 @@ export async function runVideoTrials({ apps, order, destination, args = [], envi
     const logPath = path.join(destination, `${index}-${candidate}.log`)
     const output = await open(logPath, 'wx')
     const started = performance.now()
-    let code, signal
+    let code, signal, resources
     try {
       const child = spawn(
         process.execPath,
@@ -52,12 +56,30 @@ export async function runVideoTrials({ apps, order, destination, args = [], envi
           windowsHide: true
         }
       )
-      ;[code, signal] = await new Promise((resolve, reject) => {
+      const completed = new Promise((resolve, reject) => {
         child.once('error', reject)
         child.once('close', (code, signal) => resolve([code, signal]))
       })
+      // Setup does filesystem work before awaiting completion; handle an early spawn failure too.
+      completed.catch(() => {})
+      if (process.env.OPENLR_SIGNAL_RESOURCES === '1') {
+        try {
+          resources = await startSignalResourceMonitor({
+            filePath: path.join(destination, `${index}-resources.jsonl`),
+            rootPid: child.pid,
+            isRootAlive: () => child.exitCode === null && child.signalCode === null
+          })
+        } catch (error) {
+          console.error('Native signal resource monitor failed to start:', error)
+        }
+      }
+      ;[code, signal] = await completed
     } finally {
-      await output.close()
+      try {
+        await resources?.stop()
+      } finally {
+        await output.close()
+      }
     }
     const outcome = videoTrialOutcome(code, signal, await readFile(logPath, 'utf8'))
     const trial = { index, candidate, elapsedMs: performance.now() - started, ...outcome }

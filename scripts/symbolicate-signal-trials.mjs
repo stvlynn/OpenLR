@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { mappedSignalImage, parseSignalContext } from './calibrate-signal-context.mjs'
@@ -8,6 +8,7 @@ import { mappedSignalImage, parseSignalContext } from './calibrate-signal-contex
 const marker = 'OpenLR forwarded signal sig/code/pc/lr/sp '
 const diagnosticPrefixes = ['Native workflow failure diagnostics: ', 'Native startup diagnostics: ']
 const kernelPath = '/usr/lib/system/libsystem_kernel.dylib'
+const javaScriptCorePath = '/System/Library/Frameworks/JavaScriptCore.framework/Versions/A/JavaScriptCore'
 const uuidPattern = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'
 const normalizeUUID = (uuid) => uuid.replaceAll('-', '').toLowerCase()
 const errorText = (error) => String(error?.message || error).slice(0, 2048)
@@ -178,11 +179,40 @@ export async function symbolicateSignalTrials(artifactRoot, { run = runAppleTool
   }
   report.sourceTrialsComplete = trials.complete === true
   report.sourceScheduledTrials = trials.order?.length ?? null
+  report.sourceCompletedTrials = trials.trials.length
+  const completedIndices = new Set(trials.trials.map((trial) => trial.index))
+  const logNames = await readdir(path.join(source, 'video-export-trials'))
+  for (const [index, candidate] of (trials.order || []).entries()) {
+    if (completedIndices.has(index)) continue
+    assert.match(candidate, /^[a-z0-9-]+$/)
+    if (logNames.includes(`${index}-${candidate}.log`))
+      trials.trials.push({ index, candidate, verified: false, incomplete: true })
+  }
+  const sourceHostImages = new Map()
+  try {
+    const identities = await readFile(
+      path.join(source, 'signal-calibration', 'source-system-images.log'),
+      'utf8'
+    )
+    for (const imagePath of [kernelPath, javaScriptCorePath])
+      sourceHostImages.set(imagePath, parseDyldUUID(identities, imagePath))
+    assert.equal(
+      sourceHostImages.get(kernelPath).uuid,
+      sourceImages.get(kernelPath).uuid,
+      'Source host kernel identity differs from the same-host calibration'
+    )
+  } catch (error) {
+    if (error.code !== 'ENOENT') report.errors.push({ phase: 'source-host-images', error: errorText(error) })
+  }
+  report.sourceHostSystemImages = [...sourceHostImages.values()]
   report.calibrationKernel = sourceImages.get(kernelPath)
   const identityCache = new Map()
   const currentImage = (imagePath) => {
     if (!identityCache.has(imagePath)) {
-      const arch = sourceImages.get(imagePath)?.arch || sourceImages.get(kernelPath).arch
+      const arch =
+        sourceHostImages.get(imagePath)?.arch ||
+        sourceImages.get(imagePath)?.arch ||
+        sourceImages.get(kernelPath).arch
       assert.match(arch, /^arm64e?$/)
       identityCache.set(imagePath, checkedImage(imagePath, arch, run))
     }
@@ -218,7 +248,12 @@ export async function symbolicateSignalTrials(artifactRoot, { run = runAppleTool
     }
   }
   for (const trial of trials.trials) {
-    const result = { index: trial.index, candidate: trial.candidate, sourceVerified: trial.verified === true }
+    const result = {
+      index: trial.index,
+      candidate: trial.candidate,
+      sourceVerified: trial.verified === true,
+      sourceTrialComplete: trial.incomplete !== true
+    }
     report.trials.push(result)
     try {
       assert.ok(Number.isSafeInteger(trial.index) && trial.index >= 0)
@@ -246,6 +281,10 @@ export async function symbolicateSignalTrials(artifactRoot, { run = runAppleTool
           continue
         }
         address.currentImage = currentImage(imagePath)
+        address.sourceHostImage = sourceHostImages.get(imagePath) || null
+        address.sourceHostImageMatchesCurrent = address.sourceHostImage
+          ? address.currentImage.uuid === address.sourceHostImage.uuid
+          : null
         address.calibrationImage = sourceImages.get(imagePath) || null
         address.calibrationImageMatchesCurrent = address.calibrationImage
           ? address.currentImage.uuid === address.calibrationImage.uuid
@@ -258,7 +297,10 @@ export async function symbolicateSignalTrials(artifactRoot, { run = runAppleTool
           address.status = 'image-unavailable'
           continue
         }
-        if (address.calibrationImageMatchesCurrent === false) {
+        if (
+          address.calibrationImageMatchesCurrent === false ||
+          address.sourceHostImageMatchesCurrent === false
+        ) {
           address.status = 'image-mismatch'
           continue
         }

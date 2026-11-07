@@ -25,6 +25,19 @@ jobs:
         with:
           go-version-file: go.mod
       - run: npm ci
+      - name: Record the source host system image identities
+        run: |
+          mkdir -p build/signal-calibration
+          {
+            uname -a
+            sw_vers
+            for image in /System/Library/Frameworks/JavaScriptCore.framework/Versions/A/JavaScriptCore /usr/lib/system/libsystem_kernel.dylib; do
+              printf '\nImage: %s\n' "$image"
+              if xcrun dyld_info -arch arm64e -uuid "$image"; then status=0; else status=$?; fi
+              printf 'dyld_info exit status: %s\n' "$status"
+            done
+          } > build/signal-calibration/source-system-images.log 2>&1
+          cat build/signal-calibration/source-system-images.log
       - name: Prepare the isolated signal-observation toolchain
         run: |
           node scripts/prepare-signal-runtime.mjs
@@ -47,6 +60,7 @@ jobs:
         timeout-minutes: 28
         env:
           OPENLR_DIAGNOSTICS: '1'
+          OPENLR_SIGNAL_RESOURCES: '1'
         run: node scripts/native-video-export-trials.mjs build/release/darwin-arm64/OpenLR.app/Contents/MacOS/OpenLR build/video-export-trials
       - uses: actions/upload-artifact@v4
         if: always()

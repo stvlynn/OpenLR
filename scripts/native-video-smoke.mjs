@@ -11,6 +11,7 @@ import {
 } from '../tests/fixtures/video.mjs'
 import { withHostCrashTrace } from './native-crash-trace.mjs'
 import { withNativeWorkspace } from './native-workspace.mjs'
+import { ownVideoOracle } from './native-video-oracle.mjs'
 
 const [executable, mode] = process.argv.slice(2)
 if (mode !== undefined && (!['--lldb', '--lldb-workflow'].includes(mode) || process.platform !== 'darwin'))
@@ -164,12 +165,18 @@ function checkColor(pixel, channel, label) {
 }
 
 const server = await serveWorkspace()
-let browser
+let oracle,
+  primaryFailure = false
 try {
   const oracleChrome = process.env.OPENLR_VIDEO_PROBE_CHROME
-  browser = await chromium.launch(
-    oracleChrome ? { executablePath: oracleChrome } : { channel: process.env.CHROME_CHANNEL || 'chrome' }
-  )
+  const owner = await chromium.launchServer({
+    ...(oracleChrome
+      ? { executablePath: oracleChrome }
+      : { channel: process.env.CHROME_CHANNEL || 'chrome' }),
+    host: '127.0.0.1'
+  })
+  oracle = ownVideoOracle(owner)
+  const browser = await chromium.connect(owner.wsEndpoint(), { timeout: 45_000 })
   console.log(JSON.stringify({ nativeVideoBrowser: browser.version() }))
   async function prepareOracle() {
     const page = await browser.newPage()
@@ -390,11 +397,16 @@ try {
       onCleanup: () => console.log(JSON.stringify({ nativeVideoCleanup: 'confirmed' }))
     }
   )
+} catch (error) {
+  primaryFailure = true
+  throw error
 } finally {
   try {
-    console.log(JSON.stringify({ nativeVideoOracleCleanup: 'started' }))
-    await browser?.close()
-    console.log(JSON.stringify({ nativeVideoOracleCleanup: 'confirmed' }))
+    if (oracle) await oracle.close()
+    else console.log(JSON.stringify({ nativeVideoOracleCleanup: 'failed', error: 'OwnershipUnavailable' }))
+  } catch (error) {
+    if (!primaryFailure) throw error
+    console.error('Video oracle cleanup failed: ' + error.message)
   } finally {
     server.close()
   }
