@@ -15,16 +15,19 @@ export function videoTrialOutcome(code, signal, log) {
       }
     })
   const cleanupConfirmed = records.some((record) => record.nativeVideoCleanup === 'confirmed')
+  const oracleCleanupConfirmed = records.some((record) => record.nativeVideoOracleCleanup === 'confirmed')
   const evidence = records.find((record) => record.nativeVideo === 'passed')
   const browser = records.find((record) => record.nativeVideoBrowser)?.nativeVideoBrowser
   return {
     code,
     signal,
     cleanupConfirmed,
-    verified: code === 0 && signal === null && cleanupConfirmed && Boolean(evidence),
+    oracleCleanupConfirmed,
+    verified:
+      code === 0 && signal === null && cleanupConfirmed && oracleCleanupConfirmed && Boolean(evidence),
     evidence,
     browser,
-    continueTrials: cleanupConfirmed && signal === null
+    continueTrials: cleanupConfirmed && oracleCleanupConfirmed && signal === null
   }
 }
 
