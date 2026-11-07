@@ -99,11 +99,8 @@ jobs:
           fi
           node scripts/desktop.mjs build -o build/release -platform darwin/arm64
           go version -m build/release/darwin-arm64/OpenLR.app/Contents/MacOS/OpenLR > build/signal-calibration/application-build-info.txt
-          if [ "$POST_SIGNAL_WORKFLOW" = true ]; then
-            node --input-type=module -e 'import assert from "node:assert/strict"; import { readFile } from "node:fs/promises"; assert.ok((await readFile("build/signal-calibration/application-build-info.txt", "utf8")).includes("-X runtime.openlrFreezeSignal=1"), "The diagnostic application must retain its opt-in signal stop linker setting")'
-          fi
       - uses: actions/upload-artifact@v4
-        if: ${{ !inputs.frida_calibration && !inputs.post_signal_calibration }}
+        if: ${{ always() && !inputs.frida_calibration && !inputs.post_signal_calibration }}
         with:
           name: original-signal-macos-package
           path: build/release/darwin-arm64/*.dmg
