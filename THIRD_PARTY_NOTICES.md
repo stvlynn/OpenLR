@@ -35,6 +35,8 @@ Dependency manifests and lockfiles identify package versions. Their upstream pac
 
 `scripts/fixtures/mygo-startup/mygo-v0.7.4.patch` contains source context from MyGo v0.7.4 and adds fixed-stage WebView2 startup tracing. The diagnostic builder applies it to a disposable copy of the pinned module. The MIT notice in the dependency table above covers the upstream source context.
 
+`scripts/fixtures/scheme-bridge/mygo-v0.7.4.patch` contains source context from the same pinned MyGo v0.7.4, principally `bridge.go`, `internal/bridge/bridge.go`, `internal/darwin/window.go` and `internal/darwin/scheme.go`. It adds an experimental local-frontend URL-scheme transport and native evaluation-return path to a disposable module copy. This is diagnostic source, not an adopted production dependency or a claim of general MyGo compatibility. The existing MyGo MIT license above applies to its upstream context; candidate notes retain its behavior and verification limits.
+
 When vendoring or adapting third-party material, add a record here containing the local paths, upstream URL and fixed revision, copyright holder, applicable license, retained notice locations, and modification summary. Preserve required license texts alongside the imported material. Before distributing a bundle, inventory the actual included packages and assets and include their required notices.
 
 Adobe and Lightroom are names of third-party products discussed as prior art. This repository's name and references do not imply affiliation or endorsement.
