@@ -3,7 +3,12 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
-import { audioLayoutOrder, audioLayoutOutcome } from '../scripts/native-audio-layout-comparison.mjs'
+import {
+  audioLayoutOrder,
+  audioLayoutOutcome,
+  audioReadTimingOrder,
+  audioComparisonPlan
+} from '../scripts/native-audio-layout-comparison.mjs'
 import { runVideoTrials } from '../scripts/native-video-trials.mjs'
 
 const receipts = [{ nativeVideoCleanup: 'confirmed' }, { nativeVideoOracleCleanup: 'confirmed' }]
@@ -59,7 +64,7 @@ test('shared scheduler observes real child close, retains failed trials and stop
       apps: { control: process.execPath, candidate: process.execPath },
       order: ['control', 'candidate'],
       script,
-      outcome: audioLayoutOutcome,
+      outcome: (code, signal, log) => audioLayoutOutcome(code, signal, log),
       sharedFixture: false,
       environments: {
         control: { CONTROLLED_RECORDS: JSON.stringify(receipts), CONTROLLED_CODE: '1' },
@@ -75,6 +80,27 @@ test('shared scheduler observes real child close, retains failed trials and stop
       [false, true]
     )
     assert.match(await readFile(path.join(completed, '0-control.log'), 'utf8'), /original controlled error/)
+    const timing = path.join(root, 'read-timing')
+    const plan = audioComparisonPlan('read-timing')
+    await runVideoTrials({
+      ...options,
+      destination: timing,
+      apps: Object.fromEntries(Object.keys(plan.arms).map((label) => [label, process.execPath])),
+      order: ['original-workflow', 'added-read'],
+      environments: {
+        'original-workflow': { CONTROLLED_RECORDS: JSON.stringify([...evidence.slice(2), ...receipts]) },
+        'added-read': { CONTROLLED_RECORDS: JSON.stringify([...evidence, ...receipts]) }
+      },
+      outcome: (code, signal, log, label) =>
+        audioLayoutOutcome(code, signal, log, plan.arms[label].originalReadBeforeTrim ? 2 : 0)
+    })
+    const timingReport = JSON.parse(await readFile(path.join(timing, 'report.json')))
+    assert.equal(timingReport.complete, true)
+    assert.ok(timingReport.trials.every(({ verified }) => verified))
+    assert.deepEqual(
+      timingReport.trials.map(({ expectedBeforeTrimChecks }) => expectedBeforeTrimChecks),
+      [0, 2]
+    )
     const stopped = path.join(root, 'stopped')
     await assert.rejects(
       runVideoTrials({
@@ -91,4 +117,33 @@ test('shared scheduler observes real child close, retains failed trials and stop
   } finally {
     await rm(root, { recursive: true, force: true })
   }
+})
+
+test('read timing uses the exact original for 24 fixed trials and requires each arm receipt count', () => {
+  const plan = audioComparisonPlan('read-timing')
+  assert.equal(plan.order, audioReadTimingOrder)
+  assert.equal(plan.order.length, 24)
+  const block = ['original-workflow', 'added-read', 'added-read', 'original-workflow']
+  for (let index = 0; index < 6; index++) assert.deepEqual(plan.order.slice(index * 4, index * 4 + 4), block)
+  for (const label of Object.keys(plan.arms)) {
+    assert.equal(plan.order.filter((item) => item === label).length, 12)
+    assert.equal(plan.arms[label].filename, 'original-10000ns.webm')
+  }
+  assert.equal(plan.arms['original-workflow'].originalReadBeforeTrim, false)
+  assert.equal(plan.arms['added-read'].originalReadBeforeTrim, true)
+  const withoutRead = lines([...evidence.slice(2), ...receipts])
+  const addedRead = lines([...evidence, ...receipts])
+  assert.equal(audioLayoutOutcome(0, null, withoutRead, 0).verified, true)
+  assert.equal(audioLayoutOutcome(0, null, withoutRead, 2).verified, false)
+  assert.equal(audioLayoutOutcome(0, null, addedRead, 0).verified, false)
+  assert.equal(audioLayoutOutcome(0, null, addedRead, 2).verified, true)
+  assert.equal(audioLayoutOutcome(0, null, lines(receipts), 0).verified, false)
+  assert.equal(audioLayoutOutcome(1, null, withoutRead, 0).verified, false)
+  assert.equal(audioLayoutOutcome(0, null, lines(evidence.slice(2)), 0).continueTrials, false)
+  assert.throws(() => audioLayoutOutcome(0, null, withoutRead, 1), /zero or two/)
+  const layout = audioComparisonPlan('layout')
+  assert.equal(layout.order, audioLayoutOrder)
+  assert.equal(Object.keys(layout.arms).length, 3)
+  assert.ok(Object.values(layout.arms).every(({ originalReadBeforeTrim }) => originalReadBeforeTrim))
+  assert.throws(() => audioComparisonPlan('retry'), /Choose layout or read-timing/)
 })

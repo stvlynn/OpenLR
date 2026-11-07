@@ -68,7 +68,7 @@ export async function runVideoTrials({
     } finally {
       await output.close()
     }
-    const result = outcome(code, signal, await readFile(logPath, 'utf8'))
+    const result = outcome(code, signal, await readFile(logPath, 'utf8'), candidate)
     const trial = { index, candidate, elapsedMs: performance.now() - started, ...result }
     trials.push(trial)
     console.log(JSON.stringify(trial))

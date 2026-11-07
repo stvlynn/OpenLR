@@ -60,6 +60,44 @@ The preparer is deliberately limited to this finite, unlaced fixture shape;
 it is not a general WebM remuxer. macOS playback and all existing independent
 image/audio/original-byte assertions remain the comparison runner's job.
 
+## Native comparison modes
+
+The same runner and workflow support two controlled modes. After preparation,
+pass a stock OpenLR executable, the prepared directory and a fresh report
+directory. FFmpeg and ffprobe must be on PATH; an optional fourth positional
+argument names their directory.
+
+```sh
+node scripts/native-audio-layout-comparison.mjs PATH_TO_OPENLR build/short-audio-layout build/audio-layout-trials --comparison=layout
+node scripts/native-audio-layout-comparison.mjs PATH_TO_OPENLR build/short-audio-layout build/audio-read-trials --comparison=read-timing
+```
+
+`layout` retains the three-arm schedule: original, reticked, regrouped,
+regrouped, reticked, original, repeated four times, with eight fresh hosts per
+arm. Every arm performs the added exact-original export/read before trim.
+That read changes timing, so a null layout result cannot exclude the original
+intermittent failure.
+
+`read-timing` uses the exact original 59,365-byte input and one stock executable
+for both arms. Its fixed order is original-workflow, added-read, added-read,
+original-workflow, repeated six times: 24 fresh hosts, twelve per arm. The
+diagnostic environment setting `OPENLR_AUDIO_ORIGINAL_BEFORE_TRIM=0` omits only
+the added pre-trim original export/read, including the corresponding AAC-input
+read. Setting it to `1` enables those two reads; the standalone smoke defaults
+to enabled. The result parser requires exactly zero or two pre-trim receipts
+according to the arm. Both arms retain every post-trim original-byte, image,
+rotation, multitrack export, decoded audio and exact frame-count assertion.
+There are no added delays or retries. A finite null timing result also cannot
+establish elimination of an intermittent failure.
+
+Both modes use the shared scheduler and actual owned host/browser cleanup.
+Semantic failures remain in the report; another host starts only after both
+cleanup receipts and the smoke process's actual close. Cohort completion does
+not mean every semantic assertion passed. The workflow's manual `comparison`
+choice selects either mode; its self-path push trigger defaults to
+`read-timing`. The 24-trial budget remains 28 minutes for the comparison and
+35 minutes for the job, with one preparation and one stock application build.
+
 ## Local verification
 
 On Windows with Node 24.9.0, both focused tests passed, as did JavaScript syntax
@@ -73,3 +111,21 @@ video SimpleBlock durations, so those fields are not an independent duration
 oracle; the preparer's public-reader check requires every video and audio
 duration to match. These checks do not establish macOS playback or the cause of
 the retained error.
+
+## Completed native observations
+
+Apple Silicon run [42387471151](https://github.com/stvlynn/OpenLR/actions/runs/42387471151)
+at `75ea466` completed all 24 strict trials, eight per input arm, including the
+exact retained original. Each trial passed WebM, MP4 and 44.1 kHz AAC checks;
+the logs retained 48 pre-trim original-byte receipts. All host cleanup was
+confirmed, and all 24 distinct owned browser processes closed gracefully with
+no forced cleanup. Artifact `13579334657` was audited under
+`.workspace/audio-layout-75ea466/`.
+
+A clean Windows build at the same revision used stock Go 1.27.3, FFmpeg 8.1.2
+and Chrome 157.0.8103.38. The same 59,365-byte original passed every strict
+check in 20.4 seconds, with confirmed host and graceful browser cleanup. The
+log is `.workspace/audio-layout-windows-75ea466.log`. Neither result establishes
+container causation or recovery from the native decode error. The original
+also passed, and all these observations included the added pre-trim read;
+the separate timing mode above tests that remaining design difference.

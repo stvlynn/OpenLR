@@ -13,6 +13,12 @@ import { ownVideoOracle } from './native-video-oracle.mjs'
 const [executable, ffmpegBin] = process.argv.slice(2)
 assert.ok(executable, 'Pass the OpenLR executable and optionally the directory containing FFmpeg and ffprobe')
 const { sampleRate, delays, names, languages, title, shortStartFrame, shortFrames } = multitrackFixture
+const originalReadSetting = process.env.OPENLR_AUDIO_ORIGINAL_BEFORE_TRIM
+assert.ok(
+  originalReadSetting === undefined || ['0', '1'].includes(originalReadSetting),
+  'OPENLR_AUDIO_ORIGINAL_BEFORE_TRIM must be 0 or 1'
+)
+const originalReadBeforeTrim = originalReadSetting !== '0'
 
 function run(tool, ...args) {
   const command = ffmpegBin
@@ -360,9 +366,11 @@ async function prepareClip(call, file, startFrame, rate) {
   assert.deepEqual(added.failed, [])
   assert.equal(added.added.length, 1)
   const [id] = added.added
-  // All comparison arms perform this read before trim; it also changes timing.
-  await checkOriginal(call, file, await readFile(file), 'before-trim-original-')
-  console.log(JSON.stringify({ nativeAudioExport: 'original-before-trim-passed' }))
+  // Diagnostic timing comparison only; all post-trim checks remain unconditional.
+  if (originalReadBeforeTrim) {
+    await checkOriginal(call, file, await readFile(file), 'before-trim-original-')
+    console.log(JSON.stringify({ nativeAudioExport: 'original-before-trim-passed' }))
+  }
   const trim = { start: startFrame / rate, end: (startFrame + shortFrames) / rate }
   const state = await call('video-trim', '--start', String(trim.start), '--end', String(trim.end))
   assert.equal(state.selected, id)
@@ -435,7 +443,8 @@ try {
     JSON.stringify({
       nativeAudioExport: 'source-ready',
       bytes: opusBytes.length,
-      retained: Boolean(process.env.OPENLR_AUDIO_SOURCE)
+      retained: Boolean(process.env.OPENLR_AUDIO_SOURCE),
+      originalReadBeforeTrim
     })
   )
   const smoke = async ({ root, call, initial }) => {

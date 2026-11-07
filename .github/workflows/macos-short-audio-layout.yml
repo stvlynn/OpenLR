@@ -1,6 +1,12 @@
-name: macOS ARM short audio source layout comparison
+name: macOS ARM short audio comparison
 on:
   workflow_dispatch:
+    inputs:
+      comparison:
+        description: Controlled short audio comparison
+        type: choice
+        options: [read-timing, layout]
+        default: read-timing
   push:
     branches: [experiment/short-audio-layout]
     paths: [.github/workflows/macos-short-audio-layout.yml]
@@ -10,6 +16,8 @@ jobs:
   comparison:
     runs-on: macos-15
     timeout-minutes: 35
+    env:
+      AUDIO_COMPARISON: ${{ inputs.comparison || 'read-timing' }}
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -33,18 +41,19 @@ jobs:
           echo "OPENLR_AUDIO_ORACLE_CHROME=$PWD/build/audio-oracle/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing" >> "$GITHUB_ENV"
       - name: Prepare the retained source and two packet-equivalent layouts once
         run: node scripts/prepare-short-audio-layout.mjs build/short-audio-layout
-      - name: Build one stock vendored application for all three arms
+      - name: Build one stock vendored application for every arm
         run: node scripts/desktop.mjs build -o build/audio-layout-app -platform darwin/universal
-      - name: Run four fixed mirrored six-trial blocks with fresh owned hosts
+      - name: Run the selected fixed 24-trial comparison with fresh owned hosts
         timeout-minutes: 28
         run: >-
           node scripts/native-audio-layout-comparison.mjs
           build/audio-layout-app/darwin-universal/OpenLR.app/Contents/MacOS/OpenLR
           build/short-audio-layout build/short-audio-layout-trials
+          --comparison="$AUDIO_COMPARISON"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: short-audio-layout-arm
+          name: short-audio-${{ env.AUDIO_COMPARISON }}-arm
           path: |
             build/short-audio-layout/**
             build/short-audio-layout-trials/**
