@@ -4,6 +4,10 @@
 
 ## 桌面验收与交付快照 — 2026-11-07
 
+`fc44a93` 的 GitHub Actions 在 Windows、Ubuntu、macOS Intel 和 Apple Silicon 全部通过。Windows 浏览器共 506 项，498 通过、8 项可选资源跳过；两种 macOS 也通过独立短多音轨 WebM／MP4 和 44.1 kHz AAC 检查。视频命令加载失败时保留当前 Grid 画面、共享状态、存储编辑和原件，成功后再进入 Detail。此次 push 未启用可选 macOS 原生对话框步骤，其证据仍以先前专项为准。[四平台验收](https://github.com/stvlynn/OpenLR/actions/runs/42343182557) · [失败状态回归与原生范围](../research/native-video.md#source-image-identity-and-memory-observation)
+
+独立 ARM 调试观察 `dce6e4e` 完成 **24/24**，逐轮核验实际帧、两种音频输出、原件和双重清理，但未复现普通运行捕获的 JavaScriptCore 分配器陷阱。调试器改变时序并占用额外内存，因此不能据此认定已修复。后续 REA／Frida 校准在 provider 启动阶段失败，尚未执行目标断点；该失败也不构成应用修复或异常回调验证。[已完成观察与待定位问题](../research/native-video.md#completed-debugger-observation-and-provider-startup-failure)
+
 `678c889` 的 Windows Chrome 完整回归 **500/500**，零失败、零跳过，322.9 秒，包含独立色彩和元数据校验。Windows、Ubuntu 24.04、macOS Intel 和 macOS Apple Silicon 的 GitHub Actions 原生验收全部通过。导出确认在选图变更后不写文件，已预留的批量目录会关闭。Windows WebView2 的独立原生 CLI 验证覆盖三个导出命令、正确目标的字节读回和历史设置保留。Photos 10.0 的实际 IPTC 侧车也已在 macOS Apple Silicon 和 Windows 原生包完成迁移。[导出验证](../research/confirmation-targets.md#export-confirmation-follow-up--2026-11-07) · [四平台作业](https://github.com/stvlynn/OpenLR/actions/runs/42316534448) · [Photos 验证](catalog-migration.md#verification-and-dependency)
 
 本机 Lightroom Classic 15.6 实际创建的 `1504001` 目录在干净 `4dc23f6` Windows 原生包通过迁移。三条照片记录对应两个生成原件，四星评分、留用旗标、收藏夹成员、虚拟副本和独立曝光编辑均保留。三次原件导出逐字节匹配，重启后重试识别全部现有记录。[Classic 迁移验证](../research/catalog-migration.md#fresh-lightroom-classic-156-catalog)
