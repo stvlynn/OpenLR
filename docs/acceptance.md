@@ -4,7 +4,9 @@
 
 ## 桌面验收与交付快照 — 2026-11-07
 
-`678c889` 的 Windows Chrome 完整回归 **500/500**，零失败、零跳过，322.9 秒，包含独立色彩和元数据校验。导出确认在选图变更后不写文件，已预留的批量目录会关闭。Windows WebView2 的独立原生 CLI 验证覆盖三个导出命令、正确目标的字节读回和历史设置保留。Photos 10.0 的实际 IPTC 侧车也已在 macOS Apple Silicon 和 Windows 原生包完成迁移。[导出验证](../research/confirmation-targets.md#export-confirmation-follow-up--2026-11-07) · [四平台作业](https://github.com/stvlynn/OpenLR/actions/runs/42316534448) · [Photos 验证](catalog-migration.md#verification-and-dependency)
+`678c889` 的 Windows Chrome 完整回归 **500/500**，零失败、零跳过，322.9 秒，包含独立色彩和元数据校验。Windows、Ubuntu 24.04、macOS Intel 和 macOS Apple Silicon 的 GitHub Actions 原生验收全部通过。导出确认在选图变更后不写文件，已预留的批量目录会关闭。Windows WebView2 的独立原生 CLI 验证覆盖三个导出命令、正确目标的字节读回和历史设置保留。Photos 10.0 的实际 IPTC 侧车也已在 macOS Apple Silicon 和 Windows 原生包完成迁移。[导出验证](../research/confirmation-targets.md#export-confirmation-follow-up--2026-11-07) · [四平台作业](https://github.com/stvlynn/OpenLR/actions/runs/42316534448) · [Photos 验证](catalog-migration.md#verification-and-dependency)
+
+本机 Lightroom Classic 15.6 实际创建的 `1504001` 目录在干净 `4dc23f6` Windows 原生包通过迁移。三条照片记录对应两个生成原件，四星评分、留用旗标、收藏夹成员、虚拟副本和独立曝光编辑均保留。三次原件导出逐字节匹配，重启后重试识别全部现有记录。[Classic 迁移验证](../research/catalog-migration.md#fresh-lightroom-classic-156-catalog)
 
 `55a52c2` 的本机 Windows Chrome 完整回归 **497/497**，零失败、零跳过，314.1 秒。同一修订的 GitHub Actions 在 Windows、Ubuntu 24.04、macOS Intel 和 macOS Apple Silicon 全部通过，包含两种 macOS 架构的真实文件夹选择和原件保存面板。`496e001` 的 Ubuntu 专项实际安装 Debian 包，通过原始桌面入口冷启动应用，核对实际 PID 与 CLI 会话，并验证了预览、原件、退出及卸载。后续系统文件交付与重复打开也通过。隔离 Sway 上的文件夹选择和保存均通过，Wayland 协议记录确认 GTK 为四次对话框都设置了父窗口。[四平台作业](https://github.com/stvlynn/OpenLR/actions/runs/42310306955) · [Debian 安装专项](https://github.com/stvlynn/OpenLR/actions/runs/42311458254) · [Wayland 验证](local-folders.md#verification)
 
