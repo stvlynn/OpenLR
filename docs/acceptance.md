@@ -4,11 +4,21 @@
 
 ## 桌面验收与交付快照 — 2026-11-08
 
-公共 main 已合入 `df741d6`。该修订的 Desktop 矩阵在 Windows、Ubuntu、macOS Intel 和 Apple Silicon 全部通过；Windows 共 534 项浏览器检查，525 通过、9 跳过、零失败，实际 NSIS 安装／卸载及六种文件关联也通过。但独立的普通正式包视频专项仅通过 **23/24**，因此本轮整体目标尚未完成，不能用四平台矩阵或此前有限成功覆盖这次失败。[Main Desktop 矩阵](https://github.com/stvlynn/OpenLR/actions/runs/42392485520) · [独立正式包专项](https://github.com/stvlynn/OpenLR/actions/runs/42392485539)
+公共 main 的产品修订 184dcf6 已通过 Windows、Ubuntu、macOS Intel 和 Apple Silicon 四平台 Desktop 验收；Windows 浏览器共 548 项，539 通过、9 项明确跳过、零失败。实际 NSIS 安装／卸载及六种文件关联、Debian 安装与随包 CLI、两种 macOS 的 DMG 复制和原生工作流均通过。Windows 与两种 macOS 的独立短多音轨 WebM／MP4 及 44.1 kHz AAC 输入也通过。[当前四平台矩阵](https://github.com/stvlynn/OpenLR/actions/runs/42401549230)
+
+同一修订的普通正式包独立专项通过 24/24：每轮图像、播放、保存帧、音视频导出、原件字节与宿主清理均通过，独立浏览器全部优雅退出，code 0、signal null。构建记录为 stock Go 1.27.3、准确源码修订及 vcs.modified=false。新生成素材与前序原件仅有容器创建日期不同，解码配置与全部媒体包及时间信息经公开 API 对比一致。[独立发行版验收](https://github.com/stvlynn/OpenLR/actions/runs/42401611268) · [逐轮证据与输入边界](../research/native-video.md)
+
+当前验收满足已记录的 OpenLR 产品与 CLI 合同；逐项审计未发现额外缺失的必需语义操作。完整 Adobe 功能、界面及算法等价性仍未建立。历史首个 seek、MP4 停滞和启动／清理失败继续保留，未宣称根因已消除；资源观察及编码微探针的有限通过也没有用于选择推测性修复。[完成度审计](../research/completion-audit.md) · [保留调查与环境范围](../research/remaining-work.md)
+
+本次矩阵未启用可选 macOS 文件夹／保存面板自动化，其真实交互证据以先前专项为准；四个平台均缺少独立 ExifTool 元数据 oracle，但实际导出／重新导入已运行。Windows 的 9 项跳过涉及可选真实模型、独立图像／元数据工具和不适用于 Windows 的信号测试。平台、输入、物理设备与独立服务边界保持明确记录。
+
+### 前序验收与故障记录
+
+前序 main 已合入 `df741d6`。该修订的 Desktop 矩阵在 Windows、Ubuntu、macOS Intel 和 Apple Silicon 全部通过；Windows 共 534 项浏览器检查，525 通过、9 跳过、零失败，实际 NSIS 安装／卸载及六种文件关联也通过。但独立的普通正式包视频专项仅通过 **23/24**，因此当时未作完成结论，不能用四平台矩阵或此前有限成功覆盖该次失败。[Main Desktop 矩阵](https://github.com/stvlynn/OpenLR/actions/runs/42392485520) · [独立正式包专项](https://github.com/stvlynn/OpenLR/actions/runs/42392485539)
 
 独立专项的零基第 3 轮使用同一份 27,479 字节生成素材，导入通过后，首个 `video-seek --time 0.35` 在 `native-video-smoke.mjs:209` 返回 `Media failed to decode`；尚未出现 `frames-passed` 标记，也未执行到导出。宿主仍存活，health 返回 200、control 正常，生产构建的 UI-pump 端点返回预期的 404；宿主清理已确认，独立浏览器优雅退出。诊断关闭，故原始日志不能确定原生数值错误码、metadata 准入条件、恢复次数或具体发生于加载、初始跳转、帧准备还是绘制。不能把此前 `c53` 自然恢复事件或受控注入的数值 3 借用于这次失败。原始日志保留在 `.workspace/main-release-df741d6/release-video-trials/3-release.log`，对应 artifact `13582860897`。
 
-当前未完成工作仍是定位这一首个 seek 命令内的失败边界。携带 failure-only `error.details.video` 的后续隔离观察已结束：OFF 通过 24/24 并确认全部清理；ON 在 17 轮后停止，15 轮通过，另有 MP4 编码等待超时和 renderer-gone 启动失败。另一组 OFF 延续观察也在 MP4 命令超时后发生启动失败，18 轮中 16 轮通过，因独立浏览器完整清理未确认而停止。两次均已确认浏览器父进程被 SIGKILL 终止，不能推断子进程仍存活。首个 seek 故障没有再次返回，仍不能据此确定原失败阶段或声称修复。独立编码微探针的五组配置正反各一次均保留了全部 15 帧并通过实际解码、时间戳与颜色校验；它没有运行完整播放与音视频导出流程，也没有复现停滞，故未采用新编码策略。[终态观察与清理边界](../research/native-video.md#main-first-seek-failure-and-paired-observation--2026-11-08) · [编码微探针](../research/native-video.md#public-encoder-configuration-microprobe--2026-11-08)
+前序调查围绕首个 seek 命令的失败边界展开。携带 failure-only `error.details.video` 的后续隔离观察已结束：OFF 通过 24/24 并确认全部清理；ON 在 17 轮后停止，15 轮通过，另有 MP4 编码等待超时和 renderer-gone 启动失败。另一组 OFF 延续观察也在 MP4 命令超时后发生启动失败，18 轮中 16 轮通过，因独立浏览器完整清理未确认而停止。两次均已确认浏览器父进程被 SIGKILL 终止，不能推断子进程仍存活。首个 seek 故障没有再次返回，仍不能据此确定原失败阶段或声称修复。独立编码微探针的五组配置正反各一次均保留了全部 15 帧并通过实际解码、时间戳与颜色校验；它没有运行完整播放与音视频导出流程，也没有复现停滞，故未采用新编码策略。[终态观察与清理边界](../research/native-video.md#main-first-seek-failure-and-paired-observation--2026-11-08) · [编码微探针](../research/native-video.md#public-encoder-configuration-microprobe--2026-11-08)
 
 `a8c07ee` 的四平台完整验收全部通过。Windows 浏览器共 534 项，525 通过、9 项跳过、零失败；原生包、NSIS 安装与卸载及六种文件关联也通过。Ubuntu 验证实际 Debian 安装、原生套件和随包 CLI。两种 macOS 验证 DMG 复制、真实文件夹与保存面板、原生照片工作流及短多音轨 WebM／MP4、44.1 kHz AAC。该修订包含本地桥接修复、Matroska 声明时长优先级修正和有边界的初次解码恢复。[四平台结果](https://github.com/stvlynn/OpenLR/actions/runs/42389833465) · [桥接决策](decisions/022-macos-local-bridge.md) · [时长规范与实测](../research/audio-container-timing.md)
 
