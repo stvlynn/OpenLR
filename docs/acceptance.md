@@ -4,6 +4,12 @@
 
 ## 桌面验收与交付快照 — 2026-11-08
 
+公共 main 已合入 `df741d6`。该修订的 Desktop 矩阵在 Windows、Ubuntu、macOS Intel 和 Apple Silicon 全部通过；Windows 共 534 项浏览器检查，525 通过、9 跳过、零失败，实际 NSIS 安装／卸载及六种文件关联也通过。但独立的普通正式包视频专项仅通过 **23/24**，因此本轮整体目标尚未完成，不能用四平台矩阵或此前有限成功覆盖这次失败。[Main Desktop 矩阵](https://github.com/stvlynn/OpenLR/actions/runs/42392485520) · [独立正式包专项](https://github.com/stvlynn/OpenLR/actions/runs/42392485539)
+
+独立专项的零基第 3 轮使用同一份 27,479 字节生成素材，导入通过后，首个 `video-seek --time 0.35` 在 `native-video-smoke.mjs:209` 返回 `Media failed to decode`；尚未出现 `frames-passed` 标记，也未执行到导出。宿主仍存活，health 返回 200、control 正常，生产构建的 UI-pump 端点返回预期的 404；宿主清理已确认，独立浏览器优雅退出。诊断关闭，故原始日志不能确定原生数值错误码、metadata 准入条件、恢复次数或具体发生于加载、初始跳转、帧准备还是绘制。不能把此前 `c53` 自然恢复事件或受控注入的数值 3 借用于这次失败。原始日志保留在 `.workspace/main-release-df741d6/release-video-trials/3-release.log`，对应 artifact `13582860897`。
+
+当前未完成工作是定位这一首个 seek 命令内的失败边界：准备通过既有错误响应携带 failure-only `error.details.video`，并在隔离分支补充诊断 OFF／ON 各 24 轮观察。两组均保留严格图像、音频、原件与清理断言；ON 的桥接 trace 会改变时序，不能视为修复证据。该观察尚未执行，没有新增 codec 修复或失败已消除的结论。
+
 `a8c07ee` 的四平台完整验收全部通过。Windows 浏览器共 534 项，525 通过、9 项跳过、零失败；原生包、NSIS 安装与卸载及六种文件关联也通过。Ubuntu 验证实际 Debian 安装、原生套件和随包 CLI。两种 macOS 验证 DMG 复制、真实文件夹与保存面板、原生照片工作流及短多音轨 WebM／MP4、44.1 kHz AAC。该修订包含本地桥接修复、Matroska 声明时长优先级修正和有边界的初次解码恢复。[四平台结果](https://github.com/stvlynn/OpenLR/actions/runs/42389833465) · [桥接决策](decisions/022-macos-local-bridge.md) · [时长规范与实测](../research/audio-container-timing.md)
 
 同样产品源码的 `c53be6d` 在 Apple Silicon 原始流程专项通过 **24/24**，每轮使用保留的 59,365 字节原件，未增加裁剪前读回。第 4 轮自然发生首帧前错误 3，3,679 ms 启动一次新播放器，3,708 ms 取得实际帧；随后三项严格音频、图像维度、原件和清理检查全部通过。其余 23 轮未记录恢复。另一个真实 WKWebView 对照明确验证旧加载器在注入错误后失败，新加载器仅恢复一次，实际 PNG、WebM 像素、全部音轨及原件通过；两宿主与独立浏览器均退出。该受控错误不等同于系统解码器自然故障；有限成功样本也不证明所有未来故障消失。[原始流程 24 轮](https://github.com/stvlynn/OpenLR/actions/runs/42390693946) · [受控原生对照与完整许可文本](https://github.com/stvlynn/OpenLR/actions/runs/42391568368)
@@ -12,7 +18,7 @@
 
 后续 ARM 故障后观察完成 24 轮：23 轮通过实际像素、两种音频与原件检查，1 轮宿主真实 SIGTRAP，全部确认应用、辅助进程与独立校验浏览器退出。已捕获 JavaScriptCore 保守根扫描缓冲区扩展的分配调用链。独立 C／Go 栈对照中，Go 栈等待两次均复现相同故障，原生栈四次均完成实际垃圾回收，两次失败的分配值均与观察栈边界的计算完全一致。该结果支持夹具中的栈边界机制。[调用链、指令与对照证据](../research/native-video.md#allocating-caller-captured-during-conservative-root-gathering)
 
-尚未合入的 `feat/macos-scheme-bridge` 候选随后通过原生桥接 40 项断言、24 轮诊断应用测试和 24 轮普通正式包测试。普通正式包使用标准 Go SDK，关闭诊断，无调试器或额外启动包装；每轮均验证实际图像、两种 72,000 帧／48 kHz 单声道音频、27,479 字节原件及退出清理。完整候选矩阵中 Ubuntu、Windows、macOS Intel 通过，Apple Silicon 的独立短多音轨检查在首帧加载前返回解码错误，宿主仍正常响应，尚未执行跳转或导出。原始生成素材已保留，正在进行独立容器布局对照；候选的完整平台验收和最终交付仍未完成。[桥接夹具](https://github.com/stvlynn/OpenLR/actions/runs/42377530724) · [诊断应用](https://github.com/stvlynn/OpenLR/actions/runs/42378126957) · [普通正式包 24 轮](https://github.com/stvlynn/OpenLR/actions/runs/42382782290) · [候选完整矩阵](https://github.com/stvlynn/OpenLR/actions/runs/42381349345)
+在早期尚未合入时，`feat/macos-scheme-bridge` 候选通过原生桥接 40 项断言、24 轮诊断应用测试和 `ba16d3c` 的 24 轮普通正式包测试。该普通正式包使用标准 Go SDK，关闭诊断，无调试器或额外启动包装；每轮均验证实际图像、两种 72,000 帧／48 kHz 单声道音频、27,479 字节原件及退出清理。早期候选矩阵中 Ubuntu、Windows、macOS Intel 通过，Apple Silicon 的独立短多音轨检查在首帧加载前返回解码错误，宿主仍正常响应，尚未执行跳转或导出。原始生成素材及后续容器、时序和恢复对照均保留各自范围。该历史 24 轮成功不替代当前 main 独立专项的 23/24 结果；桥接现已合入，不再是等待集成的状态。[桥接夹具](https://github.com/stvlynn/OpenLR/actions/runs/42377530724) · [诊断应用](https://github.com/stvlynn/OpenLR/actions/runs/42378126957) · [早期普通正式包 24 轮](https://github.com/stvlynn/OpenLR/actions/runs/42382782290) · [早期候选矩阵](https://github.com/stvlynn/OpenLR/actions/runs/42381349345)
 
 `678c889` 的 Windows Chrome 完整回归 **500/500**，零失败、零跳过，322.9 秒，包含独立色彩和元数据校验。Windows、Ubuntu 24.04、macOS Intel 和 macOS Apple Silicon 的 GitHub Actions 原生验收全部通过。导出确认在选图变更后不写文件，已预留的批量目录会关闭。Windows WebView2 的独立原生 CLI 验证覆盖三个导出命令、正确目标的字节读回和历史设置保留。Photos 10.0 的实际 IPTC 侧车也已在 macOS Apple Silicon 和 Windows 原生包完成迁移。[导出验证](../research/confirmation-targets.md#export-confirmation-follow-up--2026-11-07) · [四平台作业](https://github.com/stvlynn/OpenLR/actions/runs/42316534448) · [Photos 验证](catalog-migration.md#verification-and-dependency)
 
