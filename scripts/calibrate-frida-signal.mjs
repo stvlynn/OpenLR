@@ -24,10 +24,12 @@ const sourcePath = path.join(destination, 'observer.js')
 const report = { status: 'incomplete', nonce, fixture: null, controller: null, cleanup: {} }
 
 function collect(child) {
-  const result = { stdout: '', stderr: '', truncated: false, closed: null }
+  const started = performance.now()
+  const result = { stdout: '', stderr: '', firstOutputMs: {}, truncated: false, closed: null }
   const limit = 2 * 1024 * 1024
   for (const stream of ['stdout', 'stderr'])
     child[stream].setEncoding('utf8').on('data', (chunk) => {
+      result.firstOutputMs[stream] ??= Math.round(performance.now() - started)
       result.truncated ||= result[stream].length + chunk.length > limit
       result[stream] = (result[stream] + chunk).slice(0, limit)
     })
@@ -127,6 +129,15 @@ try {
   controllerOutput = collect(controller)
   const ready = await waitFor(
     async () => {
+      if (controllerOutput.stdout.endsWith('\n')) {
+        const response = JSON.parse(controllerOutput.stdout)
+        if (typeof response.code === 'string' && typeof response.category === 'string') {
+          report.providerError = response
+          throw Error(
+            'REA startup failed: ' + response.code + ': ' + (response.details?.reason || response.message)
+          )
+        }
+      }
       const failure = await completeJson(capturePath)
       if (failure?.kind === 'error') throw Error('Observer startup failed: ' + failure.reason)
       return completeJson(readyPath)
@@ -220,6 +231,7 @@ try {
     }
     await writeFile(path.join(destination, name + '.stdout.log'), output.stdout)
     await writeFile(path.join(destination, name + '.stderr.log'), output.stderr)
+    report[name + 'FirstOutputMs'] = output.firstOutputMs
   }
   await writeFile(path.join(destination, 'report.json'), JSON.stringify(report, null, 2) + '\n')
   console.log(JSON.stringify({ fridaSignalCalibration: report.status, error: report.error || null }))

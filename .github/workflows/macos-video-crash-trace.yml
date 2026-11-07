@@ -14,6 +14,13 @@ on:
         description: Calibrate REA exception observation without starting application trials
         type: boolean
         default: false
+      frida_stage:
+        description: Select exception calibration or independent binding startup diagnosis
+        type: choice
+        options:
+          - exception
+          - startup
+        default: exception
 permissions:
   contents: read
   actions: read
@@ -30,6 +37,7 @@ jobs:
         with:
           node-version: 24
       - uses: actions/setup-go@v6
+        if: ${{ !(inputs.frida_calibration && inputs.frida_stage == 'startup') }}
         with:
           go-version-file: go.mod
       - run: npm ci
@@ -47,13 +55,15 @@ jobs:
           } > build/signal-calibration/source-system-images.log 2>&1
           cat build/signal-calibration/source-system-images.log
       - name: Prepare the isolated signal-observation toolchain
+        if: ${{ !(inputs.frida_calibration && inputs.frida_stage == 'startup') }}
         run: |
           node scripts/prepare-signal-runtime.mjs
           echo "GOROOT=$PWD/build/signal-toolchain" >> "$GITHUB_ENV"
       - name: Calibrate foreign-thread breakpoints and raised signals
+        if: ${{ !(inputs.frida_calibration && inputs.frida_stage == 'startup') }}
         run: node scripts/calibrate-signal-context.mjs
       - name: Calibrate stopped-thread stack and register capture
-        if: inputs.trace_workflow
+        if: ${{ inputs.trace_workflow && !(inputs.frida_calibration && inputs.frida_stage == 'startup') }}
         run: node scripts/calibrate-host-trace.mjs
       - name: Provision the pinned REA instrumentation runtime
         if: inputs.frida_calibration
@@ -63,8 +73,11 @@ jobs:
           node build/rea-runtime/node_modules/rea-agents/scripts/rea.mjs --version
           node --input-type=module -e 'const f = await import(process.argv[1]); console.log("Frida local-device binding:", typeof f.getLocalDevice)' "$PWD/build/rea-runtime/node_modules/frida/build/src/frida.js"
       - name: Calibrate original exception context through REA
-        if: inputs.frida_calibration
+        if: ${{ inputs.frida_calibration && inputs.frida_stage != 'startup' }}
         run: node scripts/calibrate-frida-signal.mjs
+      - name: Diagnose isolated binding startup and owned C attachment
+        if: ${{ inputs.frida_calibration && inputs.frida_stage == 'startup' }}
+        run: node scripts/probe-frida-startup.mjs build/signal-calibration/frida-startup
       - name: Build the diagnostic native application
         if: ${{ !inputs.frida_calibration }}
         run: node scripts/desktop.mjs build -o build/release -platform darwin/arm64
