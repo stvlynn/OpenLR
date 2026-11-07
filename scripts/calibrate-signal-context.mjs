@@ -71,6 +71,21 @@ function fixtureRecords(stdout) {
     .map((line) => JSON.parse(line.slice(fixturePrefix.length)))
 }
 
+export function mappedSignalImage(stderr, pid, pc) {
+  const prefix = `dyld[${pid}]: `
+  let image
+  for (const line of stderr.split(/\r?\n/)) {
+    if (!line.startsWith(prefix)) continue
+    const record = line.slice(prefix.length)
+    const mapped = record.match(/^(?:Mapping|Using mapping in dyld cache for) (\/.*)$/)
+    if (mapped) image = mapped[1]
+    const text = record.match(/^__TEXT \(r\.x\) (0x[0-9a-f]+)->(0x[0-9a-f]+)/i)
+    if (image && text && BigInt(pc) >= BigInt(text[1]) && BigInt(pc) < BigInt(text[2]))
+      return { path: image, base: text[1], end: text[2] }
+  }
+  throw Error('Original signal PC was not covered by the owned process loader map')
+}
+
 export function validateSignalCalibration(probe, runtimeSiUser) {
   assert.equal(probe.expired, false, `${probe.mode} exceeded its process deadline`)
   assert.equal(probe.code, null, `${probe.mode} must terminate by its original signal`)
@@ -189,6 +204,13 @@ async function main() {
     await writeFile(path.join(output, `${mode}.stderr.log`), probe.stderr)
     await writeFile(path.join(output, `${mode}.process.json`), JSON.stringify(probe, null, 2) + '\n')
     const verified = validateSignalCalibration(probe, runtimeSiUser)
+    const loaderImage = mappedSignalImage(probe.stderr, probe.pid, verified.context.pc)
+    assert.equal(loaderImage.path, verified.image.path, 'Loader and normal-context image identity must agree')
+    assert.equal(
+      BigInt(loaderImage.base),
+      BigInt(verified.image.base),
+      'Loader and image load addresses must agree'
+    )
     const fixtureImage = verified.images.find((image) => image.role === 'fixture')
     assert.ok(
       uuid.stdout.replaceAll('-', '').toLowerCase().includes(fixtureImage.uuid),
@@ -199,9 +221,9 @@ async function main() {
       '-arch',
       verified.image.arch,
       '-o',
-      verified.image.path,
+      loaderImage.path,
       '-l',
-      verified.image.base,
+      loaderImage.base,
       verified.context.pc
     ])
     await writeFile(
@@ -213,15 +235,17 @@ async function main() {
       mode === 'raise' ? /__pthread_kill/ : new RegExp(`openlr_${mode}`),
       'Apple atos must resolve the recorded PC to the independently known trap location'
     )
-    const result = { mode, pid: probe.pid, termination: probe.signal, ...verified, symbolication }
+    const result = {
+      mode,
+      pid: probe.pid,
+      termination: probe.signal,
+      ...verified,
+      loaderImage,
+      symbolication
+    }
     results.push(result)
     console.log('OpenLR signal calibration ' + JSON.stringify(result))
   }
-  assert.notEqual(
-    results[0].context.normalizedCode,
-    results[2].context.normalizedCode,
-    'BRK #0 and raise must retain their calibrated normalized-code distinction'
-  )
   const report = {
     verified: true,
     platform: process.platform,
@@ -229,7 +253,8 @@ async function main() {
     goVersion: tool(path.join(goRoot, 'bin', 'go'), ['version']).stdout.trim(),
     runtimeSiUser,
     headerSiUser: results[0].ready.siUser,
-    note: 'The marker records Go-normalized si_code before raisebadsignal changes disposition or reraises. BRK #1 shares the user code under this runtime; PC and instruction evidence distinguish it.',
+    normalizedCodesDistinguish: new Set(results.map((result) => result.context.normalizedCode)).size > 1,
+    note: 'The marker records Go-normalized si_code before raisebadsignal changes disposition or reraises. All three modes may share a code when Darwin reports the breakpoint PC directly. PC and instruction evidence identify the trigger.',
     results
   }
   await writeFile(path.join(output, 'calibration.json'), JSON.stringify(report, null, 2) + '\n')
