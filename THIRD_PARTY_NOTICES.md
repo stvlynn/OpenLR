@@ -19,7 +19,7 @@ The upstream material belongs to its respective copyright holders, including Ast
 
 ## Dependencies and future imports
 
-The initial desktop host uses the following pinned runtime dependencies. License texts copied without modification are retained in `resources/licenses/`, which the MyGo packager includes with the app. These are dependency notices; no upstream application or template source was copied into OpenLR.
+The desktop host uses the following pinned runtime dependencies. Their selected source packages are retained in the standard Go `vendor/` tree. Original source licenses and PATENTS files are retained there; license texts are also copied without modification under `resources/licenses/`, which the MyGo packager includes with the app. No upstream application or additional template is imported by this dependency vendoring.
 
 | Component | Fixed version | License | Retained text |
 | --- | --- | --- | --- |
@@ -30,6 +30,12 @@ The initial desktop host uses the following pinned runtime dependencies. License
 | [Go standard library/runtime](https://go.googlesource.com/go/+/refs/tags/go1.27.3/LICENSE) | go1.27.3 build toolchain | BSD-3-Clause | `resources/licenses/go-BSD.txt` |
 
 The list was checked against `go version -m build/windows-amd64/OpenLR.exe`. `go.mod` and `go.sum` also contain build-tool dependencies; verify the actual included modules again when producing a later release. The Go SDK is workspace-local tooling under ignored `.tools/` and is not copied into application packages.
+
+### Local MyGo adaptation
+
+`vendor/github.com/egoist/mygo/` derives from the pinned MIT-licensed v0.7.4 source above. The following upstream paths are adapted for OpenLR's local macOS frontend: `bridge.go`, `internal/bridge/bridge.go`, `internal/darwin/window.go`, `internal/darwin/webview.go` and `internal/darwin/scheme.go`. Changes route existing bridge messages and evaluation results through a reserved local URL-scheme endpoint while retaining the central dispatcher, native compilation, cancellation and other platform backends. The upstream copyright and MIT license remain unchanged.
+
+The two new OpenLR files, `internal/darwin/openlr_scheme.go` and `internal/bridge/openlr_scheme.js`, and OpenLR's modifications are distributed under AGPL-3.0-only. New files carry explicit SPDX notices. `scripts/mygo/darwin-local-bridge.patch` retains the version-specific upstream context and local changes. `scripts/vendor-go.mjs` regenerates standard vendor source and reapplies that patch. [Architecture and verification scope](docs/decisions/022-macos-local-bridge.md) records the native evidence and compatibility boundaries; the Git revision of OpenLR identifies the modified dependency rather than implying an unmodified upstream 0.7.4 binary.
 
 Dependency manifests and lockfiles identify package versions. Their upstream packages retain their own copyright and license terms. The engineering-reference review above is not a complete inventory of runtime, development, or transitive dependency licenses.
 

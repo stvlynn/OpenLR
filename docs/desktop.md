@@ -11,6 +11,18 @@ node scripts/desktop.mjs build -platform darwin/universal,windows/amd64,linux/am
 
 The CLI embeds `web/` without a frontend build step. Packaged output goes to `build/<os>-<arch>/`. `-skip-installer` avoids the Windows installer/NSIS download; `-skip-dmg` skips macOS disk images. Normal `go build` also embeds the frontend, but the MyGo CLI adds application identity, icons, manifests and packaging and is the distribution path.
 
+## Go dependency source
+
+The standard root `vendor/` tree contains the selected runtime and MyGo CLI packages, including required embedded files. Ordinary Go builds, tests and the declared tool use that same source. The local Darwin bridge adaptation serves OpenLR's own frontend through its existing command dispatcher; its rationale, native verification and compatibility limits are recorded in [ADR 022](decisions/022-macos-local-bridge.md). Windows and Linux retain their upstream native backends.
+
+For dependency maintenance, retain local changes in the version-specific patch before regenerating:
+
+```sh
+node scripts/vendor-go.mjs
+```
+
+This replaces vendor source from the selected modules and reapplies `scripts/mygo/darwin-local-bridge.patch`. Updating MyGo's pin requires reviewing that adaptation and refreshing the patch. Review generated source, licenses and actual build/native results together; regenerating source alone is not acceptance.
+
 Windows 10 needs the [WebView2 runtime](https://developer.microsoft.com/microsoft-edge/webview2/); Windows 11 includes it. Linux needs GTK 3 and WebKitGTK 4.1 (`libwebkit2gtk-4.1-0` on Debian/Ubuntu). macOS 12+ uses the system WKWebView. There is no Android/iOS host in this project. Signed public releases require the publisher's own signing configuration.
 
 WebM export on Linux uses WebKitGTK's GStreamer plugins for Opus, VP9 and its parser. The Debian package declares `gstreamer1.0-plugins-base`, `gstreamer1.0-plugins-good`, and `gstreamer1.0-plugins-bad`. The Arch PKGBUILD declares the corresponding `gst-plugins-base`, `gst-plugins-good`, and `gst-plugins-bad` packages. Install these runtime packages when running directly from the archive. [Ubuntu parser package](https://packages.ubuntu.com/noble/gstreamer1.0-plugins-bad) · [Arch parser package](https://archlinux.org/packages/extra/x86_64/gst-plugins-bad-libs/files/)

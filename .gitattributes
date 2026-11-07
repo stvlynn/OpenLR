@@ -15,4 +15,9 @@ web/vendor/opus/LICENSE.EMSCRIPTEN whitespace=-blank-at-eol,-blank-at-eof
 # Unified patch context lines preserve their upstream indentation.
 scripts/fixtures/mygo-startup/*.patch whitespace=-blank-at-eol,-space-before-tab
 scripts/mediabunny/*.patch whitespace=-blank-at-eol,-space-before-tab
+scripts/mygo/*.patch whitespace=-blank-at-eol,-space-before-tab
+# Retain vendored upstream source and license bytes, including line endings.
+vendor/** -text
+# Preserve the pinned upstream README's existing trailing space.
+vendor/github.com/ebitengine/purego/README.md whitespace=-blank-at-eol
 

@@ -1,0 +1,628 @@
+diff --git a/bridge.go b/bridge.go
+--- a/bridge.go
++++ b/bridge.go
+@@ -189,7 +189,7 @@
+ 	w.do(func(n platform.Window) {
+ 		ran = true
+ 		expr := strings.TrimRight(code, " \t\r\n;")
+-		n.CallAsyncFunction(fmt.Sprintf(evalExpr, expr), func(res string, err error) {
++		openLRCallAsyncFunction(ctx, n, fmt.Sprintf(evalExpr, expr), func(res string, err error) {
+ 			if err == nil {
+ 				deliver(ch, result{raw: res})
+ 				return
+@@ -207,7 +207,7 @@
+ 					deliver(ch, result{err: errDestroyed})
+ 					return
+ 				}
+-				w.native.CallAsyncFunction(fmt.Sprintf(evalBody, code), func(res string, err error) {
++				openLRCallAsyncFunction(ctx, w.native, fmt.Sprintf(evalBody, code), func(res string, err error) {
+ 					deliver(ch, result{raw: res, err: err})
+ 				})
+ 			})
+@@ -355,3 +355,14 @@
+ 	o, _ := jsonv1.Marshal(map[string]bool{"matchCase": opts.MatchCase, "backward": opts.Backward, "next": opts.FindNext})
+ 	return fmt.Sprintf("window.__mygo.find(%s, %s)", t, o)
+ }
++
++// OpenLR diagnostic optional adapter; other backends retain their existing path.
++func openLRCallAsyncFunction(ctx context.Context, n platform.Window, body string, callback func(string, error)) {
++	if contextual, ok := n.(interface {
++		CallAsyncFunctionContext(context.Context, string, func(string, error))
++	}); ok {
++		contextual.CallAsyncFunctionContext(ctx, body, callback)
++	} else {
++		n.CallAsyncFunction(body, callback)
++	}
++}
+diff --git a/internal/bridge/bridge.go b/internal/bridge/bridge.go
+--- a/internal/bridge/bridge.go
++++ b/internal/bridge/bridge.go
+@@ -7,12 +7,16 @@
+ import (
+ 	_ "embed"
+ 	"encoding/json"
++	"strings"
+ 
+ 	"github.com/egoist/mygo/internal/platform"
+ )
+ 
+ //go:embed bridge.js
+ var source string
++
++//go:embed openlr_scheme.js
++var openLRSchemeSource string
+ 
+ // Config is passed to the bridge as __MYGO_CONFIG__.
+ type Config struct {
+@@ -34,7 +38,12 @@
+ // Script returns the bridge source configured for one window.
+ func Script(cfg Config) string {
+ 	b, _ := json.Marshal(cfg)
+-	return "(function(__MYGO_CONFIG__){\n" + source + "})(" + string(b) + ");"
++	script := source
++	if cfg.Platform == "darwin" {
++		script = strings.Replace(script, "function ge(e){", "function ge(e){if(__MYGO_CONFIG__.platform===\"darwin\")return __openlrSchemeTransport();", 1)
++		script = openLRSchemeSource + "\n" + script
++	}
++	return "(function(__MYGO_CONFIG__){\n" + script + "})(" + string(b) + ");"
+ }
+ 
+ // TitleBarEvent tells a page of a window with a hidden title bar the room
+diff --git a/internal/bridge/openlr_scheme.js b/internal/bridge/openlr_scheme.js
+new file mode 100644
+--- /dev/null
++++ b/internal/bridge/openlr_scheme.js
+@@ -0,0 +1,57 @@
++// SPDX-License-Identifier: AGPL-3.0-only
++
++// OpenLR diagnostic transport, limited to the local frontend without CSP.
++function __openlrSchemeTransport() {
++  if (window !== window.top || location.protocol !== "mygo:" || location.host !== "localhost") return null;
++  const documentCapability = "__OPENLR_DOCUMENT_CAPABILITY__";
++  const endpoint = "mygo://localhost/__openlr_bridge";
++  const controller = new AbortController();
++  let leaving = false;
++  let admission = Promise.resolve();
++  let sequence = 0;
++  let failed;
++  const send = (envelope) => {
++    const request = admission.then(async () => {
++      if (failed) throw failed;
++      const response = await fetch(endpoint, {
++        method: "POST",
++        body: JSON.stringify({ document: documentCapability, sequence: ++sequence, ...envelope }),
++        signal: controller.signal,
++      });
++      if (!response.ok) throw Error(`OpenLR scheme bridge rejected request (${response.status})`);
++    });
++    // Admission, not method completion, is serialized. A channel ACK must
++    // not wait for the bound method which is waiting for that same ACK.
++    // Failure may occur after native admission; never replay an uncertain
++    // call or continue with an unknowable sequence. Fail this document visibly.
++    admission = request.catch((error) => { failed ||= error; });
++    return request;
++  };
++  addEventListener("pagehide", () => { leaving = true; controller.abort(); }, { once: true });
++  addEventListener("pageshow", (event) => {
++    if (event.persisted) {
++      failed = Error("OpenLR diagnostic scheme bridge does not support BFCache restoration");
++      setTimeout(() => { throw failed; });
++    }
++  });
++  const post = (message) => {
++    let call;
++    try { call = JSON.parse(message.slice(__MYGO_CONFIG__.secret.length)); } catch {}
++    send({ kind: "message", message }).catch((error) => {
++      if (call?.t === "call") {
++        window.__mygo?.receive({ t: "reply", k: call.k, id: call.id, ok: false, e: String(error.message || error) });
++      } else if (!leaving) {
++        setTimeout(() => { throw error; });
++      }
++    });
++  };
++  const pip = () => {
++    send({ kind: "pip", active: !!document.pictureInPictureElement }).catch((error) => {
++      if (!leaving) setTimeout(() => { throw error; });
++    });
++  };
++  addEventListener("enterpictureinpicture", pip, true);
++  addEventListener("leavepictureinpicture", pip, true);
++  addEventListener("pageshow", pip);
++  return { post };
++}
+diff --git a/internal/darwin/openlr_scheme.go b/internal/darwin/openlr_scheme.go
+new file mode 100644
+--- /dev/null
++++ b/internal/darwin/openlr_scheme.go
+@@ -0,0 +1,246 @@
++//go:build darwin
++
++// SPDX-License-Identifier: AGPL-3.0-only
++
++package darwin
++
++// OpenLR diagnostic candidate: public custom-scheme bridge for local pages.
++// This is not a general replacement for MyGo's frame/CSP security contract.
++import (
++	"context"
++	"crypto/rand"
++	"encoding/hex"
++	"encoding/json"
++	"errors"
++	"fmt"
++	"io"
++	"net/http"
++	"net/url"
++	"strconv"
++
++	"github.com/ebitengine/purego/objc"
++	"github.com/egoist/mygo/internal/platform"
++)
++
++const openLREndpoint = "mygo://localhost/__openlr_bridge"
++
++type openLREvalReply struct {
++	document         string
++	value            string
++	received         bool
++	completed        bool
++	callback         func(string, error)
++	stopCancellation func() bool
++}
++
++func openLRCapability() string {
++	var bytes [32]byte
++	if _, err := rand.Read(bytes[:]); err != nil {
++		panic(err)
++	}
++	return hex.EncodeToString(bytes[:])
++}
++
++// The public scheme task does not expose frameInfo. The private capability
++// is injected only into the top-frame bridge. A navigation rotates it before
++// document-start scripts run; the native fixture must validate that timing.
++func (w *window) openLRBeginNavigation(nav id) {
++	w.openLRNextDocument = openLRCapability()
++	w.openLRNextNavigation = nav
++	w.openLRRefreshScripts()
++}
++
++func (w *window) openLRCommitNavigation(nav id) {
++	if w.openLRNextNavigation != nav {
++		w.openLRReady = false
++		w.openLRCancelEvals("OpenLR scheme navigation identity mismatch")
++		return
++	}
++	if w.openLRNextDocument != "" {
++		w.openLRDocument = w.openLRNextDocument
++		w.openLRNextDocument = ""
++		w.openLRNextNavigation = 0
++	}
++	w.openLRReady = true
++	w.openLRSequence = 0
++	w.pipActive = false
++	w.openLRCancelEvals("OpenLR scheme Eval page navigated")
++}
++
++func (w *window) openLRCompleteEval(requestID string, reply *openLREvalReply, value string, err error) {
++	if reply.completed {
++		return
++	}
++	reply.completed = true
++	if reply.stopCancellation != nil {
++		reply.stopCancellation()
++	}
++	delete(w.openLREvals, requestID)
++	reply.callback(value, err)
++}
++
++func (w *window) openLRCancelEvals(reason string) {
++	for requestID, reply := range w.openLREvals {
++		w.openLRCompleteEval(requestID, reply, "", errors.New(reason))
++	}
++}
++
++func (w *window) openLRFailProvisionalNavigation(nav id) {
++	if w.openLRNextNavigation != nav {
++		return
++	}
++	// The previous document never stopped being current. Do not promote or
++	// retain the aborted next document's capability.
++	w.openLRNextDocument = ""
++	w.openLRNextNavigation = 0
++	w.openLRRefreshScripts()
++}
++
++func (w *window) openLRRefreshScripts() {
++	withPool(func() {
++		send(w.ucc, "removeAllUserScripts")
++		w.addUserScripts(w.Zoom())
++	})
++}
++
++// Called synchronously on the main thread, before application protocols.
++// Existing native readRequest has already copied the request's original bytes.
++func (w *window) openLRScheme(req *platform.SchemeRequest) bool {
++	u, err := url.Parse(req.URL)
++	if err != nil || u.Scheme != "mygo" || u.Host != "localhost" || u.Path != "/__openlr_bridge" {
++		return false
++	}
++	status := http.StatusForbidden
++	defer func() {
++		req.Responder.Respond(status, map[string][]string{"Cache-Control": {"no-store"}})
++		req.Responder.Finish()
++	}()
++	if req.Body != nil {
++		defer req.Body.Close()
++	}
++	if req.Method != http.MethodPost || u.RawQuery != "" || u.Fragment != "" {
++		status = http.StatusMethodNotAllowed
++		return true
++	}
++	if req.Context.Err() != nil || !w.openLRReady || req.Body == nil {
++		return true
++	}
++	current, err := url.Parse(w.URL())
++	if err != nil || current.Scheme != "mygo" || current.Host != "localhost" {
++		return true
++	}
++	var envelope struct {
++		Document string `json:"document"`
++		Sequence uint64 `json:"sequence"`
++		Kind     string `json:"kind"`
++		Message  string `json:"message"`
++		ID       string `json:"id"`
++		Value    string `json:"value"`
++		Active   bool   `json:"active"`
++	}
++	// Trusted payloads have no artificial size ceiling. This retains the
++	// existing native adapter's complete body copy and the core's untrusted cap.
++	body, err := io.ReadAll(req.Body)
++	if err != nil || json.Unmarshal(body, &envelope) != nil || envelope.Document != w.openLRDocument {
++		return true
++	}
++	switch envelope.Kind {
++	case "message":
++		if envelope.Sequence != w.openLRSequence+1 {
++			status = http.StatusConflict
++			return true
++		}
++		w.openLRSequence = envelope.Sequence
++		w.h.Message(envelope.Message) // the single existing secret-checking dispatcher
++	case "pip":
++		if envelope.Sequence != w.openLRSequence+1 {
++			status = http.StatusConflict
++			return true
++		}
++		w.openLRSequence = envelope.Sequence
++		w.pipActive = envelope.Active
++	case "eval":
++		reply := w.openLREvals[envelope.ID]
++		if reply == nil || reply.document != w.openLRDocument || reply.received {
++			status = http.StatusConflict
++			return true
++		}
++		reply.value, reply.received = envelope.Value, true
++	default:
++		status = http.StatusBadRequest
++		return true
++	}
++	status = http.StatusNoContent
++	return true
++}
++
++// This optional interface is used only by core's context-bearing Eval.
++func (w *window) CallAsyncFunctionContext(ctx context.Context, body string, cb func(string, error)) {
++	w.openLRCallAsyncFunction(ctx, body, cb)
++}
++
++func (w *window) openLRCallAsyncFunction(ctx context.Context, body string, cb func(string, error)) {
++	if err := ctx.Err(); err != nil {
++		cb("", err)
++		return
++	}
++	if !respondsTo(w.web, "callAsyncJavaScript:arguments:inFrame:inContentWorld:completionHandler:") {
++		cb("", errors.New("mygo: Eval requires macOS 11 or later"))
++		return
++	}
++	if !w.openLRReady {
++		cb("", errors.New("OpenLR scheme bridge has no committed local page"))
++		return
++	}
++	current, err := url.Parse(w.URL())
++	if err != nil || current.Scheme != "mygo" || current.Host != "localhost" {
++		cb("", errors.New("OpenLR scheme bridge Eval requires the local frontend"))
++		return
++	}
++	requestID := openLRCapability()
++	reply := &openLREvalReply{document: w.openLRDocument, callback: cb}
++	if w.openLREvals == nil {
++		w.openLREvals = make(map[string]*openLREvalReply)
++	}
++	w.openLREvals[requestID] = reply
++	reply.stopCancellation = context.AfterFunc(ctx, func() {
++		w.b.post(func() { w.openLRCompleteEval(requestID, reply, "", ctx.Err()) })
++	})
++	// Native callAsyncJavaScript still compiles the supplied body. No eval or
++	// Function constructor: SyntaxError remains eligible for core's one fallback.
++	// The uncloneable function deliberately produces the public unsupported-
++	// result status BEFORE UIProcess deserialization. Never accept it without
++	// the matching authenticated scheme reply. This is an experimental protocol.
++	wrapped := fmt.Sprintf(`const __openlrValue = await (async () => {
++%s
++})();
++try {
++const __openlrResponse = await fetch(%s, {method: "POST", body: JSON.stringify({
++document: %s, kind: "eval", id: %s, value: __openlrValue
++})});
++if (!__openlrResponse.ok) throw Error("OpenLR scheme Eval reply rejected (" + __openlrResponse.status + ")");
++} catch (__openlrError) {
++throw new Error("OpenLR scheme transport: " + String(__openlrError && __openlrError.message || __openlrError));
++}
++return function openlrUnsupportedResult() {};`, body, strconv.Quote(openLREndpoint), strconv.Quote(reply.document), strconv.Quote(requestID))
++	withPool(func() {
++		blk := newBlock(func(_ objc.Block, result id, nativeErr id) {
++			if reply.completed {
++				return
++			}
++			if nativeErr != 0 {
++				// WKErrorJavaScriptResultTypeIsUnsupported == 5 (public WKError).
++				if goString(send(nativeErr, "domain")) == "WKErrorDomain" && sendInt(nativeErr, "code") == 5 && reply.received && reply.document == w.openLRDocument {
++					w.openLRCompleteEval(requestID, reply, reply.value, nil)
++					return
++				}
++				w.openLRCompleteEval(requestID, reply, "", nsError(nativeErr))
++				return
++			}
++			w.openLRCompleteEval(requestID, reply, "", errors.New("OpenLR scheme Eval unexpectedly returned a supported native result"))
++		})
++		defer blk.Release()
++		send(w.web, "callAsyncJavaScript:arguments:inFrame:inContentWorld:completionHandler:",
++			uintptr(nsString(wrapped)), 0, 0, uintptr(send(class("WKContentWorld"), "pageWorld")), uintptr(blk))
++	})
++}
+diff --git a/internal/darwin/scheme.go b/internal/darwin/scheme.go
+--- a/internal/darwin/scheme.go
++++ b/internal/darwin/scheme.go
+@@ -52,7 +52,9 @@
+ 			req := readRequest(task)
+ 			req.Context = ctx
+ 			req.Responder = st
+-			w.h.SchemeRequest(req)
++			if !w.openLRScheme(req) {
++				w.h.SchemeRequest(req)
++			}
+ 		}),
+ 		method("webView:stopURLSchemeTask:", func(self id, _ objc.SEL, web, task id) {
+ 			if st := schemeTasks[task]; st != nil {
+diff --git a/internal/darwin/webview.go b/internal/darwin/webview.go
+--- a/internal/darwin/webview.go
++++ b/internal/darwin/webview.go
+@@ -231,16 +231,14 @@
+ 		return
+ 	}
+ 	w.closed = true
++	w.openLRCancelEvals("OpenLR scheme Eval web view closed")
+ 	b := w.b
+ 	withPool(func() {
+ 		if w.hasKeyboard() && w.host.surface != nil {
+ 			send(w.win, "makeFirstResponder:", uintptr(w.host.surface.view))
+ 		}
+ 		w.stopObserving()
+-		send(w.ucc, "removeScriptMessageHandlerForName:", uintptr(nsString("mygo")))
+-		if w.opts.PictureInPicture {
+-			send(w.ucc, "removeScriptMessageHandlerForName:", uintptr(nsString(pipHandler)))
+-		}
++
+ 		send(w.ucc, "removeAllUserScripts")
+ 		send(w.web, "stopLoading")
+ 		send(w.web, "setNavigationDelegate:", 0)
+diff --git a/internal/darwin/window.go b/internal/darwin/window.go
+--- a/internal/darwin/window.go
++++ b/internal/darwin/window.go
+@@ -3,6 +3,7 @@
+ package darwin
+ 
+ import (
++	"context"
+ 	"errors"
+ 	"log"
+ 	"math"
+@@ -50,14 +51,20 @@
+ )
+ 
+ type window struct {
+-	b        *Backend
+-	h        platform.WindowHandler
+-	opts     *platform.WindowOptions
+-	win      id
+-	view     id // the content view: holds the web view and a docked inspector
+-	web      id
+-	delegate id
+-	ucc      id
++	b                    *Backend
++	h                    platform.WindowHandler
++	opts                 *platform.WindowOptions
++	win                  id
++	view                 id // the content view: holds the web view and a docked inspector
++	web                  id
++	delegate             id
++	ucc                  id
++	openLRDocument       string
++	openLRNextDocument   string
++	openLRNextNavigation id
++	openLRReady          bool
++	openLRSequence       uint64
++	openLREvals          map[string]*openLREvalReply
+ 	// effect is the material behind the content (Vibrancy): an
+ 	// NSVisualEffectView, or an NSGlassEffectView when glass is.
+ 	effect id
+@@ -493,10 +500,7 @@
+ 	// Every window gets its own content controller so messages, scripts and
+ 	// the bridge configuration never leak between windows.
+ 	w.ucc = alloc("WKUserContentController")
+-	send(w.ucc, "addScriptMessageHandler:name:", uintptr(w.delegate), uintptr(nsString("mygo")))
+-	if o.PictureInPicture {
+-		send(w.ucc, "addScriptMessageHandler:name:", uintptr(w.delegate), uintptr(nsString(pipHandler)))
+-	}
++	// OpenLR diagnostic: no script message handlers; they deserialize in UIProcess JSC.
+ 	w.addUserScripts(o.Zoom)
+ 	send(cfg, "setUserContentController:", uintptr(w.ucc))
+ 
+@@ -668,6 +672,7 @@
+ 	}
+ 	w.closeWebViews()
+ 	w.closed = true
++	w.openLRCancelEvals("OpenLR scheme Eval window closed")
+ 	if contextWindow == w {
+ 		contextWindow = nil
+ 	}
+@@ -677,10 +682,7 @@
+ 	if w.trafficLights != nil {
+ 		send(w.win, "removeObserver:forKeyPath:", uintptr(w.delegate), uintptr(nsString("effectiveAppearance")))
+ 	}
+-	send(w.ucc, "removeScriptMessageHandlerForName:", uintptr(nsString("mygo")))
+-	if w.opts.PictureInPicture {
+-		send(w.ucc, "removeScriptMessageHandlerForName:", uintptr(nsString(pipHandler)))
+-	}
++
+ 	send(w.ucc, "removeAllUserScripts")
+ 	send(w.web, "stopLoading")
+ 	send(w.web, "setNavigationDelegate:", 0)
+@@ -1418,6 +1420,13 @@
+ // addUserScripts adds the user scripts of the options to the content
+ // controller, and the title bar's after them. Pool required.
+ func (w *window) addUserScripts(zoom float64) {
++	if w.openLRDocument == "" {
++		w.openLRDocument = openLRCapability()
++	}
++	document := w.openLRDocument
++	if w.openLRNextDocument != "" {
++		document = w.openLRNextDocument
++	}
+ 	add := func(src string, injection uintptr, mainFrameOnly bool) {
+ 		script := send(send(class("WKUserScript"), "alloc"), "initWithSource:injectionTime:forMainFrameOnly:",
+ 			uintptr(nsString(src)), injection, boolArg(mainFrameOnly))
+@@ -1429,11 +1438,9 @@
+ 		if s.AtDocumentEnd {
+ 			injection = 1
+ 		}
+-		add(s.Source, injection, !s.AllFrames)
+-	}
+-	if w.opts.PictureInPicture {
+-		add(pipScript, 0, true)
+-	}
++		add(strings.ReplaceAll(s.Source, `"__OPENLR_DOCUMENT_CAPABILITY__"`, strconv.Quote(document)), injection, !s.AllFrames)
++	}
++
+ 	if w.hiddenTitleBar() {
+ 		// After the bridge, which it tells: the room of the traffic lights.
+ 		add(bridge.TitleBarScript(w.TitleBar(), zoom), 0, true)
+@@ -1460,22 +1467,7 @@
+ }
+ 
+ func (w *window) CallAsyncFunction(body string, cb func(string, error)) {
+-	if !respondsTo(w.web, "callAsyncJavaScript:arguments:inFrame:inContentWorld:completionHandler:") {
+-		cb("", errors.New("mygo: Eval requires macOS 11 or later"))
+-		return
+-	}
+-	withPool(func() {
+-		blk := newBlock(func(_ objc.Block, result id, err id) {
+-			if err != 0 {
+-				cb("", nsError(err))
+-				return
+-			}
+-			cb(goString(result), nil)
+-		})
+-		defer blk.Release()
+-		send(w.web, "callAsyncJavaScript:arguments:inFrame:inContentWorld:completionHandler:",
+-			uintptr(nsString(body)), 0, 0, uintptr(send(class("WKContentWorld"), "pageWorld")), uintptr(blk))
+-	})
++	w.openLRCallAsyncFunction(context.Background(), body, cb)
+ }
+ 
+ func (w *window) SetZoom(f float64) { msgSetFloat(w.web, sel("setPageZoom:"), f) }
+@@ -1661,22 +1653,6 @@
+ 		cb(err == nil && s == "true")
+ 	})
+ }
+-
+-// pipHandler is the name of the script message handler that pipScript
+-// tells whether the page's document has a video in picture in picture.
+-const pipHandler = "mygoPictureInPicture"
+-
+-// pipScript tells pipHandler, as the page shows and as a video of its
+-// document goes into picture in picture or out of it, whether one is in.
+-// WebKit's _isPictureInPictureActive knows only of its media controls'
+-// picture in picture, not of requestPictureInPicture().
+-const pipScript = `(() => {
+-	const h = window.webkit.messageHandlers.` + pipHandler + `;
+-	const tell = () => h.postMessage(String(!!document.pictureInPictureElement));
+-	addEventListener("enterpictureinpicture", tell, true);
+-	addEventListener("leavepictureinpicture", tell, true);
+-	addEventListener("pageshow", tell);
+-})()`
+ 
+ // leavingPage runs as the page is about to navigate. WebKit restores a
+ // page from its back/forward cache believing that the video it had in
+@@ -2024,7 +2000,7 @@
+ 
+ 	b := func() *Backend { return theBackend }
+ 	classDef("MyGoWindowDelegate", "NSObject",
+-		[]string{"NSWindowDelegate", "WKNavigationDelegate", "WKUIDelegate", "WKScriptMessageHandler", "WKDownloadDelegate", "NSPopoverDelegate"},
++		[]string{"NSWindowDelegate", "WKNavigationDelegate", "WKUIDelegate", "WKDownloadDelegate", "NSPopoverDelegate"},
+ 		append(popoverDelegateMethods(), []objc.MethodDef{
+ 			// NSWindowDelegate
+ 			method("windowShouldClose:", func(self id, _ objc.SEL, sender id) bool {
+@@ -2156,28 +2132,6 @@
+ 						w.h.TitleBarChanged()
+ 					}
+ 				}
+-			}),
+-
+-			// WKScriptMessageHandler
+-			method("userContentController:didReceiveScriptMessage:", func(self id, _ objc.SEL, ucc, msg id) {
+-				w := b().windowFor(self)
+-				if w == nil {
+-					return
+-				}
+-				// The handler is reachable from every frame; only the
+-				// page's own bridge may talk to Go.
+-				if frame := send(msg, "frameInfo"); frame == 0 || !sendBool(frame, "isMainFrame") {
+-					return
+-				}
+-				body := send(msg, "body")
+-				if body == 0 || !sendBool(body, "isKindOfClass:", uintptr(class("NSString"))) {
+-					return
+-				}
+-				if goString(send(msg, "name")) == pipHandler {
+-					w.pipActive = goString(body) == "true"
+-					return
+-				}
+-				w.h.Message(goString(body))
+ 			}),
+ 
+ 			// Key-value observing of the page title, its sound and
+@@ -2302,12 +2256,14 @@
+ 			}),
+ 			method("webView:didStartProvisionalNavigation:", func(self id, _ objc.SEL, web, nav id) {
+ 				if w := b().windowFor(self); w != nil {
++					w.openLRBeginNavigation(nav)
+ 					w.provisionalURL = w.URL()
+ 					w.h.NavigationStarted(w.provisionalURL)
+ 				}
+ 			}),
+ 			method("webView:didCommitNavigation:", func(self id, _ objc.SEL, web, nav id) {
+ 				if w := b().windowFor(self); w != nil {
++					w.openLRCommitNavigation(nav)
+ 					w.h.NavigationCommitted(w.URL())
+ 				}
+ 			}),
+@@ -2318,6 +2274,7 @@
+ 			}),
+ 			method("webView:didFailProvisionalNavigation:withError:", func(self id, _ objc.SEL, web, nav, err id) {
+ 				if w := b().windowFor(self); w != nil {
++					w.openLRFailProvisionalNavigation(nav)
+ 					w.loadFailed(err, w.provisionalURL)
+ 				}
+ 			}),
