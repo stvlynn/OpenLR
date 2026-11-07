@@ -360,7 +360,14 @@ test('Mac crash collection matches recent PID and image and only emits bounded c
     ],
     usedImages: [
       { name: 'WebKit', path: '/System/Library/Frameworks/WebKit.framework/WebKit' },
-      { name: '/Users/private-person/extra', path: '/Users/private-person/extra' }
+      { name: '/Users/private-person/extra', path: '/Users/private-person/extra' },
+      { name: 'OpenLR', path: '/Users/private-person/extra', uuid: 'dddddddd-ffff-4444-aaaa-dddddddddddd' },
+      {
+        name: 'OpenLR',
+        path: '/Users/private-person/OpenLR.app/Contents/MacOS/OpenLR',
+        uuid: '00000000-1111-2222-3333-444444444444',
+        arch: 'arm64'
+      }
     ]
   }
   const write = (name, changes, bug = '309') =>
@@ -380,6 +387,7 @@ test('Mac crash collection matches recent PID and image and only emits bounded c
   await write('OpenLR-4.ips', {})
   const result = JSON.parse(JSON.stringify(await findMacCrashReport(match, options)))
   assert.equal(result.status, 'matched')
+  assert.deepEqual(result.executableImage, { uuid: '00000000-1111-2222-3333-444444444444', arch: 'arm64' })
   assert.deepEqual(result.exception, { type: 'EXC_BAD_ACCESS', signal: 'SIGSEGV' })
   assert.deepEqual(result.termination, { namespace: 'SIGNAL', code: 11 })
   assert.equal(result.frames.length, 6)
@@ -405,4 +413,11 @@ test('Mac crash collection matches recent PID and image and only emits bounded c
   assert.equal(bounded.threads.length, 64)
   assert.ok(bounded.threads.every(({ frames }) => frames.length === 12))
   assert.equal(bounded.lastExceptionBacktrace.length, 12)
+
+  await write('OpenLR-6.ips', {
+    usedImages: [{ ...report.usedImages.at(-1), uuid: '/Users/private-person/extra' }]
+  })
+  const invalidUuid = await findMacCrashReport(match, options)
+  assert.equal(invalidUuid.status, 'matched')
+  assert.equal(invalidUuid.executableImage, undefined)
 })

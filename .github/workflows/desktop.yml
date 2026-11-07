@@ -122,6 +122,7 @@ jobs:
           include-hidden-files: true
           if-no-files-found: ignore
       - uses: actions/upload-artifact@v4
+        if: ${{ success() || (failure() && runner.os == 'macOS' && steps.distribution.outcome == 'success') }}
         with:
           name: OpenLR-${{ matrix.os }}
           path: |

@@ -162,6 +162,11 @@ function summarizeMacCrash(contents, { pid, executable, startedWall, exitedWall 
   )
     return
   const frames = report.threads?.[report.faultingThread]?.frames
+  const executableImage =
+    typeof report.procPath === 'string' && Array.isArray(report.usedImages)
+      ? report.usedImages.find((image) => image?.name === executable && image.path === report.procPath)
+      : undefined
+  const uuid = identifier(executableImage?.uuid, /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i)
   const summarizeFrames = (entries, limit) =>
     Array.isArray(entries)
       ? entries.slice(0, limit).map((frame) => ({
@@ -172,6 +177,9 @@ function summarizeMacCrash(contents, { pid, executable, startedWall, exitedWall 
       : []
   return {
     status: 'matched',
+    ...(uuid && {
+      executableImage: { uuid, arch: identifier(executableImage.arch, /^(?:arm64e?|x86_64h?)$/) }
+    }),
     exception: {
       type: identifier(report.exception?.type, /^EXC_[A-Z0-9_]{1,48}$/),
       signal: identifier(report.exception?.signal, /^SIG[A-Z0-9]{1,18}$/)
